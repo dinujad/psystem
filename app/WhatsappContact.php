@@ -35,7 +35,7 @@ class WhatsappContact extends Model
     public function hasProfilePicture(): bool
     {
         return ! empty($this->profile_picture)
-            && file_exists(storage_path('app/public/'.$this->profile_picture));
+            && \App\Support\UploadStorage::appExists($this->profile_picture);
     }
 
     protected function serializeDate(\DateTimeInterface $date): string

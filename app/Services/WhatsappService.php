@@ -364,13 +364,8 @@ class WhatsappService
                 return null;
             }
 
-            $dir = storage_path('app/public/whatsapp/avatars');
-            if (! is_dir($dir)) {
-                mkdir($dir, 0775, true);
-            }
-
             $path = 'whatsapp/avatars/'.$phone.'.jpg';
-            file_put_contents(storage_path('app/public/'.$path), $binary);
+            \App\Support\UploadStorage::putApp($path, $binary);
 
             return $path;
         } catch (\Throwable $e) {
@@ -414,9 +409,7 @@ class WhatsappService
             try {
                 $ext      = $this->guessExtension($data['media_mimetype'] ?? '', $data['media_filename'] ?? '');
                 $filename = 'wa_' . uniqid() . '.' . $ext;
-                $dir      = storage_path('app/public/whatsapp');
-                if (! is_dir($dir)) mkdir($dir, 0775, true);
-                file_put_contents($dir . '/' . $filename, base64_decode($data['media_base64']));
+                \App\Support\UploadStorage::putApp('whatsapp/'.$filename, base64_decode($data['media_base64']));
                 $mediaPath = 'whatsapp/' . $filename;
             } catch (\Throwable $e) {
                 Log::warning('WhatsApp media save failed: ' . $e->getMessage());

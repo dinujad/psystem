@@ -69,6 +69,37 @@ if (! function_exists('humanFilesize')) {
     }
 }
 
+if (! function_exists('uploads_url')) {
+    /** Public URL for a file under uploads/ (e.g. documents/x.pdf, img/y.jpg). */
+    function uploads_url(?string $relativePath): string
+    {
+        if (empty($relativePath)) {
+            return '';
+        }
+
+        return \App\Support\UploadStorage::url($relativePath);
+    }
+}
+
+if (! function_exists('uploads_exists')) {
+    function uploads_exists(?string $relativePath): bool
+    {
+        return ! empty($relativePath) && \App\Support\UploadStorage::exists($relativePath);
+    }
+}
+
+if (! function_exists('storage_app_url')) {
+    /** Public URL for storage/app/public (e.g. production/1/file.pdf). */
+    function storage_app_url(?string $relativePath): string
+    {
+        if (empty($relativePath)) {
+            return '';
+        }
+
+        return \App\Support\UploadStorage::appUrl($relativePath);
+    }
+}
+
 /**
  * Checks if the uploaded document is an image
  */

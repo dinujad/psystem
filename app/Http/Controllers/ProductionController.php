@@ -1180,9 +1180,8 @@ class ProductionController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized.'], 403);
         }
 
-        $path = storage_path('app/public/' . $file->file_path);
-        if (file_exists($path)) {
-            unlink($path);
+        if (\App\Support\UploadStorage::appExists($file->file_path)) {
+            \App\Support\UploadStorage::deleteApp($file->file_path);
         }
         $file->delete();
 
@@ -1196,12 +1195,7 @@ class ProductionController extends Controller
             abort(403, 'You are not assigned to this production section.');
         }
 
-        $path = storage_path('app/public/' . $file->file_path);
-        if (! file_exists($path)) {
-            abort(404);
-        }
-
-        return response()->download($path, $file->original_name);
+        return \App\Support\UploadStorage::appDownload($file->file_path, $file->original_name);
     }
 
     // ── Update Google Drive URL ───────────────────────────────────────────────
@@ -1629,16 +1623,13 @@ class ProductionController extends Controller
     private function attachFiles(ProductionJob $job, array $files, array $labels): void
     {
         $dir = 'production/' . $job->id;
-        if (! is_dir(storage_path('app/public/' . $dir))) {
-            mkdir(storage_path('app/public/' . $dir), 0775, true);
-        }
 
         foreach ($files as $idx => $file) {
             if (! $file || ! $file->isValid()) continue;
 
             $ext   = strtolower($file->getClientOriginalExtension());
             $fname = 'file_' . uniqid() . '.' . $ext;
-            $file->move(storage_path('app/public/' . $dir), $fname);
+            \App\Support\UploadStorage::putAppFileAs($dir, $file, $fname);
 
             ProductionJobFile::create([
                 'job_id'        => $job->id,

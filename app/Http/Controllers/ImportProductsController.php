@@ -151,8 +151,7 @@ class ImportProductsController extends Controller
 
                             $path = parse_url($image_name, PHP_URL_PATH);
                             $new_name = time().'_'.basename($path);
-                            $dest_img = public_path().'/uploads/'.config('constants.product_img_path').'/'.$new_name;
-                            file_put_contents($dest_img, $source_image);
+                            \App\Support\UploadStorage::put(config('constants.product_img_path').'/'.$new_name, $source_image);
                             $product_array['image'] = $new_name;
                         } else {
                             $product_array['image'] = $image_name;

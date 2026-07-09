@@ -858,7 +858,7 @@ class Util
                 $sanitized_name = Str::slug($original_name);
                 $new_file_name = time() . '_' . $sanitized_name . ($extension ? '.' . $extension : '');
 
-                if ($file->storeAs($dir_name, $new_file_name)) {
+                if (\App\Support\UploadStorage::putFileAs($dir_name, $file, $new_file_name)) {
                     $uploaded_file_name = $new_file_name;
                 }
             }

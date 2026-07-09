@@ -119,11 +119,9 @@ class WhatsappController extends Controller
             $origName = $file->getClientOriginalName();
             $ext      = strtolower($file->getClientOriginalExtension());
 
-            // Save to public storage
-            $dir  = storage_path('app/public/whatsapp');
-            if (! is_dir($dir)) mkdir($dir, 0775, true);
             $fname = 'wa_' . uniqid() . '.' . $ext;
-            $file->move($dir, $fname);
+            $bytes = file_get_contents($file->getRealPath());
+            \App\Support\UploadStorage::putApp('whatsapp/'.$fname, $bytes);
             $localPath = 'whatsapp/' . $fname;
 
             $mediaType = str_starts_with($mime, 'image/') ? 'image'
@@ -132,7 +130,7 @@ class WhatsappController extends Controller
 
             $media = [
                 'media_type'     => $mediaType,
-                'media_base64'   => base64_encode(file_get_contents($dir . '/' . $fname)),
+                'media_base64'   => base64_encode($bytes),
                 'media_mimetype' => $mime,
                 'media_filename' => $origName,
                 '_local_path'    => $localPath,
@@ -208,8 +206,10 @@ class WhatsappController extends Controller
 
     public function serveMedia(string $path)
     {
-        $fullPath = storage_path('app/public/' . $path);
-        if (! file_exists($fullPath)) abort(404);
+        $fullPath = \App\Support\UploadStorage::appLocalPath($path);
+        if (! $fullPath) {
+            abort(404);
+        }
 
         return response()->file($fullPath, [
             'Cache-Control' => 'private, max-age=86400',
@@ -460,7 +460,10 @@ class WhatsappController extends Controller
             abort(404);
         }
 
-        $fullPath = storage_path('app/public/'.$contact->profile_picture);
+        $fullPath = \App\Support\UploadStorage::appLocalPath($contact->profile_picture);
+        if (! $fullPath) {
+            abort(404);
+        }
 
         return response()->file($fullPath, [
             'Cache-Control' => 'private, max-age=86400',

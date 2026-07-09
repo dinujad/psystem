@@ -52,7 +52,7 @@ class TransactionPayment extends Model
      */
     public function getDocumentPathAttribute()
     {
-        $path = ! empty($this->document) ? asset('/uploads/documents/'.$this->document) : null;
+        $path = ! empty($this->document) ? uploads_url('documents/'.$this->document) : null;
 
         return $path;
     }

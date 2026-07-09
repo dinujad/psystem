@@ -39,7 +39,7 @@ class Media extends Model
      */
     public function getDisplayUrlAttribute()
     {
-        $path = asset('/uploads/media/'.rawurlencode($this->file_name));
+        $path = uploads_url('media/'.$this->file_name);
 
         return $path;
     }
@@ -49,7 +49,7 @@ class Media extends Model
      */
     public function getDisplayPathAttribute()
     {
-        $path = public_path('uploads/media').'/'.rawurlencode($this->file_name);
+        $path = \App\Support\UploadStorage::localPath('media/'.$this->file_name) ?? '';
 
         return $path;
     }
@@ -141,7 +141,7 @@ class Media extends Model
         $file_name = null;
         if ($file->getSize() <= config('constants.document_size_limit')) {
             $new_file_name = time().'_'.mt_rand().'_'.$file->getClientOriginalName();
-            if ($file->storeAs('/media', $new_file_name)) {
+            if (\App\Support\UploadStorage::putFileAs('media', $file, $new_file_name)) {
                 $file_name = $new_file_name;
             }
         }
@@ -153,15 +153,7 @@ class Media extends Model
     {
         $file_name = time().'_'.mt_rand().'_media.jpg';
 
-        $output_file = public_path('uploads').'/media/'.$file_name;
-
-        // open the output file for writing
-        $ifp = fopen($output_file, 'wb');
-
-        fwrite($ifp, base64_decode($base64_string));
-
-        // clean up the file resource
-        fclose($ifp);
+        \App\Support\UploadStorage::put('media/'.$file_name, base64_decode($base64_string));
 
         return $file_name;
     }
@@ -174,10 +166,8 @@ class Media extends Model
         $media = Media::where('business_id', $business_id)
                         ->findOrFail($media_id);
 
-        $media_path = public_path('uploads/media/'.$media->file_name);
-
-        if (file_exists($media_path)) {
-            unlink($media_path);
+        if (uploads_exists('media/'.$media->file_name)) {
+            \App\Support\UploadStorage::delete('media/'.$media->file_name);
         }
         $media->delete();
     }
