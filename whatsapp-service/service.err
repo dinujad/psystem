@@ -1,0 +1,29 @@
+file:///C:/dev/printworks%20system/whatsapp-service/node_modules/@whiskeysockets/baileys/lib/Utils/generics.js:131
+            .then(() => reject(new Boom('Timed Out', {
+                               ^
+
+Error: Timed Out
+    at file:///C:/dev/printworks%20system/whatsapp-service/node_modules/@whiskeysockets/baileys/lib/Utils/generics.js:131:32 {
+  data: {
+    stack: 'Error\n' +
+      '    at promiseTimeout (file:///C:/dev/printworks%20system/whatsapp-service/node_modules/@whiskeysockets/baileys/lib/Utils/generics.js:126:19)\n' +
+      '    at waitForMessage (file:///C:/dev/printworks%20system/whatsapp-service/node_modules/@whiskeysockets/baileys/lib/Socket/socket.js:115:34)\n' +
+      '    at query (file:///C:/dev/printworks%20system/whatsapp-service/node_modules/@whiskeysockets/baileys/lib/Socket/socket.js:138:45)\n' +
+      '    at sendPassiveIq (file:///C:/dev/printworks%20system/whatsapp-service/node_modules/@whiskeysockets/baileys/lib/Socket/socket.js:317:36)\n' +
+      '    at WebSocketClient.<anonymous> (file:///C:/dev/printworks%20system/whatsapp-service/node_modules/@whiskeysockets/baileys/lib/Socket/socket.js:501:15)\n' +
+      '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)'
+  },
+  isBoom: true,
+  isServer: false,
+  output: {
+    statusCode: 408,
+    payload: {
+      statusCode: 408,
+      error: 'Request Time-out',
+      message: 'Timed Out'
+    },
+    headers: {}
+  }
+}
+
+Node.js v22.18.0

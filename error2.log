@@ -1,0 +1,147 @@
+
+   INFO  Seeding database.  
+
+
+   Illuminate\Database\QueryException 
+
+  SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`ulti`.`business`, CONSTRAINT `business_owner_id_foreign` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`) ON DELETE CASCADE) (SQL: insert into `business` (`name`, `currency_id`, `start_date`, `time_zone`, `fy_start_month`, `accounting_method`, `sell_price_tax`, `keyboard_shortcuts`, `pos_settings`, `enable_brand`, `enable_category`, `enable_sub_category`, `enable_price_tax`, `enable_purchase_status`, `enable_lot_number`, `enable_racks`, `enable_row`, `enable_position`, `enable_editing_product_from_purchase`, `item_addition_method`, `enable_inline_tax`, `currency_symbol_placement`, `enabled_modules`, `date_format`, `time_format`, `ref_no_prefixes`, `updated_at`, `created_at`) values (My Business, 2, 2026-03-20, UTC, 1, fifo, includes, {"pos":{"express_checkout":"shift+e","pay_n_ckeckout":"shift+p","draft":"shift+d","cancel":"shift+c","edit_discount":"shift+i","edit_order_tax":"shift+t","add_payment_row":"shift+r","finalize_payment":"shift+f","recent_product_quantity":"f2","add_new_product":"f4"}}, {"disable_pay_checkout":0,"disable_draft":0,"disable_express_checkout":0,"hide_product_suggestion":0,"hide_recent_trans":0,"disable_discount":0,"disable_order_tax":0}, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 0, before, "[\"purchases\",\"add_sale\",\"pos_sale\",\"stock_transfers\",\"stock_adjustment\",\"expenses\",\"account\"]", m/d/Y, 24, "{\"purchase\":\"PO\",\"stock_transfer\":\"ST\",\"stock_adjustment\":\"SA\",\"sell_return\":\"CN\",\"expense\":\"EP\",\"contacts\":\"CO\",\"purchase_payment\":\"PP\",\"sell_payment\":\"SP\",\"business_location\":\"BL\"}", 2026-03-20 15:51:43, 2026-03-20 15:51:43))
+
+  at C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Connection.php:760
+    756▕         // If an exception occurs when attempting to run a query, we'll format the error
+    757▕         // message to include the bindings with SQL, which will make this exception a
+    758▕         // lot more helpful to the developer instead of just the database's errors.
+    759▕         catch (Exception $e) {
+  ➜ 760▕             throw new QueryException(
+    761▕                 $query, $this->prepareBindings($bindings), $e
+    762▕             );
+    763▕         }
+    764▕     }
+
+  1   C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Connection.php:545
+      PDOException::("SQLSTATE[23000]: Integrity constraint violation: 1452 Cannot add or update a child row: a foreign key constraint fails (`ulti`.`business`, CONSTRAINT `business_owner_id_foreign` FOREIGN KEY (`owner_id`) REFERENCES `users` (`id`) ON DELETE CASCADE)")
+
+  2   C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Connection.php:545
+      PDOStatement::execute()
+
+  3   C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Connection.php:753
+      Illuminate\Database\Connection::Illuminate\Database\{closure}("insert into `business` (`name`, `currency_id`, `start_date`, `time_zone`, `fy_start_month`, `accounting_method`, `sell_price_tax`, `keyboard_shortcuts`, `pos_settings`, `enable_brand`, `enable_category`, `enable_sub_category`, `enable_price_tax`, `enable_purchase_status`, `enable_lot_number`, `enable_racks`, `enable_row`, `enable_position`, `enable_editing_product_from_purchase`, `item_addition_method`, `enable_inline_tax`, `currency_symbol_placement`, `enabled_modules`, `date_format`, `time_format`, `ref_no_prefixes`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+
+  4   C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Connection.php:720
+      Illuminate\Database\Connection::runQueryCallback("insert into `business` (`name`, `currency_id`, `start_date`, `time_zone`, `fy_start_month`, `accounting_method`, `sell_price_tax`, `keyboard_shortcuts`, `pos_settings`, `enable_brand`, `enable_category`, `enable_sub_category`, `enable_price_tax`, `enable_purchase_status`, `enable_lot_number`, `enable_racks`, `enable_row`, `enable_position`, `enable_editing_product_from_purchase`, `item_addition_method`, `enable_inline_tax`, `currency_symbol_placement`, `enabled_modules`, `date_format`, `time_format`, `ref_no_prefixes`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", Object(Closure))
+
+  5   C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Connection.php:534
+      Illuminate\Database\Connection::run("insert into `business` (`name`, `currency_id`, `start_date`, `time_zone`, `fy_start_month`, `accounting_method`, `sell_price_tax`, `keyboard_shortcuts`, `pos_settings`, `enable_brand`, `enable_category`, `enable_sub_category`, `enable_price_tax`, `enable_purchase_status`, `enable_lot_number`, `enable_racks`, `enable_row`, `enable_position`, `enable_editing_product_from_purchase`, `item_addition_method`, `enable_inline_tax`, `currency_symbol_placement`, `enabled_modules`, `date_format`, `time_format`, `ref_no_prefixes`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", Object(Closure))
+
+  6   C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Connection.php:498
+      Illuminate\Database\Connection::statement("insert into `business` (`name`, `currency_id`, `start_date`, `time_zone`, `fy_start_month`, `accounting_method`, `sell_price_tax`, `keyboard_shortcuts`, `pos_settings`, `enable_brand`, `enable_category`, `enable_sub_category`, `enable_price_tax`, `enable_purchase_status`, `enable_lot_number`, `enable_racks`, `enable_row`, `enable_position`, `enable_editing_product_from_purchase`, `item_addition_method`, `enable_inline_tax`, `currency_symbol_placement`, `enabled_modules`, `date_format`, `time_format`, `ref_no_prefixes`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+
+  7   C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Query\Processors\Processor.php:32
+      Illuminate\Database\Connection::insert("insert into `business` (`name`, `currency_id`, `start_date`, `time_zone`, `fy_start_month`, `accounting_method`, `sell_price_tax`, `keyboard_shortcuts`, `pos_settings`, `enable_brand`, `enable_category`, `enable_sub_category`, `enable_price_tax`, `enable_purchase_status`, `enable_lot_number`, `enable_racks`, `enable_row`, `enable_position`, `enable_editing_product_from_purchase`, `item_addition_method`, `enable_inline_tax`, `currency_symbol_placement`, `enabled_modules`, `date_format`, `time_format`, `ref_no_prefixes`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+
+  8   C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Query\Builder.php:3322
+      Illuminate\Database\Query\Processors\Processor::processInsertGetId(Object(Illuminate\Database\Query\Builder), "insert into `business` (`name`, `currency_id`, `start_date`, `time_zone`, `fy_start_month`, `accounting_method`, `sell_price_tax`, `keyboard_shortcuts`, `pos_settings`, `enable_brand`, `enable_category`, `enable_sub_category`, `enable_price_tax`, `enable_purchase_status`, `enable_lot_number`, `enable_racks`, `enable_row`, `enable_position`, `enable_editing_product_from_purchase`, `item_addition_method`, `enable_inline_tax`, `currency_symbol_placement`, `enabled_modules`, `date_format`, `time_format`, `ref_no_prefixes`, `updated_at`, `created_at`) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", "id")
+
+  9   C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Builder.php:1869
+      Illuminate\Database\Query\Builder::insertGetId("id")
+
+  10  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:1330
+      Illuminate\Database\Eloquent\Builder::__call("insertGetId")
+
+  11  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:1295
+      Illuminate\Database\Eloquent\Model::insertAndSetId(Object(Illuminate\Database\Eloquent\Builder))
+
+  12  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:1138
+      Illuminate\Database\Eloquent\Model::performInsert(Object(Illuminate\Database\Eloquent\Builder))
+
+  13  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Builder.php:986
+      Illuminate\Database\Eloquent\Model::save()
+
+  14  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Support\helpers.php:306
+      Illuminate\Database\Eloquent\Builder::Illuminate\Database\Eloquent\{closure}(Object(App\Business))
+
+  15  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Builder.php:985
+      tap(Object(App\Business), Object(Closure))
+
+  16  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Support\Traits\ForwardsCalls.php:23
+      Illuminate\Database\Eloquent\Builder::create()
+
+  17  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:2330
+      Illuminate\Database\Eloquent\Model::forwardCallTo(Object(Illuminate\Database\Eloquent\Builder), "create")
+
+  18  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Model.php:2342
+      Illuminate\Database\Eloquent\Model::__call("create")
+
+  19  C:\dev\UltimatePOS-CodeBase-V6.11\database\seeders\AdminUserSeeder.php:24
+      Illuminate\Database\Eloquent\Model::__callStatic("create")
+
+  20  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Container\BoundMethod.php:36
+      Database\Seeders\AdminUserSeeder::run()
+
+  21  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Container\Util.php:41
+      Illuminate\Container\BoundMethod::Illuminate\Container\{closure}()
+
+  22  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Container\BoundMethod.php:93
+      Illuminate\Container\Util::unwrapIfClosure(Object(Closure))
+
+  23  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Container\BoundMethod.php:35
+      Illuminate\Container\BoundMethod::callBoundMethod(Object(Illuminate\Foundation\Application), Object(Closure))
+
+  24  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Container\Container.php:661
+      Illuminate\Container\BoundMethod::call(Object(Illuminate\Foundation\Application), [])
+
+  25  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Seeder.php:184
+      Illuminate\Container\Container::call([])
+
+  26  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Seeder.php:193
+      Illuminate\Database\Seeder::Illuminate\Database\{closure}()
+
+  27  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Console\Seeds\SeedCommand.php:81
+      Illuminate\Database\Seeder::__invoke()
+
+  28  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Eloquent\Concerns\GuardsAttributes.php:155
+      Illuminate\Database\Console\Seeds\SeedCommand::Illuminate\Database\Console\Seeds\{closure}()
+
+  29  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Database\Console\Seeds\SeedCommand.php:80
+      Illuminate\Database\Eloquent\Model::unguarded(Object(Closure))
+
+  30  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Container\BoundMethod.php:36
+      Illuminate\Database\Console\Seeds\SeedCommand::handle()
+
+  31  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Container\Util.php:41
+      Illuminate\Container\BoundMethod::Illuminate\Container\{closure}()
+
+  32  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Container\BoundMethod.php:93
+      Illuminate\Container\Util::unwrapIfClosure(Object(Closure))
+
+  33  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Container\BoundMethod.php:35
+      Illuminate\Container\BoundMethod::callBoundMethod(Object(Illuminate\Foundation\Application), Object(Closure))
+
+  34  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Container\Container.php:661
+      Illuminate\Container\BoundMethod::call(Object(Illuminate\Foundation\Application), [])
+
+  35  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Console\Command.php:183
+      Illuminate\Container\Container::call()
+
+  36  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\symfony\console\Command\Command.php:312
+      Illuminate\Console\Command::execute(Object(Symfony\Component\Console\Input\ArgvInput), Object(Illuminate\Console\OutputStyle))
+
+  37  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Console\Command.php:152
+      Symfony\Component\Console\Command\Command::run(Object(Symfony\Component\Console\Input\ArgvInput), Object(Illuminate\Console\OutputStyle))
+
+  38  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\symfony\console\Application.php:1022
+      Illuminate\Console\Command::run(Object(Symfony\Component\Console\Input\ArgvInput), Object(Symfony\Component\Console\Output\ConsoleOutput))
+
+  39  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\symfony\console\Application.php:314
+      Symfony\Component\Console\Application::doRunCommand(Object(Illuminate\Database\Console\Seeds\SeedCommand), Object(Symfony\Component\Console\Input\ArgvInput), Object(Symfony\Component\Console\Output\ConsoleOutput))
+
+  40  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\symfony\console\Application.php:168
+      Symfony\Component\Console\Application::doRun(Object(Symfony\Component\Console\Input\ArgvInput), Object(Symfony\Component\Console\Output\ConsoleOutput))
+
+  41  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Console\Application.php:102
+      Symfony\Component\Console\Application::run(Object(Symfony\Component\Console\Input\ArgvInput), Object(Symfony\Component\Console\Output\ConsoleOutput))
+
+  42  C:\dev\UltimatePOS-CodeBase-V6.11\vendor\laravel\framework\src\Illuminate\Foundation\Console\Kernel.php:155
+      Illuminate\Console\Application::run(Object(Symfony\Component\Console\Input\ArgvInput), Object(Symfony\Component\Console\Output\ConsoleOutput))
+
+  43  C:\dev\UltimatePOS-CodeBase-V6.11\artisan:35
+      Illuminate\Foundation\Console\Kernel::handle(Object(Symfony\Component\Console\Input\ArgvInput), Object(Symfony\Component\Console\Output\ConsoleOutput))
