@@ -10,6 +10,8 @@ Business management system for print shops and production houses.
 
 ## Deploy (Coolify)
 
+Requires **PHP 8.2+** in `composer.json` (Nixpacks no longer supports PHP 8.0).
+
 Post-deployment command:
 
 ```bash
