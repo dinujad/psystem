@@ -12,6 +12,32 @@ Business management system for print shops and production houses.
 
 Requires **PHP 8.2+** in `composer.json` (Nixpacks no longer supports PHP 8.0).
 
+**Required Coolify environment variables** (ignore optional payment/API warnings):
+
+```env
+APP_NAME=PrintWorks
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://erp.printworks.lk
+APP_KEY=base64:...          # php artisan key:generate --show
+
+DB_CONNECTION=mysql
+DB_HOST=...
+DB_PORT=3306
+DB_DATABASE=...
+DB_USERNAME=...
+DB_PASSWORD=...
+
+FILESYSTEM_DISK=s3
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+AWS_DEFAULT_REGION=auto
+AWS_BUCKET=erp
+AWS_ENDPOINT=https://....r2.cloudflarestorage.com
+AWS_USE_PATH_STYLE_ENDPOINT=true
+AWS_URL=https://pub-....r2.dev
+```
+
 Post-deployment command:
 
 ```bash
