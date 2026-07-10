@@ -1,18 +1,10 @@
-# PrintWorks — Coolify/Nixpacks (PHP 8.2+)
+# PrintWorks — Coolify/Nixpacks (PHP 8.2+). Prefer Dockerfile build pack on Coolify.
 [variables]
 NIXPACKS_PHP_ROOT_DIR = "/app/public"
 
 [phases.install]
-# NOTE: this replaces nixpacks' default PHP install phase, which normally
-# runs "mkdir -p /var/log/nginx && mkdir -p /var/cache/nginx" — without it,
-# nginx fails on startup with "could not open error log file: /var/log/nginx/error.log".
-# Keep that mkdir here or nginx will crash-loop.
 cmds = [
   "mkdir -p /var/log/nginx /var/cache/nginx",
   "mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache/data storage/logs bootstrap/cache",
   "composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev"
 ]
-
-# Clear config cache on every container start so runtime env vars are always used.
-[start]
-cmd = "bash scripts/ensure-upload-dirs.sh 2>/dev/null || true; bash scripts/ensure-env-file.sh 2>/dev/null || true; php artisan config:clear 2>/dev/null || true; node /assets/scripts/prestart.mjs /app/nginx.template.conf /nginx.conf && (php-fpm -y /assets/php-fpm.conf -D && exec nginx -c /nginx.conf)"
