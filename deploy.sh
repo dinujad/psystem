@@ -21,7 +21,10 @@ php artisan db:seed --class=WalkInCustomerSeeder --force
 
 echo "==> Rebuilding caches..."
 php artisan config:cache
-php artisan route:cache
+# routes/web.php has Closure-based routes, which cannot be serialized by
+# route:cache — skip it (harmless, just no route-cache perf boost) so this
+# script doesn't abort (set -e) before view:cache runs.
+php artisan route:cache || echo "==> route:cache skipped (closure routes present)"
 php artisan view:cache
 
 echo ""
