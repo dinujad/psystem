@@ -1,9 +1,6 @@
-# PrintWorks — Coolify/Nixpacks (PHP 8.2+, fixed nginx for Laravel)
+# PrintWorks — Coolify/Nixpacks (PHP 8.2+)
 [variables]
 NIXPACKS_PHP_ROOT_DIR = "/app/public"
-
-[phases.setup]
-nixPkgs = ["...", "python311Packages.supervisor"]
 
 [phases.install]
 cmds = [
@@ -12,13 +9,7 @@ cmds = [
 ]
 
 [phases.build]
-cmds = [
-  "mkdir -p /etc/supervisor/conf.d/ /var/log",
-  "cp /assets/worker-*.conf /etc/supervisor/conf.d/",
-  "cp /assets/supervisord.conf /etc/supervisord.conf",
-  "chmod +x /assets/start.sh",
-  "..."
-]
+cmds = ["chmod +x /assets/start.sh", "..."]
 
 [start]
 cmd = "/assets/start.sh"
@@ -27,75 +18,10 @@ cmd = "/assets/start.sh"
 "start.sh" = '''
 #!/bin/bash
 set -e
-mkdir -p /var/log /etc/supervisor/conf.d
+mkdir -p /var/log/nginx /var/log
 node /assets/scripts/prestart.mjs /assets/nginx.template.conf /etc/nginx.conf
-exec supervisord -c /etc/supervisord.conf -n
-'''
-
-"supervisord.conf" = '''
-[unix_http_server]
-file=/assets/supervisor.sock
-
-[supervisord]
-logfile=/var/log/supervisord.log
-logfile_maxbytes=50MB
-logfile_backups=3
-loglevel=info
-pidfile=/assets/supervisord.pid
-nodaemon=false
-silent=false
-minfds=1024
-minprocs=200
-
-[rpcinterface:supervisor]
-supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
-
-[supervisorctl]
-serverurl=unix:///assets/supervisor.sock
-
-[include]
-files = /etc/supervisor/conf.d/*.conf
-'''
-
-"worker-nginx.conf" = '''
-[program:worker-nginx]
-process_name=%(program_name)s_%(process_num)02d
-command=nginx -c /etc/nginx.conf
-autostart=true
-autorestart=true
-stdout_logfile=/dev/stdout
-stdout_logfile_maxbytes=0
-stderr_logfile=/dev/stderr
-stderr_logfile_maxbytes=0
-'''
-
-"worker-phpfpm.conf" = '''
-[program:worker-phpfpm]
-process_name=%(program_name)s_%(process_num)02d
-command=php-fpm -y /assets/php-fpm.conf -F
-autostart=true
-autorestart=true
-stdout_logfile=/dev/stdout
-stdout_logfile_maxbytes=0
-stderr_logfile=/dev/stderr
-stderr_logfile_maxbytes=0
-'''
-
-"php-fpm.conf" = '''
-[www]
-listen = 127.0.0.1:9000
-user = www-data
-group = www-data
-listen.owner = www-data
-listen.group = www-data
-pm = dynamic
-pm.max_children = 50
-pm.min_spare_servers = 4
-pm.max_spare_servers = 32
-pm.start_servers = 18
-clear_env = no
-php_admin_value[post_max_size] = 50M
-php_admin_value[upload_max_filesize] = 50M
+php-fpm -y /assets/php-fpm.conf -D
+exec nginx -c /etc/nginx.conf
 '''
 
 "nginx.template.conf" = '''
