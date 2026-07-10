@@ -20,6 +20,9 @@ php artisan optimize:clear
 echo "==> Running migrations..."
 php artisan migrate --force
 
+echo "==> Seeding base data (currencies, permissions, admin user)..."
+php artisan db:seed --force
+
 echo "==> Seeding Walk-In Customer (safe to re-run)..."
 php artisan db:seed --class=WalkInCustomerSeeder --force
 
