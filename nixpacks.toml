@@ -3,7 +3,12 @@
 NIXPACKS_PHP_ROOT_DIR = "/app/public"
 
 [phases.install]
+# NOTE: this replaces nixpacks' default PHP install phase, which normally
+# runs "mkdir -p /var/log/nginx && mkdir -p /var/cache/nginx" — without it,
+# nginx fails on startup with "could not open error log file: /var/log/nginx/error.log".
+# Keep that mkdir here or nginx will crash-loop.
 cmds = [
+  "mkdir -p /var/log/nginx /var/cache/nginx",
   "mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache/data storage/logs bootstrap/cache",
   "composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev"
 ]
