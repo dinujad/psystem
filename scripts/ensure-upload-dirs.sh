@@ -42,7 +42,7 @@ if id www-data >/dev/null 2>&1; then
     chown -R www-data:www-data storage bootstrap/cache public/uploads 2>/dev/null || true
 fi
 chmod -R ug+rwX storage bootstrap/cache public/uploads 2>/dev/null || true
-# Fallback when chown is unavailable (non-root); installer checks is_writable().
-chmod -R 777 bootstrap/cache public/uploads 2>/dev/null || true
+# Installer + Laravel need full storage tree writable by www-data (PHP-FPM).
+chmod -R 777 storage bootstrap/cache public/uploads 2>/dev/null || true
 
 echo "==> Upload directories ready."

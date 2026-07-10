@@ -17,7 +17,9 @@ class IsInstalled
     public function handle($request, Closure $next)
     {
         $envPath = base_path('.env');
-        if (! file_exists($envPath)) {
+        $installed = file_exists($envPath) || ! empty(env('APP_KEY'));
+
+        if (! $installed) {
             return redirect(url('/').'/install');
         } else {
             // if (!Cache::has('callback')) {

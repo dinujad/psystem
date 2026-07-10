@@ -60,7 +60,7 @@ class InstallController extends Controller
     private function isInstalled()
     {
         $envPath = base_path('.env');
-        if (file_exists($envPath)) {
+        if (file_exists($envPath) || ! empty(env('APP_KEY'))) {
             abort(404);
         }
     }

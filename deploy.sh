@@ -10,6 +10,9 @@ cd "$ROOT"
 echo "==> Ensuring upload folders & storage link..."
 bash scripts/ensure-upload-dirs.sh
 
+echo "==> Ensuring .env file (Coolify)..."
+bash scripts/ensure-env-file.sh
+
 echo "==> Clearing caches..."
 rm -f bootstrap/cache/config.php bootstrap/cache/routes*.php
 php artisan optimize:clear
