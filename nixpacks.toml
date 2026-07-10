@@ -15,4 +15,4 @@ cmds = [
 
 # Clear config cache on every container start so runtime env vars are always used.
 [start]
-cmd = "php artisan config:clear 2>/dev/null || true; node /assets/scripts/prestart.mjs /app/nginx.template.conf /nginx.conf && (php-fpm -y /assets/php-fpm.conf -D && exec nginx -c /nginx.conf)"
+cmd = "bash scripts/ensure-upload-dirs.sh 2>/dev/null || true; php artisan config:clear 2>/dev/null || true; node /assets/scripts/prestart.mjs /app/nginx.template.conf /nginx.conf && (php-fpm -y /assets/php-fpm.conf -D && exec nginx -c /nginx.conf)"

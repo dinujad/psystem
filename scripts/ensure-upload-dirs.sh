@@ -36,6 +36,13 @@ if [ ! -L "public/storage" ] && [ ! -d "public/storage" ]; then
     php artisan storage:link 2>/dev/null || ln -sf ../storage/app/public public/storage
 fi
 
-chmod -R 775 storage bootstrap/cache public/uploads 2>/dev/null || true
+# PHP-FPM runs as www-data in Nixpacks/Coolify — writable dirs required for
+# bootstrap/cache (package discovery) and public/uploads (file uploads).
+if id www-data >/dev/null 2>&1; then
+    chown -R www-data:www-data storage bootstrap/cache public/uploads 2>/dev/null || true
+fi
+chmod -R ug+rwX storage bootstrap/cache public/uploads 2>/dev/null || true
+# Fallback when chown is unavailable (non-root); installer checks is_writable().
+chmod -R 777 bootstrap/cache public/uploads 2>/dev/null || true
 
 echo "==> Upload directories ready."
