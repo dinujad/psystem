@@ -12,3 +12,7 @@ cmds = [
   "mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache/data storage/logs bootstrap/cache",
   "composer install --no-interaction --prefer-dist --optimize-autoloader --no-dev"
 ]
+
+# Clear config cache on every container start so runtime env vars are always used.
+[start]
+cmd = "php artisan config:clear 2>/dev/null || true; node /assets/scripts/prestart.mjs /app/nginx.template.conf /nginx.conf && (php-fpm -y /assets/php-fpm.conf -D && exec nginx -c /nginx.conf)"

@@ -11,6 +11,7 @@ echo "==> Ensuring upload folders & storage link..."
 bash scripts/ensure-upload-dirs.sh
 
 echo "==> Clearing caches..."
+rm -f bootstrap/cache/config.php bootstrap/cache/routes*.php
 php artisan optimize:clear
 
 echo "==> Running migrations..."
@@ -19,13 +20,9 @@ php artisan migrate --force
 echo "==> Seeding Walk-In Customer (safe to re-run)..."
 php artisan db:seed --class=WalkInCustomerSeeder --force
 
-echo "==> Rebuilding caches..."
-php artisan config:cache
-# routes/web.php has Closure-based routes, which cannot be serialized by
-# route:cache — skip it (harmless, just no route-cache perf boost) so this
-# script doesn't abort (set -e) before view:cache runs.
-php artisan route:cache || echo "==> route:cache skipped (closure routes present)"
-php artisan view:cache
+# Do NOT run config:cache / route:cache / view:cache on Coolify.
+# Env vars are injected at runtime; cached config causes 500 errors
+# (e.g. "Target class [view] does not exist") when env changes or is incomplete.
 
 echo ""
 echo "Deploy complete!"
