@@ -410,64 +410,89 @@ class WhatsappAgentController extends Controller
     {
         $this->checkAccess();
 
-        $query = WhatsappChatAssignment::with(['agent', 'closedBy', 'statusUpdatedBy'])
-            ->where('status', 'closed')
-            ->orderByDesc('closed_at');
-
-        if (! $this->isAdmin()) {
-            $query->where('assigned_to', auth()->id());
+        // Ensure agent permission exists (avoids Spatie PermissionDoesNotExist → 500)
+        try {
+            Permission::findOrCreate('whatsapp.agent', 'web');
+        } catch (\Throwable $e) {
+            \Log::warning('WhatsApp reports: could not ensure permission: '.$e->getMessage());
         }
 
-        if ($cat = $request->get('category')) {
-            $query->where('inquiry_category', $cat);
-        }
-        if ($status = $request->get('inquiry_status')) {
-            $query->where('inquiry_status', $status);
-        }
-        if ($agentId = $request->get('agent_id')) {
-            $query->where('assigned_to', $agentId);
-        }
-        if ($from = $request->get('from')) {
-            $query->whereDate('closed_at', '>=', $from);
-        }
-        if ($to = $request->get('to')) {
-            $query->whereDate('closed_at', '<=', $to);
+        if (! \Illuminate\Support\Facades\Schema::hasTable('whatsapp_chat_assignments')) {
+            return response()->view('whatsapp.inbox_error', [
+                'message' => 'WhatsApp tables are missing. Run: php artisan migrate --force',
+            ], 500);
         }
 
-        $records = $query->paginate(25)->withQueryString();
+        try {
+            $query = WhatsappChatAssignment::with(['agent', 'closedBy', 'statusUpdatedBy'])
+                ->where('status', 'closed')
+                ->orderByDesc('closed_at');
 
-        $categoryStats = WhatsappChatAssignment::where('status', 'closed')
-            ->when(! $this->isAdmin(), fn ($q) => $q->where('assigned_to', auth()->id()))
-            ->selectRaw('inquiry_category, count(*) as total')
-            ->groupBy('inquiry_category')
-            ->orderByDesc('total')
-            ->get();
+            if (! $this->isAdmin()) {
+                $query->where('assigned_to', auth()->id());
+            }
 
-        $statusStats = WhatsappChatAssignment::where('status', 'closed')
-            ->when(! $this->isAdmin(), fn ($q) => $q->where('assigned_to', auth()->id()))
-            ->selectRaw('inquiry_status, count(*) as total')
-            ->groupBy('inquiry_status')
-            ->orderByDesc('total')
-            ->get();
+            if ($cat = $request->get('category')) {
+                $query->where('inquiry_category', $cat);
+            }
+            if ($status = $request->get('inquiry_status')) {
+                $query->where('inquiry_status', $status);
+            }
+            if ($agentId = $request->get('agent_id')) {
+                $query->where('assigned_to', $agentId);
+            }
+            if ($from = $request->get('from')) {
+                $query->whereDate('closed_at', '>=', $from);
+            }
+            if ($to = $request->get('to')) {
+                $query->whereDate('closed_at', '<=', $to);
+            }
 
-        $agentStats = WhatsappChatAssignment::with('agent')
-            ->where('status', 'closed')
-            ->whereNotNull('assigned_to')
-            ->when(! $this->isAdmin(), fn ($q) => $q->where('assigned_to', auth()->id()))
-            ->selectRaw('assigned_to, count(*) as total')
-            ->groupBy('assigned_to')
-            ->orderByDesc('total')
-            ->get();
+            $records = $query->paginate(25)->withQueryString();
 
-        $agents     = User::permission('whatsapp.agent')->get();
-        $categories = self::categories();
-        $statuses   = self::inquiryStatuses();
-        $payMethods = self::paymentMethods();
+            $categoryStats = WhatsappChatAssignment::where('status', 'closed')
+                ->when(! $this->isAdmin(), fn ($q) => $q->where('assigned_to', auth()->id()))
+                ->selectRaw('inquiry_category, count(*) as total')
+                ->groupBy('inquiry_category')
+                ->orderByDesc('total')
+                ->get();
 
-        return view('whatsapp.reports', compact(
-            'records', 'categoryStats', 'statusStats', 'agentStats',
-            'agents', 'categories', 'statuses', 'payMethods'
-        ));
+            $statusStats = WhatsappChatAssignment::where('status', 'closed')
+                ->when(! $this->isAdmin(), fn ($q) => $q->where('assigned_to', auth()->id()))
+                ->selectRaw('inquiry_status, count(*) as total')
+                ->groupBy('inquiry_status')
+                ->orderByDesc('total')
+                ->get();
+
+            $agentStats = WhatsappChatAssignment::with('agent')
+                ->where('status', 'closed')
+                ->whereNotNull('assigned_to')
+                ->when(! $this->isAdmin(), fn ($q) => $q->where('assigned_to', auth()->id()))
+                ->selectRaw('assigned_to, count(*) as total')
+                ->groupBy('assigned_to')
+                ->orderByDesc('total')
+                ->get();
+
+            $agents = User::permission('whatsapp.agent')->get();
+            $categories = self::categories();
+            $statuses = self::inquiryStatuses();
+            $payMethods = self::paymentMethods();
+
+            return view('whatsapp.reports', compact(
+                'records', 'categoryStats', 'statusStats', 'agentStats',
+                'agents', 'categories', 'statuses', 'payMethods'
+            ));
+        } catch (\Throwable $e) {
+            \Log::error('WhatsApp reports failed: '.$e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->view('whatsapp.inbox_error', [
+                'message' => 'Inquiry Reports could not load. If columns are missing, run: php artisan migrate --force && php artisan db:seed --class=WhatsappAgentPermissionSeeder --force',
+                'detail' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
     }
 
     /** Return list of active agents for the assignment picker. */
