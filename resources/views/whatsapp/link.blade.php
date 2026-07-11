@@ -224,7 +224,7 @@
     });
 
     logoutBtn.addEventListener('click', async function () {
-        if (!confirm('Unlink WhatsApp and generate a new QR code?')) {
+        if (!confirm('Unlink WhatsApp?\n\nThis will clear ALL inbox chats from the previous account, then show a new QR for the next number.')) {
             return;
         }
 

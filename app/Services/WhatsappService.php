@@ -2,10 +2,16 @@
 
 namespace App\Services;
 
+use App\WhatsappChatAssignment;
 use App\WhatsappContact;
+use App\WhatsappConversation;
+use App\WhatsappConversationLog;
+use App\WhatsappInquiryStatusLog;
 use App\WhatsappMessage;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class WhatsappService
 {
@@ -389,15 +395,64 @@ class WhatsappService
                 ];
             }
 
+            $cleared = $this->clearLocalInboxData();
+
             return [
                 'success' => true,
                 'message' => $response->json('message') ?? 'Logged out successfully.',
+                'cleared' => $cleared,
             ];
         } catch (\Throwable $e) {
             Log::warning('WhatsApp logout failed: '.$e->getMessage());
 
             return $this->serviceUnavailableResponse();
         }
+    }
+
+    /**
+     * Wipe inbox history when the linked WhatsApp account is unlinked,
+     * so a newly linked number does not show the previous account's chats.
+     *
+     * @return array{messages:int,contacts:int,assignments:int}
+     */
+    public function clearLocalInboxData(): array
+    {
+        $counts = [
+            'messages' => 0,
+            'contacts' => 0,
+            'assignments' => 0,
+        ];
+
+        try {
+            $counts['messages'] = (int) WhatsappMessage::query()->count();
+            WhatsappMessage::query()->delete();
+
+            $counts['assignments'] = (int) WhatsappChatAssignment::query()->count();
+            WhatsappChatAssignment::query()->delete();
+
+            $counts['contacts'] = (int) WhatsappContact::query()->count();
+            // Detach label pivots then delete contacts
+            if (Schema::hasTable('whatsapp_contact_label')) {
+                DB::table('whatsapp_contact_label')->delete();
+            }
+            WhatsappContact::query()->delete();
+
+            if (Schema::hasTable('whatsapp_conversations')) {
+                WhatsappConversation::query()->delete();
+            }
+            if (Schema::hasTable('whatsapp_conversation_logs')) {
+                WhatsappConversationLog::query()->delete();
+            }
+            if (Schema::hasTable('whatsapp_inquiry_status_logs')) {
+                WhatsappInquiryStatusLog::query()->delete();
+            }
+
+            Log::info('WhatsApp local inbox cleared after unlink', $counts);
+        } catch (\Throwable $e) {
+            Log::error('WhatsApp clearLocalInboxData failed: '.$e->getMessage());
+        }
+
+        return $counts;
     }
 
     public function storeIncomingMessage(array $data): WhatsappMessage
