@@ -3,19 +3,19 @@
 namespace App\Services;
 
 use App\Business;
+use App\Contact;
 use App\Transaction;
 use App\Utils\Util;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Sends customer SMS (gateway) + WhatsApp (linked device + PDF) for invoices and quotations.
+ * Sends customer SMS (gateway) + WhatsApp (linked device, view link — no PDF).
  */
 class QuotationSmsNotifier
 {
     public function __construct(
         private Util $util,
-        private LinkedWhatsappSender $linkedWhatsapp,
-        private AttractDocumentPdf $attractPdf
+        private LinkedWhatsappSender $linkedWhatsapp
     ) {}
 
     public function notifyCustomer(Transaction $transaction, int $businessId): bool
@@ -53,11 +53,10 @@ class QuotationSmsNotifier
         $docNo = (string) $transaction->invoice_no;
         $amount = $this->util->num_f($transaction->final_total, true, $business);
         $brand = trim((string) (config('app.name') ?: 'PrintWorks'));
-        $customerName = trim((string) ($contact->name ?: 'Customer'));
+        $customerName = $this->customerDisplayName($contact);
         $viewUrl = $this->util->getInvoiceUrl($transaction->id, $businessId);
         $readyLine = $isQuotation ? 'Your quotation is ready.' : 'Your invoice is ready.';
 
-        // Normal SMS to customer phone
         $smsMessage = implode("\n", [
             $brand,
             "Dear {$customerName},",
@@ -68,31 +67,28 @@ class QuotationSmsNotifier
             '— System generated message',
         ]);
 
-        // WhatsApp caption + PDF
         $waMessage = implode("\n", [
             "*{$brand} — {$docLabel}*",
             '',
-            "Dear {$customerName},",
+            "Dear *{$customerName}*,",
             $readyLine,
             '',
             "*{$docLabel} No:* {$docNo}",
             "*Amount:* {$amount}",
             '',
-            'View:',
+            'View here:',
             $viewUrl,
             '',
             '_System generated message_',
         ]);
 
         $smsSent = $this->sendSms($business, $contact->mobile, $smsMessage, $transaction, $businessId, $docType);
-        $waSent = $this->sendWhatsappWithPdf($contact->mobile, $waMessage, $transaction, $businessId, $docType, $docLabel);
+        $waSent = $this->sendWhatsapp($contact->mobile, $waMessage, $transaction, $businessId, $docType);
 
         return $smsSent || $waSent;
     }
 
     /**
-     * Confirm a payment via SMS + WhatsApp (updated invoice PDF).
-     *
      * @param  array{amount?: float|string, method?: string, note?: string|null, paid_on?: string|null}  $payment
      */
     public function notifyPaymentReceived(Transaction $transaction, int $businessId, array $payment): bool
@@ -128,7 +124,7 @@ class QuotationSmsNotifier
         $balanceDue = $this->util->num_f($dueRaw, true, $business);
 
         $brand = trim((string) (config('app.name') ?: 'PrintWorks'));
-        $customerName = trim((string) ($contact->name ?: 'Customer'));
+        $customerName = $this->customerDisplayName($contact);
         $viewUrl = $this->util->getInvoiceUrl($transaction->id, $businessId);
         $note = trim((string) ($payment['note'] ?? ''));
 
@@ -151,7 +147,7 @@ class QuotationSmsNotifier
         $waLines = [
             "*{$brand} — Payment Received*",
             '',
-            "Dear {$customerName},",
+            "Dear *{$customerName}*,",
             'We have received your payment. Thank you.',
             '',
             "*Invoice No:* {$invoiceNo}",
@@ -173,9 +169,46 @@ class QuotationSmsNotifier
         $waMessage = implode("\n", $waLines);
 
         $smsSent = $this->sendSms($business, $contact->mobile, $smsMessage, $transaction, $businessId, 'payment');
-        $waSent = $this->sendWhatsappWithPdf($contact->mobile, $waMessage, $transaction, $businessId, 'payment', 'Invoice');
+        $waSent = $this->sendWhatsapp($contact->mobile, $waMessage, $transaction, $businessId, 'payment');
 
         return $smsSent || $waSent;
+    }
+
+    /**
+     * Prefer a real person/business name for greetings (not a blank "Customer").
+     */
+    private function customerDisplayName(?Contact $contact): string
+    {
+        if (! $contact) {
+            return 'Valued Customer';
+        }
+
+        $candidates = [
+            trim((string) ($contact->name ?? '')),
+            trim(implode(' ', array_filter([
+                $contact->first_name ?? null,
+                $contact->middle_name ?? null,
+                $contact->last_name ?? null,
+            ]))),
+            trim((string) ($contact->supplier_business_name ?? '')),
+        ];
+
+        foreach ($candidates as $name) {
+            if ($name === '') {
+                continue;
+            }
+            // Skip generic walk-in labels
+            if (preg_match('/^walk[\s\-]?in/i', $name)) {
+                continue;
+            }
+            if (strcasecmp($name, 'Customer') === 0) {
+                continue;
+            }
+
+            return $name;
+        }
+
+        return 'Valued Customer';
     }
 
     private function sendSms(
@@ -221,30 +254,14 @@ class QuotationSmsNotifier
         }
     }
 
-    private function sendWhatsappWithPdf(
+    private function sendWhatsapp(
         string $mobile,
         string $message,
         Transaction $transaction,
         int $businessId,
-        string $docType,
-        string $docLabel
+        string $docType
     ): bool {
-        $media = [];
-        $pdf = $this->attractPdf->render($businessId, (int) $transaction->id);
-        if ($pdf && ! empty($pdf['binary'])) {
-            $media = [
-                'media_type' => 'document',
-                'media_base64' => base64_encode($pdf['binary']),
-                'media_mimetype' => 'application/pdf',
-                'media_filename' => $pdf['filename'] ?? ($docLabel.'-'.$transaction->invoice_no.'.pdf'),
-            ];
-        } else {
-            Log::warning('DocumentNotify: PDF render failed — sending WhatsApp text only', [
-                'transaction_id' => $transaction->id,
-            ]);
-        }
-
-        $sent = $this->linkedWhatsapp->send($mobile, $message, $media);
+        $sent = $this->linkedWhatsapp->send($mobile, $message);
         if ($sent) {
             $this->util->activityLog(
                 $transaction,
@@ -252,7 +269,7 @@ class QuotationSmsNotifier
                 null,
                 [
                     'phone' => LinkedWhatsappSender::normalizePhone($mobile),
-                    'pdf' => ! empty($media),
+                    'pdf' => false,
                 ],
                 false,
                 $businessId
@@ -266,7 +283,6 @@ class QuotationSmsNotifier
     {
         $settings = is_array($business->sms_settings ?? null) ? $business->sms_settings : [];
 
-        // Prefer Coolify / .env TextLK credentials so Business Settings cannot block SMS
         $envKey = env('TEXTLK_API_KEY');
         $envDriver = env('SMS_DRIVER', 'textlk');
 
