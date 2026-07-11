@@ -471,11 +471,78 @@
 }
 #close-inquiry-modal p { color: #667781 !important; }
 #ci-error { color: #ef4444 !important; }
+
+/* Disconnected gate — hide chat UI until WhatsApp is linked */
+.wa-connect-gate {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 120px);
+    margin: 12px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 16px rgba(0,0,0,.08);
+    text-align: center;
+    padding: 40px 24px;
+}
+.wa-connect-gate .wa-gate-icon {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: #fef2f2;
+    color: #ef4444;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+    margin-bottom: 18px;
+}
+.wa-connect-gate h2 {
+    margin: 0 0 8px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #111;
+}
+.wa-connect-gate p {
+    margin: 0 0 22px;
+    font-size: 14px;
+    color: #667781;
+    max-width: 420px;
+    line-height: 1.5;
+}
+.wa-connect-gate .btn-connect {
+    background: #25d366;
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 12px 28px;
+    font-size: 15px;
+    font-weight: 700;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.wa-connect-gate .btn-connect:hover { background: #1ebe57; color: #fff; }
 </style>
 @endsection
 
 @section('content')
-<div class="wa-app">
+@php $waConnected = $waConnected ?? (($status['status'] ?? '') === 'connected'); @endphp
+
+@if(! $waConnected)
+<div class="wa-connect-gate" id="wa-connect-gate">
+    <div class="wa-gate-icon">📵</div>
+    <h2>WhatsApp is not connected</h2>
+    <p>Link your WhatsApp account with a QR code to use the inbox. Chat history from a previous number will not show until you connect again.</p>
+    <a href="{{ route('whatsapp.link') }}" class="btn-connect">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v6M14 20h6"/></svg>
+        Connect WhatsApp
+    </a>
+</div>
+@else
+<div class="wa-app" id="wa-app">
 
     {{-- ═══════════ LEFT ═══════════ --}}
     <div class="wa-left">
@@ -487,8 +554,8 @@
                 <div>
                     <div class="wa-left-head-title">WhatsApp</div>
                     <div style="font-size:11.5px;color:#667781;">
-                        <span class="wa-status-dot off" id="wa-dot"></span>
-                        <span id="wa-status-lbl">Checking...</span>
+                        <span class="wa-status-dot on" id="wa-dot"></span>
+                        <span id="wa-status-lbl">Connected</span>
                     </div>
                 </div>
             </div>
@@ -771,9 +838,11 @@
         </div>
     </div>
 </div>
+@endif
 @endsection
 
 @section('javascript')
+@if(! empty($waConnected))
 <script>
 (function(){
     const CSRF          = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -1841,4 +1910,5 @@
     }
 })();
 </script>
+@endif
 @endsection

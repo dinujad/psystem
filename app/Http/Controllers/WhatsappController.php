@@ -84,11 +84,22 @@ class WhatsappController extends Controller
         }
 
         $status = $this->whatsappService->getStatus();
+        $waConnected = ($status['status'] ?? '') === 'connected';
+
+        // When WhatsApp is not linked, do not show previous account chats
+        if (! $waConnected) {
+            $threads = collect();
+            $contacts = collect();
+            $assignments = collect();
+        }
+
         $userId = $user->id;
         $openPhone = preg_replace('/\D/', '', (string) $request->query('phone', ''));
 
         return response()
-            ->view('whatsapp.inbox', compact('threads', 'status', 'contacts', 'assignments', 'userId', 'isAdmin', 'openPhone'))
+            ->view('whatsapp.inbox', compact(
+                'threads', 'status', 'contacts', 'assignments', 'userId', 'isAdmin', 'openPhone', 'waConnected'
+            ))
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
             ->header('Pragma', 'no-cache')
             ->header('Expires', '0');
@@ -401,7 +412,15 @@ class WhatsappController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        return response()->json($this->whatsappService->logout());
+        $result = $this->whatsappService->logout();
+
+        // Always clear local inbox even if Node logout partially fails,
+        // so disconnected UI never shows the previous account's chats.
+        if (empty($result['cleared'])) {
+            $result['cleared'] = $this->whatsappService->clearLocalInboxData();
+        }
+
+        return response()->json($result);
     }
 
     public function incomingWebhook(Request $request)
