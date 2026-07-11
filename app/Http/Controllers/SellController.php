@@ -294,10 +294,7 @@ class SellController extends Controller
 
                         if (auth()->user()->can('print_invoice') && $sale_type != 'sales_order') {
                             $html .= '<li><a href="'.route('sell.downloadPdf', [$row->id]).'" target="_blank"><i class="fas fa-file-pdf" aria-hidden="true"></i> '.__('messages.print').' / PDF</a></li>';
-
-                            if (! empty($row->shipping_status)) {
-                                $html .= '<li><a href="'.route('packing.downloadPdf', [$row->id]).'" target="_blank"><i class="fas fa-print" aria-hidden="true"></i> '.__('lang_v1.download_paking_pdf').'</a></li>';
-                            }
+                            $html .= '<li><a href="'.route('delivery.sale_packing_slip', [$row->id]).'" target="_blank"><i class="fas fa-box-open" aria-hidden="true"></i> Packing Slip</a></li>';
                         }
 
                         if (auth()->user()->can('sell.view') || auth()->user()->can('direct_sell.access')) {

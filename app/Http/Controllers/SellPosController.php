@@ -2904,31 +2904,40 @@ class SellPosController extends Controller
         }
 
         //Generate pdf
-        $body = view('sale_pos.receipts.' . $blade_file)
-            ->with(compact('receipt_details', 'location_details', 'is_email_attachment'))
-            ->render();
+        try {
+            $body = view('sale_pos.receipts.'.$blade_file)
+                ->with(compact('receipt_details', 'location_details', 'is_email_attachment'))
+                ->render();
 
-        if ($blade_file === 'download_pdf') {
-            $mpdf = $this->createAttractMpdf('INVOICE');
-        } else {
-            $mpdf = new \Mpdf\Mpdf(['tempDir' => public_path('uploads/temp'),
-                'mode' => 'utf-8',
-                'autoScriptToLang' => true,
-                'autoLangToFont' => true,
-                'autoVietnamese' => true,
-                'autoArabic' => true,
-                'margin_top' => 8,
-                'margin_bottom' => 8,
-                'format' => 'A4',
+            if ($blade_file === 'download_pdf') {
+                $mpdf = $this->createAttractMpdf('INVOICE');
+            } else {
+                $mpdf = new \Mpdf\Mpdf(['tempDir' => public_path('uploads/temp'),
+                    'mode' => 'utf-8',
+                    'autoScriptToLang' => true,
+                    'autoLangToFont' => true,
+                    'autoVietnamese' => true,
+                    'autoArabic' => true,
+                    'margin_top' => 8,
+                    'margin_bottom' => 8,
+                    'format' => 'A4',
+                ]);
+                $mpdf->useSubstitutions = true;
+                $mpdf->SetWatermarkText($receipt_details->business_name, 0.1);
+                $mpdf->showWatermarkText = true;
+            }
+
+            $mpdf->SetTitle('INVOICE-'.$receipt_details->invoice_no.'.pdf');
+            $mpdf->WriteHTML($body);
+            $mpdf->Output('INVOICE-'.$receipt_details->invoice_no.'.pdf', 'I');
+        } catch (\Throwable $e) {
+            \Log::error('Invoice PDF failed: '.$e->getMessage(), [
+                'transaction_id' => $id,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
             ]);
-            $mpdf->useSubstitutions = true;
-            $mpdf->SetWatermarkText($receipt_details->business_name, 0.1);
-            $mpdf->showWatermarkText = true;
+            abort(500, 'Invoice PDF could not be generated. Please check logs.');
         }
-
-        $mpdf->SetTitle('INVOICE-' . $receipt_details->invoice_no . '.pdf');
-        $mpdf->WriteHTML($body);
-        $mpdf->Output('INVOICE-' . $receipt_details->invoice_no . '.pdf', 'I');
     }
 
     /**

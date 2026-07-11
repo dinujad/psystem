@@ -410,7 +410,7 @@
   </div>
   <div class="modal-footer">
     @if($sell->type != 'sales_order')
-    <a href="#" class="print-invoice tw-dw-btn tw-dw-btn-success tw-text-white" data-href="{{route('sell.printInvoice', [$sell->id])}}?package_slip=true"><i class="fas fa-file-alt" aria-hidden="true"></i> @lang("lang_v1.packing_slip")</a>
+    <a href="{{ route('delivery.sale_packing_slip', [$sell->id]) }}" target="_blank" class="tw-dw-btn tw-dw-btn-success tw-text-white no-print"><i class="fas fa-box-open" aria-hidden="true"></i> @lang("lang_v1.packing_slip")</a>
     @endif
     @if($sell->type == 'sell' && (
         auth()->user()->can('send_notifications')

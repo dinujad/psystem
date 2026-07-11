@@ -441,6 +441,128 @@ class DeliveryController extends Controller
             'height' => $height,
             'unit' => $unit,
             'presets' => $presets,
+            'formAction' => route('delivery.packing_slip', $parcel->id),
+            'backUrl' => route('delivery.show', $parcel->id),
+        ]);
+    }
+
+    /**
+     * Packing slip from a sale (uses Fardar parcel when available).
+     */
+    public function packingSlipForSale(Request $request, $transactionId)
+    {
+        $this->checkAccess();
+
+        $businessId = session('user.business_id');
+        $transaction = Transaction::with('contact')
+            ->where('business_id', $businessId)
+            ->where('type', 'sell')
+            ->findOrFail($transactionId);
+
+        $parcel = DeliveryParcel::with('transaction')
+            ->where('business_id', $businessId)
+            ->where('transaction_id', $transaction->id)
+            ->orderByDesc('id')
+            ->first();
+
+        if ($parcel) {
+            return $this->packingSlip($request, $parcel->id);
+        }
+
+        $business = Business::find($businessId);
+        $location = $transaction->location_id
+            ? BusinessLocation::find($transaction->location_id)
+            : BusinessLocation::where('business_id', $businessId)->first();
+
+        $contact = $transaction->contact;
+        $recipientName = trim((string) (optional($contact)->name ?: optional($contact)->supplier_business_name ?: 'Customer'));
+        $recipientPhone = trim((string) (optional($contact)->mobile ?: optional($contact)->landline ?: ''));
+        $recipientAddress = $this->buildAddress($contact, $transaction);
+        $recipientCity = trim((string) (optional($contact)->city ?: ''));
+
+        $parcel = new DeliveryParcel([
+            'business_id' => $businessId,
+            'transaction_id' => $transaction->id,
+            'order_id' => $transaction->invoice_no,
+            'waybill_no' => $transaction->invoice_no,
+            'parcel_weight' => '—',
+            'parcel_description' => 'Invoice '.$transaction->invoice_no,
+            'recipient_name' => $recipientName,
+            'recipient_contact_1' => $recipientPhone !== '' ? $recipientPhone : '—',
+            'recipient_address' => $recipientAddress !== '' ? $recipientAddress : '—',
+            'recipient_city' => $recipientCity !== '' ? $recipientCity : '—',
+            'amount' => (float) ($transaction->final_total ?? 0),
+            'current_status' => $transaction->shipping_status ?: 'Pending',
+        ]);
+        $parcel->id = 0;
+        $parcel->setRelation('transaction', $transaction);
+
+        $pickupName = trim((string) (optional($location)->name ?: optional($business)->name ?: config('app.name', 'PrintWorks')));
+        $pickupPhone = trim((string) (optional($location)->mobile ?: optional($business)->mobile ?: ''));
+        $pickupAddress = $this->formatLocationAddress($location);
+
+        $orientation = in_array($request->get('orientation'), ['portrait', 'landscape'], true)
+            ? $request->get('orientation')
+            : 'portrait';
+        $unit = in_array($request->get('unit'), ['mm', 'in', 'cm'], true)
+            ? $request->get('unit')
+            : 'in';
+
+        $presets = [
+            '4x6' => ['w' => 4, 'h' => 6, 'unit' => 'in'],
+            '4x4' => ['w' => 4, 'h' => 4, 'unit' => 'in'],
+            '100x150' => ['w' => 100, 'h' => 150, 'unit' => 'mm'],
+            'a6' => ['w' => 105, 'h' => 148, 'unit' => 'mm'],
+            'a5' => ['w' => 148, 'h' => 210, 'unit' => 'mm'],
+            'a4' => ['w' => 210, 'h' => 297, 'unit' => 'mm'],
+        ];
+
+        $sizeKey = (string) $request->get('size', '4x6');
+        if ($sizeKey !== 'custom' && isset($presets[$sizeKey])) {
+            $width = $presets[$sizeKey]['w'];
+            $height = $presets[$sizeKey]['h'];
+            $unit = $presets[$sizeKey]['unit'];
+        } else {
+            $sizeKey = 'custom';
+            $width = (float) $request->get('width', 4);
+            $height = (float) $request->get('height', 6);
+            if ($width <= 0) {
+                $width = 4;
+            }
+            if ($height <= 0) {
+                $height = 6;
+            }
+        }
+
+        if ($orientation === 'landscape' && $sizeKey !== 'custom') {
+            $tmp = $width;
+            $width = $height;
+            $height = $tmp;
+        }
+
+        if (empty($transaction->invoice_token)) {
+            $transaction->invoice_token = app(\App\Utils\Util::class)->generateToken();
+            $transaction->save();
+        }
+        $trackUrl = route('show_invoice', ['token' => $transaction->invoice_token]);
+        $waybill = (string) $transaction->invoice_no;
+
+        return view('delivery.packing_slip', [
+            'parcel' => $parcel,
+            'business' => $business,
+            'pickupName' => $pickupName,
+            'pickupPhone' => $pickupPhone,
+            'pickupAddress' => $pickupAddress,
+            'trackUrl' => $trackUrl,
+            'waybill' => $waybill,
+            'orientation' => $orientation,
+            'sizeKey' => $sizeKey,
+            'width' => $width,
+            'height' => $height,
+            'unit' => $unit,
+            'presets' => $presets,
+            'formAction' => route('delivery.sale_packing_slip', $transaction->id),
+            'backUrl' => action([\App\Http\Controllers\SellController::class, 'index']),
         ]);
     }
 

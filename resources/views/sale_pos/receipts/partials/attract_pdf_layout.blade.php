@@ -458,62 +458,42 @@
       </table>
     </div>
 
-    <table class="summary-row">
+    <table class="summary-row" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin-top:6px;">
       <tr>
-        <td class="pay-col">
+        <td class="pay-col" width="52%" valign="top" style="width:52%;vertical-align:top;padding:0 12px 0 0;border:none;">
           @if($bankText !== '')
-            <div class="bank-box" style="background-color:#FCE8E9;padding:12px 14px;border:1.5px solid #ED1C24;border-radius:10px;overflow:hidden;">
-              <div class="bank-title" style="color:#ED1C24;font-size:13px;font-weight:800;margin:0 0 8px 0;">Bank Details</div>
+            <table width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1.5px solid #ED1C24;background-color:#FCE8E9;">
+              <tr>
+                <td colspan="2" style="color:#ED1C24;font-size:13px;font-weight:800;padding:10px 12px 6px 12px;background-color:#FCE8E9;">Bank Details</td>
+              </tr>
               @if(! empty($paymentModeLine))
-                <div class="mode-line"><strong>Payment mode:</strong> {{ $paymentModeLine }}</div>
+              <tr>
+                <td colspan="2" style="font-size:11px;padding:0 12px 6px 12px;background-color:#FCE8E9;"><strong>Payment mode:</strong> {{ $paymentModeLine }}</td>
+              </tr>
               @endif
-              <table class="bank-table">
-                @forelse($bankRows as $row)
-                  <tr>
-                    @if($row['label'] !== '')
-                      <td class="lbl">{{ $row['label'] }}:</td>
-                      <td class="val">{{ $row['value'] }}</td>
-                    @else
-                      <td colspan="2" class="val">{{ $row['value'] }}</td>
-                    @endif
-                  </tr>
-                @empty
-                  <tr>
-                    <td colspan="2" class="val">{!! nl2br(e($bankText)) !!}</td>
-                  </tr>
-                @endforelse
-              </table>
-            </div>
-          @endif
-
-          @if($paymentHistory->isNotEmpty())
-            <div class="pay-history-title" style="margin-top:14px;margin-bottom:6px;font-size:11px;font-weight:800;color:#ED1C24;text-transform:uppercase;">Payment History</div>
-            <div class="table-shell" style="border:1.5px solid #ED1C24;border-radius:10px;overflow:hidden;margin-bottom:0;background-color:#FFF5F5;font-size:10px;">
-              <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0;font-size:10px;">
-                <thead>
-                  <tr>
-                    <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Date</th>
-                    <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Method</th>
-                    <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Note</th>
-                    <th style="background-color:#ED1C24;color:#ffffff;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:right;font-weight:700;" bgcolor="#ED1C24">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  @foreach($paymentHistory as $payment)
-                    @php $payLast = $loop->last; @endphp
-                    <tr>
-                      <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ $payment['date'] ?? '—' }}</td>
-                      <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ $payment['method'] ?? '—' }}</td>
-                      <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ ! empty($payment['note']) ? $payment['note'] : '—' }}</td>
-                      <td class="amt" style="background-color:#FFF5F5;color:#111111;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;" bgcolor="#FFF5F5">{{ $payment['amount'] }}</td>
-                    </tr>
-                  @endforeach
-                </tbody>
-              </table>
-            </div>
+              @forelse($bankRows as $row)
+                <tr>
+                  @if($row['label'] !== '')
+                    <td width="38%" style="font-weight:700;color:#111111;font-size:11px;padding:3px 4px 3px 12px;vertical-align:top;background-color:#FCE8E9;white-space:nowrap;">{{ $row['label'] }}:</td>
+                    <td style="color:#333333;font-size:11px;padding:3px 12px 3px 4px;vertical-align:top;background-color:#FCE8E9;">{{ $row['value'] }}</td>
+                  @else
+                    <td colspan="2" style="color:#333333;font-size:11px;padding:3px 12px;background-color:#FCE8E9;">{{ $row['value'] }}</td>
+                  @endif
+                </tr>
+              @empty
+                <tr>
+                  <td colspan="2" style="color:#333333;font-size:11px;padding:3px 12px 10px 12px;background-color:#FCE8E9;">{!! nl2br(e($bankText)) !!}</td>
+                </tr>
+              @endforelse
+              @if(count($bankRows) > 0)
+              <tr>
+                <td colspan="2" style="padding:0 0 8px 0;background-color:#FCE8E9;font-size:1px;line-height:1px;">&nbsp;</td>
+              </tr>
+              @endif
+            </table>
           @endif
         </td>
-        <td class="total-col">
+        <td class="total-col" width="48%" valign="top" style="width:48%;vertical-align:top;padding:0 0 0 4px;border:none;">
           @php
             $taxLabel = trim(str_replace(':', '', (string) ($receipt_details->tax_label ?? 'VAT')));
             if ($taxLabel === '' || strcasecmp($taxLabel, 'Tax') === 0) {
@@ -525,55 +505,79 @@
                 $taxValue = $sym.' 0.00';
             }
             $hasPaid = ! empty($receipt_details->total_paid) && $receipt_details->total_paid != 0 && $receipt_details->total_paid != '0.00';
-            // final invoices always get total_paid/total_due from receipt details
             $showPaidBlock = ! $isQuotation && isset($receipt_details->total_paid);
           @endphp
-          <table class="totals-table">
+          <table class="totals-table" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:12px;">
             @if(! empty($receipt_details->subtotal))
             <tr>
-              <td class="label">Subtotal</td>
-              <td class="value">{{ $receipt_details->subtotal }}</td>
+              <td class="label" style="text-align:left;color:#333333;padding:4px 2px;">Subtotal</td>
+              <td class="value" style="text-align:right;white-space:nowrap;color:#111111;padding:4px 2px;">{{ $receipt_details->subtotal }}</td>
             </tr>
             @endif
             @if(! empty($receipt_details->discount))
             <tr>
-              <td class="label">{{ trim(str_replace(':', '', (string) ($receipt_details->discount_label ?? 'Discount'))) }}</td>
-              <td class="value">(-) {{ $receipt_details->discount }}</td>
+              <td class="label" style="text-align:left;color:#333333;padding:4px 2px;">{{ trim(str_replace(':', '', (string) ($receipt_details->discount_label ?? 'Discount'))) }}</td>
+              <td class="value" style="text-align:right;white-space:nowrap;color:#111111;padding:4px 2px;">(-) {{ $receipt_details->discount }}</td>
             </tr>
             @endif
             <tr>
-              <td class="label">{{ $taxLabel }}</td>
-              <td class="value">{{ $taxValue }}</td>
+              <td class="label" style="text-align:left;color:#333333;padding:4px 2px;">{{ $taxLabel }}</td>
+              <td class="value" style="text-align:right;white-space:nowrap;color:#111111;padding:4px 2px;">{{ $taxValue }}</td>
             </tr>
             @if(! empty($receipt_details->shipping_charges))
             <tr>
-              <td class="label">{{ trim(str_replace(':', '', (string) ($receipt_details->shipping_charges_label ?? 'Shipping'))) }}</td>
-              <td class="value">{{ $receipt_details->shipping_charges }}</td>
+              <td class="label" style="text-align:left;color:#333333;padding:4px 2px;">{{ trim(str_replace(':', '', (string) ($receipt_details->shipping_charges_label ?? 'Shipping'))) }}</td>
+              <td class="value" style="text-align:right;white-space:nowrap;color:#111111;padding:4px 2px;">{{ $receipt_details->shipping_charges }}</td>
             </tr>
             @endif
-            <tr class="rule"><td colspan="2"></td></tr>
+            <tr class="rule"><td colspan="2" style="padding:0;border-top:1.5px solid #111111;height:0;font-size:0;line-height:0;">&nbsp;</td></tr>
             <tr class="grand">
-              <td class="label">Total (LKR)</td>
-              <td class="value">{{ $receipt_details->total ?? '' }}</td>
+              <td class="label" style="text-align:left;font-weight:800;font-size:13px;color:#111111;padding:6px 2px;">Total (LKR)</td>
+              <td class="value" style="text-align:right;white-space:nowrap;font-weight:800;font-size:13px;color:#111111;padding:6px 2px;">{{ $receipt_details->total ?? '' }}</td>
             </tr>
             @if($showPaidBlock)
               @if($hasPaid)
               <tr class="paid">
-                <td class="label">Paid to Date</td>
-                <td class="value">- {{ $receipt_details->total_paid }}</td>
+                <td class="label" style="text-align:left;color:#16a34a;font-weight:700;padding:4px 2px;">Paid to Date</td>
+                <td class="value" style="text-align:right;white-space:nowrap;color:#16a34a;font-weight:700;padding:4px 2px;">- {{ $receipt_details->total_paid }}</td>
               </tr>
               @endif
-              <tr class="rule"><td colspan="2"></td></tr>
+              <tr class="rule"><td colspan="2" style="padding:0;border-top:1.5px solid #111111;height:0;font-size:0;line-height:0;">&nbsp;</td></tr>
               <tr class="due">
-                <td class="label">Balance Due</td>
-                <td class="value">{{ (! empty($receipt_details->total_due) && $receipt_details->total_due != 0) ? $receipt_details->total_due : (($receipt_details->currency['symbol'] ?? 'LKR').' 0.00') }}</td>
+                <td class="label" style="text-align:left;color:#ED1C24;font-weight:800;font-size:14px;padding:6px 2px;">Balance Due</td>
+                <td class="value" style="text-align:right;white-space:nowrap;color:#ED1C24;font-weight:800;font-size:14px;padding:6px 2px;">{{ (! empty($receipt_details->total_due) && $receipt_details->total_due != 0) ? $receipt_details->total_due : (($receipt_details->currency['symbol'] ?? 'LKR').' 0.00') }}</td>
               </tr>
-              <tr class="rule-double"><td colspan="2"></td></tr>
+              <tr class="rule-double"><td colspan="2" style="padding:0;border-top:3px double #111111;height:0;font-size:0;line-height:0;">&nbsp;</td></tr>
             @endif
           </table>
         </td>
       </tr>
     </table>
+
+    @if($paymentHistory->isNotEmpty())
+      <div class="pay-history-title" style="margin-top:14px;margin-bottom:6px;font-size:11px;font-weight:800;color:#ED1C24;text-transform:uppercase;">Payment History</div>
+      <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0;font-size:10px;border:1.5px solid #ED1C24;">
+        <thead>
+          <tr>
+            <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Date</th>
+            <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Method</th>
+            <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Note</th>
+            <th style="background-color:#ED1C24;color:#ffffff;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:right;font-weight:700;" bgcolor="#ED1C24">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach($paymentHistory as $payment)
+            @php $payLast = $loop->last; @endphp
+            <tr>
+              <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ $payment['date'] ?? '—' }}</td>
+              <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ $payment['method'] ?? '—' }}</td>
+              <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ ! empty($payment['note']) ? $payment['note'] : '—' }}</td>
+              <td style="background-color:#FFF5F5;color:#111111;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;" bgcolor="#FFF5F5">{{ $payment['amount'] }}</td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    @endif
 
   </div>{{-- /.content-area --}}
 

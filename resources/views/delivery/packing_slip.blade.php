@@ -247,7 +247,7 @@
     $letterheadUrl = file_exists($letterhead) ? asset('images/footer.png') : null;
 @endphp
 
-<form class="toolbar no-print" method="get" action="{{ route('delivery.packing_slip', $parcel->id) }}">
+<form class="toolbar no-print" method="get" action="{{ $formAction ?? route('delivery.packing_slip', $parcel->id) }}">
     <div class="group">
         <label>Orientation</label>
         <select name="orientation" onchange="this.form.submit()">
@@ -288,7 +288,7 @@
     </div>
     <div class="row" style="margin-left:auto;">
         <button type="button" onclick="window.print()">Print packing slip</button>
-        <a class="btn ghost" href="{{ route('delivery.show', $parcel->id) }}">← Back</a>
+        <a class="btn ghost" href="{{ $backUrl ?? route('delivery.show', $parcel->id) }}">← Back</a>
     </div>
 </form>
 

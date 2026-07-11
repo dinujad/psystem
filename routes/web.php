@@ -635,6 +635,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::get('/create', [\App\Http\Controllers\DeliveryController::class, 'create'])->name('create');
         Route::post('/', [\App\Http\Controllers\DeliveryController::class, 'store'])->name('store');
         Route::get('/sales/search', [\App\Http\Controllers\DeliveryController::class, 'searchSales'])->name('sales.search');
+        Route::get('/sale/{transactionId}/packing-slip', [\App\Http\Controllers\DeliveryController::class, 'packingSlipForSale'])
+            ->name('sale_packing_slip')
+            ->whereNumber('transactionId');
         Route::get('/{id}/packing-slip', [\App\Http\Controllers\DeliveryController::class, 'packingSlip'])
             ->name('packing_slip')
             ->whereNumber('id');
