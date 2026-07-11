@@ -108,6 +108,10 @@ Route::post('/whatsapp/webhook/lid-merge', [WhatsappController::class, 'lidMerge
 
 // Fardar Express reverse API (status callbacks)
 Route::post('/delivery/webhook/status', [\App\Http\Controllers\DeliveryController::class, 'statusWebhook']);
+// Public customer live tracking page
+Route::get('/track/{token}', [\App\Http\Controllers\DeliveryController::class, 'track'])
+    ->where('token', '[A-Za-z0-9]+')
+    ->name('delivery.track');
 
 // E MEDIA WhatsApp API (public — HostGrap-compatible endpoints via linked WhatsApp)
 Route::prefix('emwa-api')->group(function () {
@@ -631,6 +635,9 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::get('/create', [\App\Http\Controllers\DeliveryController::class, 'create'])->name('create');
         Route::post('/', [\App\Http\Controllers\DeliveryController::class, 'store'])->name('store');
         Route::get('/sales/search', [\App\Http\Controllers\DeliveryController::class, 'searchSales'])->name('sales.search');
+        Route::get('/{id}/packing-slip', [\App\Http\Controllers\DeliveryController::class, 'packingSlip'])
+            ->name('packing_slip')
+            ->whereNumber('id');
         Route::get('/{id}', [\App\Http\Controllers\DeliveryController::class, 'show'])->name('show')->whereNumber('id');
     });
 

@@ -32,9 +32,30 @@
         <div>
             <div class="dlv-title">Waybill {{ $parcel->waybill_no ?: '—' }}</div>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <a href="{{ route('delivery.packing_slip', $parcel->id) }}" class="dlv-btn" target="_blank" rel="noopener">Print packing slip</a>
             <a href="{{ route('delivery.index') }}" class="dlv-btn outline">← List</a>
             <a href="{{ route('delivery.create') }}" class="dlv-btn">+ New</a>
+        </div>
+    </div>
+
+    <div class="dlv-card">
+        <h3>Customer Live Tracking</h3>
+        <p class="dlv-hook">Share this link with the customer (also sent on WhatsApp when delivery is created / status changes):</p>
+        <div class="dlv-mono" id="dlv-track-url">{{ $parcel->trackingUrl() }}</div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+            <a class="dlv-btn" href="{{ $parcel->trackingUrl() }}" target="_blank" rel="noopener">Open tracking page</a>
+            <button type="button" class="dlv-btn outline" onclick="navigator.clipboard.writeText(document.getElementById('dlv-track-url').innerText);this.textContent='Copied!';">Copy link</button>
+        </div>
+        <div class="dlv-grid" style="margin-top:16px;">
+            <div class="dlv-item">
+                <label>Courier</label>
+                <div>{{ \App\DeliveryParcel::COURIER_NAME }}</div>
+            </div>
+            <div class="dlv-item">
+                <label>Current Status</label>
+                <div><span class="dlv-status {{ $badge }}">{{ $parcel->current_status ?: 'pending' }}</span></div>
+            </div>
         </div>
     </div>
 

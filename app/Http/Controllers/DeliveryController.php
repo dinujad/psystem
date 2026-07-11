@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Business;
+use App\BusinessLocation;
 use App\Contact;
 use App\DeliveryParcel;
+use App\Services\DeliveryTrackingNotifier;
 use App\Services\FardarDeliveryService;
 use App\Transaction;
 use Illuminate\Http\Request;
@@ -266,11 +269,17 @@ class DeliveryController extends Controller
             'recipient_city' => $data['recipient_city'],
             'amount' => $data['amount'],
             'exchange' => (int) $data['exchange'],
-            'current_status' => $result['success'] ? 'pending' : 'api_failed',
+            'current_status' => $result['success'] ? 'Pending' : 'api_failed',
             'api_status_code' => $result['status'],
             'api_response' => $result['raw'],
             'created_by' => auth()->id(),
         ]);
+
+        if ($result['success']) {
+            $parcel->pushStatusHistory($parcel->current_status ?: 'Pending');
+            $parcel->last_update_time = now();
+            $parcel->save();
+        }
 
         if ($result['success'] && $parcel->transaction_id) {
             $tx = Transaction::find($parcel->transaction_id);
@@ -295,12 +304,34 @@ class DeliveryController extends Controller
                 ]);
         }
 
+        try {
+            app(DeliveryTrackingNotifier::class)->notifyCreated($parcel->fresh());
+        } catch (\Throwable $e) {
+            Log::warning('Delivery tracking WhatsApp failed: '.$e->getMessage(), [
+                'parcel_id' => $parcel->id,
+            ]);
+        }
+
         return redirect()
             ->route('delivery.show', $parcel->id)
             ->with('status', [
                 'success' => 1,
-                'msg' => 'Waybill '.$parcel->waybill_no.' created successfully.',
+                'msg' => 'Waybill '.$parcel->waybill_no.' created. Customer tracking WhatsApp sent (if connected).',
             ]);
+    }
+
+    /**
+     * Public live tracking page for customers.
+     */
+    public function track(string $token)
+    {
+        $parcel = DeliveryParcel::with('transaction')
+            ->where('tracking_token', $token)
+            ->firstOrFail();
+
+        return response()
+            ->view('delivery.track', compact('parcel'))
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
     }
 
     public function show($id)
@@ -311,10 +342,123 @@ class DeliveryController extends Controller
             ->where('business_id', session('user.business_id'))
             ->findOrFail($id);
 
+        // Ensure older parcels get a tracking token
+        if (empty($parcel->tracking_token)) {
+            $parcel->trackingUrl();
+            $parcel->refresh();
+        }
+
         return view('delivery.show', [
             'parcel' => $parcel,
             'fardar' => $this->fardar,
         ]);
+    }
+
+    /**
+     * Printable packing slip (QR tracking + letterhead).
+     */
+    public function packingSlip(Request $request, $id)
+    {
+        $this->checkAccess();
+
+        $businessId = session('user.business_id');
+        $parcel = DeliveryParcel::with(['transaction'])
+            ->where('business_id', $businessId)
+            ->findOrFail($id);
+
+        if (empty($parcel->tracking_token)) {
+            $parcel->trackingUrl();
+            $parcel->refresh();
+        }
+
+        $business = Business::find($businessId);
+        $location = null;
+        if ($parcel->transaction && $parcel->transaction->location_id) {
+            $location = BusinessLocation::find($parcel->transaction->location_id);
+        }
+        if (! $location) {
+            $location = BusinessLocation::where('business_id', $businessId)->first();
+        }
+
+        $pickupName = trim((string) (optional($location)->name ?: optional($business)->name ?: config('app.name', 'PrintWorks')));
+        $pickupPhone = trim((string) (optional($location)->mobile ?: optional($business)->mobile ?: ''));
+        $pickupAddress = $this->formatLocationAddress($location);
+
+        $orientation = in_array($request->get('orientation'), ['portrait', 'landscape'], true)
+            ? $request->get('orientation')
+            : 'portrait';
+        $unit = in_array($request->get('unit'), ['mm', 'in', 'cm'], true)
+            ? $request->get('unit')
+            : 'in';
+
+        $presets = [
+            '4x6' => ['w' => 4, 'h' => 6, 'unit' => 'in'],
+            '4x4' => ['w' => 4, 'h' => 4, 'unit' => 'in'],
+            '100x150' => ['w' => 100, 'h' => 150, 'unit' => 'mm'],
+            'a6' => ['w' => 105, 'h' => 148, 'unit' => 'mm'],
+            'a5' => ['w' => 148, 'h' => 210, 'unit' => 'mm'],
+            'a4' => ['w' => 210, 'h' => 297, 'unit' => 'mm'],
+        ];
+
+        $sizeKey = (string) $request->get('size', '4x6');
+        if ($sizeKey !== 'custom' && isset($presets[$sizeKey])) {
+            $width = $presets[$sizeKey]['w'];
+            $height = $presets[$sizeKey]['h'];
+            $unit = $presets[$sizeKey]['unit'];
+        } else {
+            $sizeKey = 'custom';
+            $width = (float) $request->get('width', 4);
+            $height = (float) $request->get('height', 6);
+            if ($width <= 0) {
+                $width = 4;
+            }
+            if ($height <= 0) {
+                $height = 6;
+            }
+        }
+
+        // Landscape: swap so width is the longer edge for presets
+        if ($orientation === 'landscape' && $sizeKey !== 'custom') {
+            $tmp = $width;
+            $width = $height;
+            $height = $tmp;
+        }
+
+        $trackUrl = $parcel->trackingUrl();
+        $waybill = (string) ($parcel->waybill_no ?: ('PW-'.$parcel->id));
+
+        return view('delivery.packing_slip', [
+            'parcel' => $parcel,
+            'business' => $business,
+            'pickupName' => $pickupName,
+            'pickupPhone' => $pickupPhone,
+            'pickupAddress' => $pickupAddress,
+            'trackUrl' => $trackUrl,
+            'waybill' => $waybill,
+            'orientation' => $orientation,
+            'sizeKey' => $sizeKey,
+            'width' => $width,
+            'height' => $height,
+            'unit' => $unit,
+            'presets' => $presets,
+        ]);
+    }
+
+    protected function formatLocationAddress(?BusinessLocation $location): string
+    {
+        if (! $location) {
+            return '';
+        }
+
+        $parts = array_filter([
+            trim((string) $location->landmark),
+            trim((string) $location->city),
+            trim((string) $location->state),
+            trim((string) $location->zip_code),
+            trim((string) $location->country),
+        ], fn ($p) => $p !== '');
+
+        return implode(', ', $parts);
     }
 
     public function searchSales(Request $request)
@@ -383,10 +527,13 @@ class DeliveryController extends Controller
             return response()->json(['status' => 404, 'message' => 'Waybill not found'], 404);
         }
 
+        $previousStatus = $parcel->current_status;
+
         $parcel->current_status = $deliveryStatus;
         $parcel->last_update_time = $lastUpdate
             ? date('Y-m-d H:i:s', strtotime($lastUpdate))
             : now();
+        $parcel->pushStatusHistory($deliveryStatus, $parcel->last_update_time);
         $parcel->save();
 
         if ($parcel->transaction_id) {
@@ -402,6 +549,14 @@ class DeliveryController extends Controller
 
             Transaction::where('id', $parcel->transaction_id)->update([
                 'shipping_status' => $shippingStatus,
+            ]);
+        }
+
+        try {
+            app(DeliveryTrackingNotifier::class)->notifyStatusUpdate($parcel->fresh(), $previousStatus);
+        } catch (\Throwable $e) {
+            Log::warning('Delivery status WhatsApp failed: '.$e->getMessage(), [
+                'parcel_id' => $parcel->id,
             ]);
         }
 
