@@ -48,6 +48,17 @@
                         @lang('messages.print')
 	    			</a>
 
+					@if(
+						auth()->user()->can('send_notifications')
+						|| auth()->user()->can('access_shipping')
+						|| auth()->user()->can('access_own_shipping')
+						|| auth()->user()->can('sell.view')
+					)
+						<a href="{{ route('delivery.create', ['transaction_id' => $transaction->id]) }}" class="tw-dw-btn tw-dw-btn-outline" style="border-color:#7c5cfc;color:#7c5cfc;" title="Send to Fardar Delivery">
+							<i class="fas fa-shipping-fast"></i> Delivery
+						</a>
+					@endif
+
                     @if(auth()->user()->can('sell.delete') || auth()->user()->can('direct_sell.delete'))
 	    			    <a href="{{action([\App\Http\Controllers\SellPosController::class, 'destroy'], [$transaction->id])}}" class="delete-sale tw-dw-btn tw-dw-btn-outline tw-dw-btn-error">
                             <i class="fa fa-trash text-danger" title="{{__('lang_v1.click_to_delete')}}"></i>

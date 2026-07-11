@@ -1165,6 +1165,8 @@ return [
     'activate' => 'Activate',
     'deactivate' => 'Deactivate',
     'add_quotation' => 'Add Quotation',
+    'add_invoice' => 'Add Invoice',
+    'invoice' => 'Invoice',
     'product_stock_history' => 'Product stock history',
     'quantities_in' => 'Quantities In',
     'quantities_out' => 'Quantities Out',

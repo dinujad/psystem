@@ -412,8 +412,20 @@
     @if($sell->type != 'sales_order')
     <a href="#" class="print-invoice tw-dw-btn tw-dw-btn-success tw-text-white" data-href="{{route('sell.printInvoice', [$sell->id])}}?package_slip=true"><i class="fas fa-file-alt" aria-hidden="true"></i> @lang("lang_v1.packing_slip")</a>
     @endif
+    @if($sell->type == 'sell' && (
+        auth()->user()->can('send_notifications')
+        || auth()->user()->can('access_shipping')
+        || auth()->user()->can('access_own_shipping')
+        || auth()->user()->can('sell.view')
+    ))
+      <a href="{{ route('delivery.create', ['transaction_id' => $sell->id]) }}" class="tw-dw-btn tw-text-white no-print" style="background:#7c5cfc;">
+        <i class="fas fa-shipping-fast" aria-hidden="true"></i> Send to Fardar Delivery
+      </a>
+    @endif
     @can('print_invoice')
-      <a href="#" class="print-invoice tw-dw-btn tw-dw-btn-primary tw-text-white" data-href="{{route('sell.printInvoice', [$sell->id])}}"><i class="fa fa-print" aria-hidden="true"></i> @lang("lang_v1.print_invoice")</a>
+      <a href="{{ route('sell.downloadPdf', [$sell->id]) }}" target="_blank" class="tw-dw-btn tw-dw-btn-primary tw-text-white no-print">
+        <i class="fa fa-print" aria-hidden="true"></i> @lang("lang_v1.print_invoice") / PDF
+      </a>
     @endcan
       <button type="button" class="tw-dw-btn tw-dw-btn-neutral tw-text-white no-print" data-dismiss="modal">@lang( 'messages.close' )</button>
     </div>

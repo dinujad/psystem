@@ -1,235 +1,607 @@
 @php
-    // Image paths
     $letterheadPath = public_path('images/attract_letterhead_HQ.png');
     $signPath       = public_path('images/sign.png');
-
-    // Base64 encode signature image
-    $signB64 = file_exists($signPath) ? base64_encode(file_get_contents($signPath)) : null;
-
-    // Document title
-    $docTitle = $document_title ?? 'INVOICE';
-    $isQuotation = !empty($receipt_details->is_quotation);
-
-    // Invoice No label
-    $invNo = (string)($receipt_details->invoice_no ?? '');
-    $label = $isQuotation ? 'QUOTE NO:' : 'INVOICE NO:';
-
-    // Customer address
-    $customerAddress = trim(strip_tags($receipt_details->customer_info_address ?? ''));
-    if (empty($customerAddress) && !empty($receipt_details->customer_mobile)) {
-        $customerAddress = 'Mobile: ' . $receipt_details->customer_mobile;
+    $logoPath       = public_path('images/logo.jpeg');
+    $footerPath     = public_path('images/footer.png');
+    if (! file_exists($footerPath)) {
+        $footerPath = public_path('images/footer (1).png');
     }
-    if (empty($customerAddress) && !empty($receipt_details->customer_info)) {
+
+    $letterheadB64 = file_exists($letterheadPath) ? base64_encode(file_get_contents($letterheadPath)) : null;
+    $signB64       = file_exists($signPath) ? base64_encode(file_get_contents($signPath)) : null;
+    $logoB64       = file_exists($logoPath) ? base64_encode(file_get_contents($logoPath)) : null;
+    $footerB64     = file_exists($footerPath) ? base64_encode(file_get_contents($footerPath)) : null;
+
+    // Browser print embeds footer in body; mPDF uses SetHTMLFooter (page bottom).
+    $embedFooter = $embed_footer ?? true;
+
+    $docTitle = $document_title ?? 'INVOICE';
+    $isQuotation = ! empty($receipt_details->is_quotation);
+    if ($isQuotation && empty($document_title)) {
+        $docTitle = 'QUOTATION';
+    }
+
+    $invNo = (string) ($receipt_details->invoice_no ?? '');
+    $label = $isQuotation ? 'QUOTE NO' : 'INVOICE NO';
+
+    $customerAddress = trim(strip_tags($receipt_details->customer_info_address ?? ''));
+    if ($customerAddress === '' && ! empty($receipt_details->customer_mobile)) {
+        $customerAddress = 'Mobile: '.$receipt_details->customer_mobile;
+    }
+    if ($customerAddress === '' && ! empty($receipt_details->customer_info)) {
         $plain = trim(preg_replace('/\s+/', ' ', strip_tags($receipt_details->customer_info)));
         $cname = trim($receipt_details->customer_name ?? '');
         if ($cname !== '' && str_starts_with($plain, $cname)) {
             $plain = trim(substr($plain, strlen($cname)));
         }
-        $customerAddress = $plain ?: '—';
+        $customerAddress = $plain !== '' ? $plain : '—';
     }
 
-    // Bank transfer total
     $bankTransferTotal = $receipt_details->bank_transfer_total ?? null;
+    $brandRed = '#ED1C24';
+    $brandPink = '#FCE8E9';
+    $brandPinkSoft = '#FFF5F5';
+
+    $bankText = trim((string) ($receipt_details->pdf_bank_details ?? ''));
+    if ($bankText === '' && ! empty($receipt_details->preferred_payment_method)) {
+        $bankText = 'Payment mode: '.$receipt_details->preferred_payment_method;
+    }
+    if ($bankText === '' && ! empty($receipt_details->preferred_account_details)) {
+        $acc = (array) $receipt_details->preferred_account_details;
+        $bankLines = [];
+        if (! empty($acc['account_holder_name'])) {
+            $bankLines[] = 'Account Name: '.$acc['account_holder_name'];
+        }
+        if (! empty($acc['account_number'])) {
+            $bankLines[] = 'Account Number: '.$acc['account_number'];
+        }
+        if (! empty($acc['bank_name'])) {
+            $bankLines[] = 'Bank: '.$acc['bank_name'];
+        }
+        if (! empty($acc['branch'])) {
+            $bankLines[] = 'Branch: '.$acc['branch'];
+        }
+        $bankText = implode("\n", $bankLines);
+    }
+    if ($bankText === '' && ! empty($receipt_details->payments)) {
+        $bankText = 'Payment mode: '.collect($receipt_details->payments)->pluck('method')->filter()->unique()->implode(' / ');
+    }
+
+    // Split free-text bank box into label/value rows when possible
+    $bankRows = [];
+    $paymentModeLine = null;
+    foreach (preg_split("/\r\n|\n|\r/", $bankText) as $line) {
+        $line = trim($line);
+        if ($line === '') {
+            continue;
+        }
+        if (preg_match('/^payment\s*mode\s*:\s*(.+)$/i', $line, $m)) {
+            $paymentModeLine = trim($m[1]);
+            continue;
+        }
+        if (preg_match('/^([^:]+):\s*(.+)$/', $line, $m)) {
+            $bankRows[] = ['label' => trim($m[1]), 'value' => trim($m[2])];
+        } else {
+            $bankRows[] = ['label' => '', 'value' => $line];
+        }
+    }
+
+    $paymentHistory = collect($receipt_details->payments ?? [])->filter(function ($p) {
+        return ! empty($p['amount']);
+    })->values();
 @endphp
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
+<title>{{ $docTitle }} {{ $invNo }}</title>
 <style>
-  html, body { background:#fff; margin:0; padding:0; font-family:'Times New Roman', serif; color:#000; }
+  @page { margin: 0; size: A4; }
+  html, body {
+    background: #fff;
+    margin: 0;
+    padding: 0;
+    font-family: DejaVu Sans, Arial, Helvetica, sans-serif;
+    color: #111;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+  .a4-sheet {
+    width: 210mm;
+    min-height: 297mm;
+    margin: 0 auto;
+    background: #fff;
+    position: relative;
+  }
+  .letterhead img { width: 100%; display: block; }
+  .content-area { padding: 7mm 12mm 8mm 12mm; }
 
-  .a4-sheet { width:210mm; min-height:297mm; margin:0 auto; background:#fff; }
-
-  /* Content area — footer handled by mPDF native footer, just need side/top padding */
-  .content-area { padding: 5mm 10mm 10mm 10mm; }
-
-  .quotation-title {
-    text-align:center; font-size:22px; font-weight:bold;
-    text-decoration:underline; margin:10px 0 16px 0;
+  .doc-title {
+    text-align: center;
+    font-size: 26px;
+    font-weight: 800;
+    color: #ED1C24;
+    letter-spacing: 3px;
+    margin: 4px 0 14px 0;
+    text-transform: uppercase;
   }
 
-  /* Info table */
-  .info-table { width:100%; border-collapse:collapse; margin-bottom:20px; font-size:13px; }
-  .info-table th, .info-table td {
-    border:1px solid #000; padding:7px 10px; vertical-align:top; word-break:break-word;
+  /* Rounded table shells — works in browser print + mPDF */
+  .table-shell {
+    border: 1.5px solid #ED1C24;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 14px;
+    background-color: #FFF5F5;
   }
-  .info-table th { font-weight:bold; background:#f5f5f5; width:15%; }
-
-  /* Products table */
-  .prod-table { width:100%; border-collapse:collapse; margin-bottom:22px; font-size:13px; }
-  .prod-table thead th {
-    border-bottom:2px solid #000; padding:7px 10px;
-    text-align:center; font-weight:bold;
+  .table-shell table {
+    width: 100%;
+    border-collapse: collapse;
+    border-spacing: 0;
+    margin: 0;
+    font-size: 12px;
   }
-  .prod-table tbody td { padding:7px 10px; text-align:center; vertical-align:top; }
-  .prod-table tbody td.desc  { text-align:left; }
-  .prod-table tbody td.money { text-align:right; white-space:nowrap; }
-  .prod-table tfoot td { padding:5px 10px; text-align:right; font-weight:bold; }
-  .prod-table tfoot tr.grand-total td { font-size:14px; border-top:2px solid #000; }
+  .table-shell th,
+  .table-shell td {
+    border: none;
+    border-right: 1px solid #ED1C24;
+    border-bottom: 1px solid #ED1C24;
+    padding: 8px 10px;
+    vertical-align: middle;
+  }
+  .table-shell th:last-child,
+  .table-shell td:last-child { border-right: none; }
+  .table-shell tr:last-child td { border-bottom: none; }
+  .table-shell thead th,
+  .table-shell th.lbl-cell {
+    background-color: #ED1C24 !important;
+    color: #ffffff !important;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: .04em;
+    text-align: center;
+  }
+  .table-shell td {
+    background-color: #FFF5F5 !important;
+    color: #111111;
+    text-align: center;
+  }
+  .table-shell td.desc,
+  .table-shell td.left { text-align: left; }
+  .table-shell td.money,
+  .table-shell td.amt { text-align: right; white-space: nowrap; font-weight: 700; }
 
-  /* Signature + notes */
-  .sign-block { text-align:right; font-size:12px; margin-top:30px; }
-  .sign-block img { height:65px; width:auto; display:block; margin-left:auto; margin-bottom:4px; }
+  /* Info grid: label cells red, value cells pink */
+  .info-shell .lbl-cell {
+    width: 14%;
+    text-align: left !important;
+    background-color: #ED1C24 !important;
+    color: #ffffff !important;
+  }
+  .info-shell td.val-cell {
+    text-align: left;
+    background-color: #FCE8E9 !important;
+  }
 
-  .payment-note { font-size:11px; margin-top:10px; line-height:1.6; }
-  .sys-msg { text-align:center; font-size:11px; font-style:italic; margin:14px 0 0 0; }
+  .prod-shell td.desc { text-align: left; }
 
+  .summary-row {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+    table-layout: fixed;
+  }
+  .summary-row > td { vertical-align: top; padding: 0; border: none; }
+  .summary-row td.pay-col { width: 52%; padding-right: 12px; }
+  .summary-row td.total-col { width: 48%; padding-left: 4px; }
+
+  .bank-box {
+    background-color: #FCE8E9 !important;
+    padding: 12px 14px;
+    border: 1.5px solid #ED1C24;
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .bank-box .bank-title {
+    color: #ED1C24;
+    font-size: 13px;
+    font-weight: 800;
+    margin: 0 0 8px 0;
+  }
+  .bank-box .bank-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  .bank-box .bank-table td {
+    padding: 3px 0;
+    vertical-align: top;
+    border: none;
+  }
+  .bank-box .bank-table td.lbl {
+    font-weight: 700;
+    color: #111111;
+    width: 38%;
+    white-space: nowrap;
+  }
+  .bank-box .bank-table td.val { color: #333333; }
+  .bank-box .mode-line {
+    margin-bottom: 6px;
+    font-size: 11px;
+  }
+  .bank-box .mode-line strong { color: #111111; }
+
+  .totals-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .totals-table td {
+    padding: 4px 2px;
+    border: none;
+    text-decoration: none;
+  }
+  .totals-table td.label { text-align: left; color: #333333; }
+  .totals-table td.value { text-align: right; white-space: nowrap; color: #111111; }
+  .totals-table tr.rule td {
+    padding: 0;
+    height: 0;
+    line-height: 0;
+    font-size: 0;
+    border-top: 1.5px solid #111111;
+  }
+  .totals-table tr.rule-double td {
+    padding: 0;
+    height: 0;
+    line-height: 0;
+    font-size: 0;
+    border-top: 3px double #111111;
+  }
+  .totals-table tr.grand td {
+    font-weight: 800;
+    font-size: 13px;
+    color: #111111;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .totals-table tr.paid td {
+    color: #16a34a;
+    font-weight: 700;
+  }
+  .totals-table tr.due td {
+    color: #ED1C24;
+    font-weight: 800;
+    font-size: 14px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .pay-history-title {
+    margin-top: 14px;
+    margin-bottom: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    color: #ED1C24;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  /* Push signature + footer to bottom of A4 for browser print */
+  .a4-sheet-flex {
+    display: flex;
+    flex-direction: column;
+    min-height: 297mm;
+  }
+  .a4-sheet-flex .content-area {
+    flex: 1 1 auto;
+    padding-bottom: 4mm;
+  }
+  .a4-sheet-flex .sign-zone {
+    flex: 0 0 auto;
+    margin-top: auto;
+    padding: 0 12mm 3mm 12mm;
+  }
+  .a4-sheet-flex .page-footer {
+    flex: 0 0 auto;
+    margin-top: 0;
+    padding: 0;
+  }
+  .page-footer img {
+    width: 100%;
+    display: block;
+  }
+
+  .bottom-row {
+    width: 100%;
+    margin: 0;
+    border-collapse: collapse;
+  }
+  .bottom-row td { vertical-align: bottom; }
+  .sys-msg {
+    font-size: 10px;
+    font-style: italic;
+    color: #9ca3af;
+    padding-bottom: 6px;
+  }
+  .sign-block {
+    text-align: right;
+    font-size: 12px;
+    color: #111;
+    line-height: 1.35;
+    padding-bottom: 2px;
+  }
+  .sign-block .sign-img {
+    height: 58px;
+    width: auto;
+    display: block;
+    margin: 0 0 4px auto;
+  }
+  .sign-block .sign-closing {
+    font-size: 12px;
+    color: #222;
+    margin: 0 0 2px 0;
+  }
+  .sign-block .sign-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: #111;
+    margin: 0;
+  }
+  .sign-block .sign-role {
+    font-size: 11px;
+    color: #444;
+    margin: 1px 0 0 0;
+  }
+
+  @media print {
+    html, body, * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
+    .a4-sheet, .a4-sheet-flex { width: 100%; min-height: 297mm; }
+    .table-shell,
+    .bank-box {
+      border-radius: 10px !important;
+      overflow: hidden !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    .table-shell th,
+    .table-shell td,
+    .table-shell .lbl-cell,
+    .info-shell td.val-cell {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+  }
 </style>
 </head>
 <body>
-<div class="a4-sheet">
+<div class="a4-sheet {{ $embedFooter ? 'a4-sheet-flex' : '' }}">
 
-  {{-- Letterhead --}}
-  @if(file_exists($letterheadPath))
-  <div style="margin:0; padding:0;">
-    <img src="{{ $letterheadPath }}" style="width:100%; display:block;" alt="Header">
+  <div class="letterhead">
+    @if(! empty($letterheadB64))
+      <img src="data:image/png;base64,{{ $letterheadB64 }}" alt="Letterhead">
+    @elseif(! empty($logoB64))
+      <div style="padding:14px 16px;text-align:center;">
+        <img src="data:image/jpeg;base64,{{ $logoB64 }}" style="max-height:70px;width:auto;" alt="Logo">
+      </div>
+    @endif
   </div>
-  @endif
 
   <div class="content-area">
+    <div class="doc-title" style="color:#ED1C24;text-align:center;font-size:26px;font-weight:800;letter-spacing:3px;margin:4px 0 14px 0;text-transform:uppercase;">{{ $docTitle }}</div>
 
-    {{-- Title --}}
-    <div class="quotation-title">{{ $docTitle }}</div>
-
-    {{-- Info Table --}}
-    <table class="info-table">
-      <tr>
-        <th>NAME</th>
-        <td>{{ $receipt_details->customer_name ?? 'Walk-In Customer' }}</td>
-        <th>DATE.</th>
-        <td>{{ $receipt_details->invoice_date ?? '' }}</td>
-      </tr>
-      <tr>
-        <th>ADDRESS</th>
-        <td>{{ $customerAddress }}</td>
-        <th>{{ $label }}</th>
-        <td>{{ $invNo }}</td>
-      </tr>
-    </table>
-
-    {{-- Products Table --}}
-    <table class="prod-table">
-      <thead>
+    <div class="table-shell info-shell" style="border:1.5px solid #ED1C24;border-radius:10px;overflow:hidden;margin-bottom:14px;background-color:#FCE8E9;">
+      <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0;font-size:12px;">
         <tr>
-          <th style="width:9%">ITEM NO</th>
-          <th style="width:48%">DESCRIPTION</th>
-          <th style="width:11%">QTY</th>
-          <th style="width:16%">UNIT PRICE</th>
-          <th style="width:16%">TOTAL PRICE</th>
+          <th class="lbl-cell" style="width:14%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:8px 10px;text-align:left;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Name</th>
+          <td class="val-cell" style="background-color:#FCE8E9;color:#111111;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:8px 10px;text-align:left;" bgcolor="#FCE8E9">{{ $receipt_details->customer_name ?? 'Walk-In Customer' }}</td>
+          <th class="lbl-cell" style="width:14%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:8px 10px;text-align:left;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Date</th>
+          <td class="val-cell" style="background-color:#FCE8E9;color:#111111;border-bottom:1px solid #ED1C24;padding:8px 10px;text-align:left;" bgcolor="#FCE8E9">{{ $receipt_details->invoice_date ?? '' }}</td>
         </tr>
-      </thead>
-      <tbody>
-        @foreach($receipt_details->lines as $index => $line)
-        @php
-          $desc = trim(($line['name'] ?? '') . ' ' . ($line['variation'] ?? ''));
-          $qty  = ($line['quantity'] ?? '') . (!empty($line['units']) ? ' ' . $line['units'] : '');
-          $unitPrice  = $line['unit_price_inc_tax'] ?? $line['unit_price'] ?? '';
-          $lineTotal  = $line['line_total'] ?? '';
-        @endphp
         <tr>
-          <td>{{ $index + 1 }}</td>
-          <td class="desc">
-            {{ $desc }}
-            @if(!empty($line['product_description']))
-              <div style="font-size:11px; margin-top:3px;">{!! strip_tags($line['product_description']) !!}</div>
-            @endif
-          </td>
-          <td>{{ $qty }}</td>
-          <td class="money">{{ $unitPrice }}</td>
-          <td class="money">{{ $lineTotal }}</td>
+          <th class="lbl-cell" style="width:14%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;padding:8px 10px;text-align:left;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Address</th>
+          <td class="val-cell" style="background-color:#FCE8E9;color:#111111;border-right:1px solid #ED1C24;padding:8px 10px;text-align:left;" bgcolor="#FCE8E9">{{ $customerAddress }}</td>
+          <th class="lbl-cell" style="width:14%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;padding:8px 10px;text-align:left;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">{{ $label }}</th>
+          <td class="val-cell" style="background-color:#FCE8E9;color:#111111;padding:8px 10px;text-align:left;" bgcolor="#FCE8E9">{{ $invNo }}</td>
         </tr>
-        @endforeach
-      </tbody>
+      </table>
+    </div>
 
-      <tfoot>
-        {{-- Discount --}}
-        @if(!empty($receipt_details->discount))
-        <tr>
-          <td colspan="4">{{ $receipt_details->discount_label ?? 'Discount' }}</td>
-          <td>(-) {{ $receipt_details->discount }}</td>
-        </tr>
-        @endif
-
-        {{-- Subtotal --}}
-        @if(!empty($receipt_details->subtotal))
-        <tr>
-          <td colspan="4">Subtotal</td>
-          <td>{{ $receipt_details->subtotal }}</td>
-        </tr>
-        @endif
-
-        {{-- Bank Transfer (invoice only) --}}
-        @if(!$isQuotation && !empty($bankTransferTotal))
-        <tr>
-          <td colspan="4">Bank Transfer</td>
-          <td>{{ $bankTransferTotal }}</td>
-        </tr>
-        @endif
-
-        {{-- Payments --}}
-        @if(!empty($receipt_details->payments))
-          @foreach($receipt_details->payments as $payment)
+    <div class="table-shell prod-shell" style="border:1.5px solid #ED1C24;border-radius:10px;overflow:hidden;margin-bottom:14px;background-color:#FFF5F5;">
+      <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0;font-size:12px;">
+        <thead>
           <tr>
-            <td colspan="4">{{ $payment['method'] }}</td>
-            <td>{{ $payment['amount'] }}</td>
+            <th style="width:9%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:9px 8px;text-align:center;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Item</th>
+            <th style="width:47%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:9px 8px;text-align:center;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Description</th>
+            <th style="width:10%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:9px 8px;text-align:center;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Qty</th>
+            <th style="width:17%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:9px 8px;text-align:center;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Unit Price</th>
+            <th style="width:17%;background-color:#ED1C24;color:#ffffff;border-bottom:1px solid #ED1C24;padding:9px 8px;text-align:center;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Total</th>
           </tr>
-          @endforeach
-        @endif
+        </thead>
+        <tbody>
+          @forelse(($receipt_details->lines ?? []) as $index => $line)
+            @php
+              $desc = trim(($line['name'] ?? '').' '.($line['variation'] ?? ''));
+              $qty = ($line['quantity'] ?? '').(! empty($line['units']) ? ' '.$line['units'] : '');
+              $unitPrice = $line['unit_price_inc_tax'] ?? $line['unit_price'] ?? '';
+              $lineTotal = $line['line_total'] ?? '';
+              $isLast = $loop->last;
+            @endphp
+            <tr>
+              <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $isLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:9px 8px;text-align:center;" bgcolor="#FFF5F5">{{ $index + 1 }}</td>
+              <td class="desc" style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $isLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:9px 8px;text-align:left;" bgcolor="#FFF5F5">
+                {{ $desc }}
+                @if(! empty($line['product_description']))
+                  <div style="font-size:10px;margin-top:3px;color:#6b7280;">{!! strip_tags($line['product_description']) !!}</div>
+                @endif
+              </td>
+              <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $isLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:9px 8px;text-align:center;" bgcolor="#FFF5F5">{{ $qty }}</td>
+              <td class="money" style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $isLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:9px 8px;text-align:right;white-space:nowrap;" bgcolor="#FFF5F5">{{ $unitPrice }}</td>
+              <td class="money" style="background-color:#FFF5F5;color:#111111;{{ $isLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:9px 8px;text-align:right;white-space:nowrap;" bgcolor="#FFF5F5">{{ $lineTotal }}</td>
+            </tr>
+          @empty
+            <tr>
+              <td colspan="5" style="background-color:#FFF5F5;padding:9px 8px;" bgcolor="#FFF5F5">No items</td>
+            </tr>
+          @endforelse
+        </tbody>
+      </table>
+    </div>
 
-        {{-- Due --}}
-        @if(!$isQuotation && !empty($receipt_details->total_due) && $receipt_details->total_due != '0.00' && $receipt_details->total_due != 0)
-        <tr style="color:red;">
-          <td colspan="4">Total Due</td>
-          <td>{{ $receipt_details->total_due }}</td>
-        </tr>
-        @endif
+    <table class="summary-row">
+      <tr>
+        <td class="pay-col">
+          @if($bankText !== '')
+            <div class="bank-box" style="background-color:#FCE8E9;padding:12px 14px;border:1.5px solid #ED1C24;border-radius:10px;overflow:hidden;">
+              <div class="bank-title" style="color:#ED1C24;font-size:13px;font-weight:800;margin:0 0 8px 0;">Bank Details</div>
+              @if(! empty($paymentModeLine))
+                <div class="mode-line"><strong>Payment mode:</strong> {{ $paymentModeLine }}</div>
+              @endif
+              <table class="bank-table">
+                @forelse($bankRows as $row)
+                  <tr>
+                    @if($row['label'] !== '')
+                      <td class="lbl">{{ $row['label'] }}:</td>
+                      <td class="val">{{ $row['value'] }}</td>
+                    @else
+                      <td colspan="2" class="val">{{ $row['value'] }}</td>
+                    @endif
+                  </tr>
+                @empty
+                  <tr>
+                    <td colspan="2" class="val">{!! nl2br(e($bankText)) !!}</td>
+                  </tr>
+                @endforelse
+              </table>
+            </div>
+          @endif
 
-        {{-- Grand Total --}}
-        <tr class="grand-total">
-          <td colspan="4">Total</td>
-          <td>{{ $receipt_details->total ?? '' }}</td>
-        </tr>
-      </tfoot>
+          @if($paymentHistory->isNotEmpty())
+            <div class="pay-history-title" style="margin-top:14px;margin-bottom:6px;font-size:11px;font-weight:800;color:#ED1C24;text-transform:uppercase;">Payment History</div>
+            <div class="table-shell" style="border:1.5px solid #ED1C24;border-radius:10px;overflow:hidden;margin-bottom:0;background-color:#FFF5F5;font-size:10px;">
+              <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0;font-size:10px;">
+                <thead>
+                  <tr>
+                    <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Date</th>
+                    <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Method</th>
+                    <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Note</th>
+                    <th style="background-color:#ED1C24;color:#ffffff;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:right;font-weight:700;" bgcolor="#ED1C24">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @foreach($paymentHistory as $payment)
+                    @php $payLast = $loop->last; @endphp
+                    <tr>
+                      <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ $payment['date'] ?? '—' }}</td>
+                      <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ $payment['method'] ?? '—' }}</td>
+                      <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ ! empty($payment['note']) ? $payment['note'] : '—' }}</td>
+                      <td class="amt" style="background-color:#FFF5F5;color:#111111;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;" bgcolor="#FFF5F5">{{ $payment['amount'] }}</td>
+                    </tr>
+                  @endforeach
+                </tbody>
+              </table>
+            </div>
+          @endif
+        </td>
+        <td class="total-col">
+          @php
+            $taxLabel = trim(str_replace(':', '', (string) ($receipt_details->tax_label ?? 'VAT')));
+            if ($taxLabel === '' || strcasecmp($taxLabel, 'Tax') === 0) {
+                $taxLabel = 'VAT';
+            }
+            $taxValue = $receipt_details->tax ?? null;
+            if ($taxValue === null || $taxValue === '' || $taxValue === 0 || $taxValue === '0') {
+                $sym = $receipt_details->currency['symbol'] ?? 'LKR';
+                $taxValue = $sym.' 0.00';
+            }
+            $hasPaid = ! empty($receipt_details->total_paid) && $receipt_details->total_paid != 0 && $receipt_details->total_paid != '0.00';
+            // final invoices always get total_paid/total_due from receipt details
+            $showPaidBlock = ! $isQuotation && isset($receipt_details->total_paid);
+          @endphp
+          <table class="totals-table">
+            @if(! empty($receipt_details->subtotal))
+            <tr>
+              <td class="label">Subtotal</td>
+              <td class="value">{{ $receipt_details->subtotal }}</td>
+            </tr>
+            @endif
+            @if(! empty($receipt_details->discount))
+            <tr>
+              <td class="label">{{ trim(str_replace(':', '', (string) ($receipt_details->discount_label ?? 'Discount'))) }}</td>
+              <td class="value">(-) {{ $receipt_details->discount }}</td>
+            </tr>
+            @endif
+            <tr>
+              <td class="label">{{ $taxLabel }}</td>
+              <td class="value">{{ $taxValue }}</td>
+            </tr>
+            @if(! empty($receipt_details->shipping_charges))
+            <tr>
+              <td class="label">{{ trim(str_replace(':', '', (string) ($receipt_details->shipping_charges_label ?? 'Shipping'))) }}</td>
+              <td class="value">{{ $receipt_details->shipping_charges }}</td>
+            </tr>
+            @endif
+            <tr class="rule"><td colspan="2"></td></tr>
+            <tr class="grand">
+              <td class="label">Total (LKR)</td>
+              <td class="value">{{ $receipt_details->total ?? '' }}</td>
+            </tr>
+            @if($showPaidBlock)
+              @if($hasPaid)
+              <tr class="paid">
+                <td class="label">Paid to Date</td>
+                <td class="value">- {{ $receipt_details->total_paid }}</td>
+              </tr>
+              @endif
+              <tr class="rule"><td colspan="2"></td></tr>
+              <tr class="due">
+                <td class="label">Balance Due</td>
+                <td class="value">{{ (! empty($receipt_details->total_due) && $receipt_details->total_due != 0) ? $receipt_details->total_due : (($receipt_details->currency['symbol'] ?? 'LKR').' 0.00') }}</td>
+              </tr>
+              <tr class="rule-double"><td colspan="2"></td></tr>
+            @endif
+          </table>
+        </td>
+      </tr>
     </table>
-
-    {{-- Payment mode / bank details from form --}}
-    @if(!empty($receipt_details->preferred_payment_method) || !empty($receipt_details->pdf_bank_details) || !empty($receipt_details->preferred_account_details))
-    <div class="payment-note">
-      @if(!empty($receipt_details->preferred_payment_method))
-        Payment mode: {{ $receipt_details->preferred_payment_method }}<br>
-      @endif
-      @if(!empty($receipt_details->pdf_bank_details))
-        <br>{!! nl2br(e($receipt_details->pdf_bank_details)) !!}
-      @elseif(!empty($receipt_details->preferred_account_details))
-        @php $acc = (array)$receipt_details->preferred_account_details; @endphp
-        <br>
-        @if(!empty($acc['account_number'])) Account No: {{ $acc['account_number'] }}<br>@endif
-        @if(!empty($acc['bank_name'])) Bank: {{ $acc['bank_name'] }}<br>@endif
-        @if(!empty($acc['branch'])) Branch: {{ $acc['branch'] }}<br>@endif
-        @if(!empty($acc['account_holder_name'])) Name: {{ $acc['account_holder_name'] }}@endif
-      @endif
-    </div>
-    @endif
-
-    {{-- System message --}}
-    <div class="sys-msg">
-      This is a system generated <strong>{{ strtolower($docTitle) }}</strong>.
-    </div>
-
-    {{-- Signature --}}
-    <div class="sign-block">
-      @if(!empty($signB64))
-        <img src="data:image/png;base64,{{ $signB64 }}" alt="Signature">
-      @endif
-      Yours faithfully,<br>
-      <strong>Sandaruwan Dharampriya</strong>,<br>
-      Director<br>
-      <em>Attract wear &amp; printing solutions</em>
-    </div>
 
   </div>{{-- /.content-area --}}
 
-</div>{{-- /.a4-sheet --}}
+  {{-- Browser: pin signature just above brand footer at page bottom --}}
+  @if($embedFooter)
+  <div class="sign-zone">
+    <table class="bottom-row">
+      <tr>
+        <td class="sys-msg">*This is a system generated {{ strtolower($docTitle) }}.</td>
+        <td class="sign-block">
+          @if(! empty($signB64))
+            <img class="sign-img" src="data:image/png;base64,{{ $signB64 }}" alt="Signature">
+          @endif
+          <div class="sign-closing">Yours faithfully,</div>
+          <div class="sign-name">Sandaruwan Dharampriya</div>
+          <div class="sign-role">Director, PrintWorks</div>
+        </td>
+      </tr>
+    </table>
+  </div>
+  @endif
 
+  @if($embedFooter && ! empty($footerB64))
+  <div class="page-footer">
+    <img src="data:image/png;base64,{{ $footerB64 }}" alt="Footer">
+  </div>
+  @endif
+
+</div>
 </body>
 </html>

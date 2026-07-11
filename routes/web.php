@@ -106,6 +106,9 @@ Route::post('/whatsapp/webhook/incoming', [WhatsappController::class, 'incomingW
 Route::post('/whatsapp/webhook/contacts', [WhatsappController::class, 'contactWebhook']);
 Route::post('/whatsapp/webhook/lid-merge', [WhatsappController::class, 'lidMergeWebhook']);
 
+// Fardar Express reverse API (status callbacks)
+Route::post('/delivery/webhook/status', [\App\Http\Controllers\DeliveryController::class, 'statusWebhook']);
+
 // E MEDIA WhatsApp API (public — HostGrap-compatible endpoints via linked WhatsApp)
 Route::prefix('emwa-api')->group(function () {
     Route::get('/register', [EmwaApiAdminController::class, 'showRegister'])->name('emwa.register');
@@ -620,6 +623,15 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::post('/units', [\App\Http\Controllers\InventoryController::class, 'storeUnit'])->name('units.store');
         Route::put('/units/{unit}', [\App\Http\Controllers\InventoryController::class, 'updateUnit'])->name('units.update');
         Route::delete('/units/{unit}', [\App\Http\Controllers\InventoryController::class, 'destroyUnit'])->name('units.destroy');
+    });
+
+    // ── Delivery (Fardar Express) ────────────────────────────────────────────
+    Route::prefix('delivery')->name('delivery.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\DeliveryController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\DeliveryController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\DeliveryController::class, 'store'])->name('store');
+        Route::get('/sales/search', [\App\Http\Controllers\DeliveryController::class, 'searchSales'])->name('sales.search');
+        Route::get('/{id}', [\App\Http\Controllers\DeliveryController::class, 'show'])->name('show')->whereNumber('id');
     });
 
     // ── Production Module ────────────────────────────────────────────────────

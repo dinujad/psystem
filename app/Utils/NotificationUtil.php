@@ -88,7 +88,8 @@ class NotificationUtil extends Util
                 }
 
                 //Auto send sms
-                if ($notification_type == 'new_sale' || ! empty($notification_template->auto_send_sms)) {
+                // new_sale SMS is handled by QuotationSmsNotifier (short invoice SMS + WhatsApp PDF)
+                if ($notification_type != 'new_sale' && ! empty($notification_template->auto_send_sms)) {
                     $data['mobile_number'] = $contact->mobile;
                     if (! empty($contact->mobile)) {
                         try {

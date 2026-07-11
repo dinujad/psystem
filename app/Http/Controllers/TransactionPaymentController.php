@@ -6,6 +6,7 @@ use App\Contact;
 use App\Events\TransactionPaymentAdded;
 use App\Events\TransactionPaymentUpdated;
 use App\Exceptions\AdvanceBalanceNotAvailable;
+use App\Services\QuotationSmsNotifier;
 use App\Transaction;
 use App\TransactionPayment;
 use App\Utils\ModuleUtil;
@@ -116,6 +117,7 @@ class TransactionPaymentController extends Controller
                     throw new AdvanceBalanceNotAvailable(__('lang_v1.required_advance_balance_not_available'));
                 }
 
+                $tp = null;
                 if (! empty($inputs['amount'])) {
                     $tp = TransactionPayment::create($inputs);
 
@@ -134,6 +136,27 @@ class TransactionPaymentController extends Controller
                 $this->transactionUtil->activityLog($transaction, 'payment_edited', $transaction_before);
 
                 DB::commit();
+
+                // Confirm payment to customer via SMS + WhatsApp (sell invoices only)
+                if ($transaction->type === 'sell' && ! empty($inputs['amount']) && isset($tp)) {
+                    try {
+                        $paymentTypes = $this->transactionUtil->payment_types($transaction->location_id, true);
+                        $methodLabel = $paymentTypes[$inputs['method'] ?? ''] ?? ($inputs['method'] ?? 'Payment');
+
+                        app(QuotationSmsNotifier::class)->notifyPaymentReceived(
+                            $transaction->fresh(['contact']),
+                            (int) $business_id,
+                            [
+                                'amount' => $inputs['amount'],
+                                'method' => $methodLabel,
+                                'note' => $inputs['note'] ?? null,
+                                'paid_on' => $inputs['paid_on'] ?? null,
+                            ]
+                        );
+                    } catch (\Throwable $e) {
+                        \Log::warning('Payment notify: '.$e->getMessage(), ['transaction_id' => $transaction->id]);
+                    }
+                }
             }
 
             $output = ['success' => true,

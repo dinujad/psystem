@@ -44,7 +44,12 @@ npm-debug.log
 !/public/uploads/cms/.gitkeep
 /public/uploads/UltimatePOS/*
 !/public/uploads/UltimatePOS/.gitkeep
-/public/images/
+/public/images/*
+!/public/images/footer.png
+!/public/images/footer (1).png
+!/public/images/attract_letterhead_HQ.png
+!/public/images/sign.png
+!/public/images/logo.jpeg
 /public/modules/
 /public/mix-manifest.json
 .scribe

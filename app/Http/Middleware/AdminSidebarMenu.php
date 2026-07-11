@@ -252,6 +252,26 @@ class AdminSidebarMenu
                 }, ['icon' => $invIcon, 'active' => request()->segment(1) == 'inventory'])->order(18);
             }
 
+            // ── Delivery (Fardar Express) ─────────────────────────────────
+            if (
+                $is_admin
+                || auth()->user()->can('access_shipping')
+                || auth()->user()->can('access_own_shipping')
+                || auth()->user()->can('sell.view')
+            ) {
+                $deliveryIcon = '<svg aria-hidden="true" class="tw-size-5 tw-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+                    <path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
+                    <path d="M5 17h-2v-11a1 1 0 0 1 1 -1h9v12m-4 0h6m4 0h2v-6h-8m0 -5h5l3 5"/>
+                  </svg>';
+                $deliveryActive = request()->segment(1) == 'delivery';
+                $menu->dropdown('Delivery', function ($sub) {
+                    $sub->url(route('delivery.index'), 'Order List', ['icon' => '', 'active' => request()->segment(1) == 'delivery' && ! request()->segment(2)]);
+                    $sub->url(route('delivery.create'), 'New Pickup Request', ['icon' => '', 'active' => request()->segment(1) == 'delivery' && request()->segment(2) == 'create']);
+                }, ['icon' => $deliveryIcon, 'active' => $deliveryActive])->order(20);
+            }
+
             // ── Weekly To-Do ─────────────────────────────────────────────
             $todoIcon = '<svg aria-hidden="true" class="tw-size-5 tw-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
@@ -425,6 +445,31 @@ class AdminSidebarMenu
                   </svg>', 'id' => 'tour_step6']
                 )->order(25);
             }
+            // ── Invoice (separate from Sale — create invoice, pay later in Sale) ──
+            if (in_array('add_sale', $enabled_modules) && ($is_admin || auth()->user()->can('direct_sell.access'))) {
+                $invoiceIcon = '<svg aria-hidden="true" class="tw-size-5 tw-shrink-0" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+                    <path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2z"/>
+                    <path d="M9 7l1 0"/>
+                    <path d="M9 13l6 0"/>
+                    <path d="M9 17l6 0"/>
+                  </svg>';
+                $invoiceActive = request()->segment(1) == 'sells' && request()->segment(2) == 'create' && request()->get('mode') == 'invoice';
+                $menu->dropdown('Invoice', function ($sub) {
+                    $sub->url(
+                        action([\App\Http\Controllers\SellController::class, 'create'], ['mode' => 'invoice']),
+                        __('lang_v1.add_invoice'),
+                        ['icon' => '', 'active' => request()->get('mode') == 'invoice']
+                    );
+                    $sub->url(
+                        action([\App\Http\Controllers\SellController::class, 'index']),
+                        __('lang_v1.all_sales') . ' / Payments',
+                        ['icon' => '', 'active' => request()->segment(1) == 'sells' && request()->segment(2) == null]
+                    );
+                }, ['icon' => $invoiceIcon, 'active' => $invoiceActive])->order(24);
+            }
+
             //Sell dropdown
             if ($is_admin || auth()->user()->hasAnyPermission(['sell.view', 'sell.create', 'direct_sell.access', 'view_own_sell_only', 'view_commission_agent_sell', 'access_shipping', 'access_own_shipping', 'access_commission_agent_shipping', 'access_sell_return', 'direct_sell.view', 'direct_sell.update', 'access_own_sell_return'])) {
                 $menu->dropdown(
@@ -445,13 +490,6 @@ class AdminSidebarMenu
                                 ['icon' => '', 'active' => request()->segment(1) == 'sells' && request()->segment(2) == null]
                             );
                         }
-                        if (in_array('add_sale', $enabled_modules) && auth()->user()->can('direct_sell.access')) {
-                            $sub->url(
-                                action([\App\Http\Controllers\SellController::class, 'create']),
-                                __('sale.add_sale'),
-                                ['icon' => '', 'active' => request()->segment(1) == 'sells' && request()->segment(2) == 'create' && empty(request()->get('status'))]
-                            );
-                        }
                         if (auth()->user()->can('sell.create')) {
                             if (in_array('pos_sale', $enabled_modules)) {
                                 if (auth()->user()->can('sell.view')) {
@@ -469,7 +507,6 @@ class AdminSidebarMenu
                                 );
                             }
                         }
-
                         if (in_array('add_sale', $enabled_modules) && auth()->user()->can('direct_sell.access')) {
                             $sub->url(
                                 action([\App\Http\Controllers\SellController::class, 'create'], ['status' => 'draft']),

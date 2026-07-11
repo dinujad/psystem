@@ -314,6 +314,15 @@ class SellController extends Controller
                             $html .= '<li><a href="#" data-href="'.action([\App\Http\Controllers\SellController::class, 'editShipping'], [$row->id]).'" class="btn-modal" data-container=".view_modal"><i class="fas fa-truck" aria-hidden="true"></i>'.__('lang_v1.edit_shipping').'</a></li>';
                         }
 
+                        if ($row->type == 'sell' && (
+                            $is_admin
+                            || auth()->user()->can('access_shipping')
+                            || auth()->user()->can('access_own_shipping')
+                            || auth()->user()->can('sell.view')
+                        )) {
+                            $html .= '<li><a href="'.route('delivery.create', ['transaction_id' => $row->id]).'"><i class="fas fa-shipping-fast" aria-hidden="true"></i> Send to Fardar Delivery</a></li>';
+                        }
+
                         if ($row->type == 'sell') {
                             $html .= '<li class="divider"></li>';
                             if (! $only_shipments) {
@@ -652,6 +661,11 @@ class SellController extends Controller
         }
 
         $status = request()->get('status', '');
+        $invoice_mode = request()->get('mode') === 'invoice';
+
+        if ($invoice_mode) {
+            $status = 'final';
+        }
 
         $statuses = Transaction::sell_statuses();
 
@@ -703,7 +717,8 @@ class SellController extends Controller
                 'is_order_request_enabled',
                 'users',
                 'default_price_group_id',
-                'change_return'
+                'change_return',
+                'invoice_mode'
             ));
     }
 

@@ -86,7 +86,9 @@ class WhatsappService
 
         try {
             $body = array_merge(['number' => $normalizedNumber, 'message' => $message], $media);
-            $response = $this->client()->post($this->baseUrl().'/send', $body);
+            // PDFs / media need a longer timeout than plain text
+            $timeout = ! empty($media['media_base64']) ? 90 : 15;
+            $response = $this->client()->timeout($timeout)->post($this->baseUrl().'/send', $body);
 
             $payload = $response->json() ?? [];
             $success = $response->successful() && ! empty($payload['success']);

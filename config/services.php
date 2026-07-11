@@ -36,4 +36,11 @@ return [
         'api_key' => env('WHATSAPP_API_KEY'),
     ],
 
+    'fardar' => [
+        'client_id' => env('FARDAR_CLIENT_ID'),
+        'api_key' => env('FARDAR_API_KEY'),
+        'new_waybill_url' => env('FARDAR_NEW_WAYBILL_URL', 'https://www.fdedomestic.com/api/parcel/new_api_v1.php'),
+        'existing_waybill_url' => env('FARDAR_EXISTING_WAYBILL_URL', 'https://www.fdedomestic.com/api/parcel/existing_waybill_api_v1.php'),
+    ],
+
 ];

@@ -1,10 +1,14 @@
 @extends('layouts.app')
 
 @php
+	$invoice_mode = !empty($invoice_mode);
+
 	if (!empty($status) && $status == 'quotation') {
 		$title = __('lang_v1.add_quotation');
 	} else if (!empty($status) && $status == 'draft') {
 		$title = __('lang_v1.add_draft');
+	} else if ($invoice_mode) {
+		$title = __('lang_v1.add_invoice');
 	} else {
 		$title = __('sale.add_sale');
 	}
@@ -211,7 +215,11 @@
 						</div>
 					</div>
 				</div>
-				@if(!empty($status))
+				@if($invoice_mode)
+					<input type="hidden" name="status" id="status" value="final">
+					<input type="hidden" name="is_credit_sale" id="is_credit_sale" value="1">
+					<input type="hidden" name="invoice_entry" value="1">
+				@elseif(!empty($status))
 					<input type="hidden" name="status" id="status" value="{{$status}}">
 
 					@if(in_array($status, ['draft', 'quotation']))
@@ -772,7 +780,7 @@
 			$payment_body_id = '';
 		}
 	@endphp
-	@if((empty($status) || (!in_array($status, ['quotation', 'draft'])) || $is_enabled_download_pdf) && $sale_type != 'sales_order')
+	@if(!$invoice_mode && (empty($status) || !in_array($status, ['quotation', 'draft'])) && $sale_type != 'sales_order')
 		@can('sell.payments')
 			@component('components.widget', ['class' => 'box-solid', 'id' => $payment_body_id, 'title' => __('purchase.add_payment')])
 			@if($is_enabled_download_pdf)
@@ -885,10 +893,42 @@
 			@endcomponent
 		@endcan
 	@endif
+
+	@if($invoice_mode || (!empty($status) && in_array($status, ['quotation', 'draft'])))
+		@php
+			$defaultBankDetails = "Payment mode: Cash / Cheque\nAccount Name: Attract Wear and Printing Solutions\nAccount Number: 8002311634\nBank: Commercial Bank of Ceylon PLC";
+		@endphp
+		@component('components.widget', ['class' => 'box-solid', 'title' => 'Payment / Bank Details (shown on PDF)'])
+			<div class="row">
+				<div class="col-md-12">
+					<div class="form-group">
+						{!! Form::label('pdf_bank_details', 'Payment mode & Bank details') !!}
+						<p class="help-block" style="margin-top:0;">
+							Quotation / Invoice PDF එකේ payment box එකට යන text. ඕන විදිහට edit කරන්න.
+						</p>
+						{!! Form::textarea('pdf_bank_details', old('pdf_bank_details', $defaultBankDetails), [
+							'class' => 'form-control',
+							'rows' => 5,
+							'placeholder' => "Payment mode: Cash / Cheque\nBank: ...\nAccount: ...\nName: ...",
+						]) !!}
+					</div>
+				</div>
+			</div>
+		@endcomponent
+	@endif
+
+	@if($invoice_mode)
+		{!! Form::hidden("change_return", 0, ['class' => 'form-control change_return input_number', 'id' => "change_return"]); !!}
+	@endif
 	
 	<div class="row">
 		{!! Form::hidden('is_save_and_print', 0, ['id' => 'is_save_and_print']); !!}
 		<div class="col-sm-12 text-center tw-mt-4">
+			@if($invoice_mode)
+				<p class="text-muted" style="margin-bottom:12px;">
+					Invoice save වුණාට පස්සේ <strong>Sale → All Sales</strong> එකට යනවා. Payment එක එතනින් Add Payment කරන්න.
+				</p>
+			@endif
 			<button type="button" id="submit-sell" class="tw-dw-btn tw-dw-btn-primary tw-dw-btn-lg tw-text-white">@lang('messages.save')</button>
 			<button type="button" id="save-and-print" class="tw-dw-btn tw-dw-btn-success tw-dw-btn-lg tw-text-white">@lang('lang_v1.save_and_print')</button>
 		</div>

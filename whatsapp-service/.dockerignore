@@ -1,0 +1,8 @@
+# Ignore local junk — keep image small
+auth_session/
+auth_session_backup/
+node_modules/
+.env
+*.log
+service.log
+service.err

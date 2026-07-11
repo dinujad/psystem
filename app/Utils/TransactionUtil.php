@@ -1530,62 +1530,34 @@ class TransactionUtil extends Util
             if ($bank_transfer_total > 0) {
                 $output['bank_transfer_total'] = $this->num_f($bank_transfer_total, $show_currency, $business_details);
             }
-            if ($il->show_payments == 1) {
-                $payments = $transaction->payment_lines->toArray();
-                $payment_types = $this->payment_types($transaction->location_id, true);
-                if (! empty($payments)) {
-                    foreach ($payments as $value) {
-                        $method = ! empty($payment_types[$value['method']]) ? $payment_types[$value['method']] : '';
-                        if ($value['method'] == 'cash') {
-                            $output['payments'][] =
-                                ['method' => $method.($value['is_return'] == 1 ? ' ('.$il->change_return_label.')(-)' : ''),
-                                    'amount' => $this->num_f($value['amount'], $show_currency, $business_details),
-                                    'date' => $this->format_date($value['paid_on'], false, $business_details),
-                                ];
-                            if ($value['is_return'] == 1) {
-                            }
-                        } elseif ($value['method'] == 'card') {
-                            $output['payments'][] =
-                                ['method' => $method.(! empty($value['card_transaction_number']) ? (', Transaction Number:'.$value['card_transaction_number']) : ''),
-                                    'amount' => $this->num_f($value['amount'], $show_currency, $business_details),
-                                    'date' => $this->format_date($value['paid_on'], false, $business_details),
-                                ];
-                        } elseif ($value['method'] == 'cheque') {
-                            $output['payments'][] =
-                                ['method' => $method.(! empty($value['cheque_number']) ? (', Cheque Number:'.$value['cheque_number']) : ''),
-                                    'amount' => $this->num_f($value['amount'], $show_currency, $business_details),
-                                    'date' => $this->format_date($value['paid_on'], false, $business_details),
-                                ];
-                        } elseif ($value['method'] == 'bank_transfer') {
-                            $output['payments'][] =
-                                ['method' => $method.(! empty($value['bank_account_number']) ? (', Account Number:'.$value['bank_account_number']) : ''),
-                                    'amount' => $this->num_f($value['amount'], $show_currency, $business_details),
-                                    'date' => $this->format_date($value['paid_on'], false, $business_details),
-                                ];
-                        } elseif ($value['method'] == 'advance') {
-                            $output['payments'][] =
-                                ['method' => $method,
-                                    'amount' => $this->num_f($value['amount'], $show_currency, $business_details),
-                                    'date' => $this->format_date($value['paid_on'], false, $business_details),
-                                ];
-                        } elseif ($value['method'] == 'other') {
-                            $output['payments'][] =
-                                ['method' => $method,
-                                    'amount' => $this->num_f($value['amount'], $show_currency, $business_details),
-                                    'date' => $this->format_date($value['paid_on'], false, $business_details),
-                                ];
-                        }
-
-                        for ($i = 1; $i < 8; $i++) {
-                            if ($value['method'] == "custom_pay_{$i}") {
-                                $output['payments'][] =
-                                    ['method' => $method.(! empty($value['transaction_no']) ? (', '.trans('lang_v1.transaction_no').':'.$value['transaction_no']) : ''),
-                                        'amount' => $this->num_f($value['amount'], $show_currency, $business_details),
-                                        'date' => $this->format_date($value['paid_on'], false, $business_details),
-                                    ];
-                            }
+            // Always include payment lines so branded invoice PDF can show Paid to Date + history
+            $payments = $transaction->payment_lines->toArray();
+            $payment_types = $this->payment_types($transaction->location_id, true);
+            if (! empty($payments)) {
+                foreach ($payments as $value) {
+                    if ((int) ($value['is_return'] ?? 0) === 1) {
+                        continue;
+                    }
+                    $method = ! empty($payment_types[$value['method']]) ? $payment_types[$value['method']] : ucfirst((string) $value['method']);
+                    $note = trim((string) ($value['note'] ?? ''));
+                    if ($note === '') {
+                        if ($value['method'] == 'card' && ! empty($value['card_transaction_number'])) {
+                            $note = 'Txn: '.$value['card_transaction_number'];
+                        } elseif ($value['method'] == 'cheque' && ! empty($value['cheque_number'])) {
+                            $note = 'Cheque: '.$value['cheque_number'];
+                        } elseif ($value['method'] == 'bank_transfer' && ! empty($value['bank_account_number'])) {
+                            $note = 'Acc: '.$value['bank_account_number'];
+                        } elseif (! empty($value['transaction_no'])) {
+                            $note = trans('lang_v1.transaction_no').': '.$value['transaction_no'];
                         }
                     }
+
+                    $output['payments'][] = [
+                        'method' => $method,
+                        'amount' => $this->num_f($value['amount'], $show_currency, $business_details),
+                        'date' => $this->format_date($value['paid_on'], false, $business_details),
+                        'note' => $note,
+                    ];
                 }
             }
         }
@@ -6345,6 +6317,42 @@ class TransactionUtil extends Util
             'decimal_separator' => $business_details->decimal_separator,
         ];
         $receipt_details->currency = $currency_details;
+
+        // Always attach payment history for branded invoice/quotation PDF
+        if (empty($receipt_details->payments) && $transaction->status == 'final') {
+            $transaction->loadMissing('payment_lines');
+            $payment_types = $this->payment_types($transaction->location_id, true);
+            $payments = [];
+            foreach ($transaction->payment_lines as $value) {
+                if ((int) $value->is_return === 1) {
+                    continue;
+                }
+                $method = $payment_types[$value->method] ?? ucfirst((string) $value->method);
+                $note = trim((string) ($value->note ?? ''));
+                if ($note === '') {
+                    if ($value->method === 'cheque' && ! empty($value->cheque_number)) {
+                        $note = 'Cheque: '.$value->cheque_number;
+                    } elseif ($value->method === 'card' && ! empty($value->card_transaction_number)) {
+                        $note = 'Txn: '.$value->card_transaction_number;
+                    } elseif ($value->method === 'bank_transfer' && ! empty($value->bank_account_number)) {
+                        $note = 'Acc: '.$value->bank_account_number;
+                    }
+                }
+                $payments[] = [
+                    'method' => $method,
+                    'amount' => $this->num_f($value->amount, true, $business_details),
+                    'amount_raw' => (float) $value->amount,
+                    'date' => $this->format_date($value->paid_on, false, $business_details),
+                    'note' => $note,
+                ];
+            }
+            $receipt_details->payments = $payments;
+
+            $paid_amount = $this->getTotalPaid($transaction->id);
+            $due = $transaction->final_total - $paid_amount;
+            $receipt_details->total_paid = ($paid_amount == 0) ? 0 : $this->num_f($paid_amount, true, $business_details);
+            $receipt_details->total_due = ($due == 0) ? 0 : $this->num_f($due, true, $business_details);
+        }
 
         return [
             'location_details' => $location_details,

@@ -371,7 +371,8 @@ class SellPosController extends Controller
             }
 
             $is_credit_sale = isset($input['is_credit_sale']) && $input['is_credit_sale'] == 1;
-            if ($is_credit_sale) {
+            $invoice_entry = $request->input('invoice_entry') == 1;
+            if ($is_credit_sale && ! $invoice_entry) {
                 $business_id = $request->session()->get('user.business_id');
                 $contact_id = $request->get('contact_id', null);
                 if ($this->contactUtil->isWalkInCustomer($business_id, $contact_id)) {
@@ -634,14 +635,18 @@ class SellPosController extends Controller
 
                 DB::commit();
 
-                if (! empty($input['is_quotation']) && (int) $input['is_quotation'] === 1) {
+                // SMS + WhatsApp (with PDF) for invoices and quotations
+                $shouldNotifyDocument = (! empty($input['is_quotation']) && (int) $input['is_quotation'] === 1)
+                    || (($input['status'] ?? '') === 'final' && ($transaction->type ?? '') === 'sell');
+
+                if ($shouldNotifyDocument) {
                     try {
                         app(QuotationSmsNotifier::class)->notifyCustomer(
                             $transaction->fresh(['contact']),
                             $business_id
                         );
                     } catch (\Throwable $e) {
-                        \Log::warning('Quotation SMS: '.$e->getMessage(), ['transaction_id' => $transaction->id]);
+                        \Log::warning('Document notify: '.$e->getMessage(), ['transaction_id' => $transaction->id]);
                     }
                 }
 
@@ -815,9 +820,14 @@ class SellPosController extends Controller
             $output['printer_config'] = $this->businessUtil->printerConfig($business_id, $location_details->printer_id);
             $output['data'] = $receipt_details;
         } else {
-            $layout = !empty($receipt_details->design) ? 'sale_pos.receipts.' . $receipt_details->design : 'sale_pos.receipts.classic';
-
-            $output['html_content'] = view($layout, compact('receipt_details'))->render();
+            // Always use PrintWorks branded A4 layout (letterhead + footer) for browser print
+            $document_title = ! empty($receipt_details->is_quotation) ? 'QUOTATION' : 'INVOICE';
+            $embed_footer = true;
+            $output['html_content'] = view('sale_pos.receipts.partials.attract_pdf_layout', compact(
+                'receipt_details',
+                'document_title',
+                'embed_footer'
+            ))->render();
         }
 
         return $output;
@@ -2470,6 +2480,15 @@ class SellPosController extends Controller
 
             DB::commit();
 
+            try {
+                app(QuotationSmsNotifier::class)->notifyCustomer(
+                    $transaction->fresh(['contact']),
+                    $business_id
+                );
+            } catch (\Throwable $e) {
+                \Log::warning('Document notify: '.$e->getMessage(), ['transaction_id' => $transaction->id]);
+            }
+
             $receipt = $this->receiptContent($business_id, $transaction->location_id, $transaction->id);
 
             $output = [
@@ -2694,6 +2713,15 @@ class SellPosController extends Controller
 
             DB::commit();
 
+            try {
+                app(QuotationSmsNotifier::class)->notifyCustomer(
+                    $transaction->fresh(['contact']),
+                    $business_id
+                );
+            } catch (\Throwable $e) {
+                \Log::warning('Document notify (convert): '.$e->getMessage(), ['transaction_id' => $transaction->id]);
+            }
+
             $output = ['success' => 1, 'msg' => __('lang_v1.converted_to_invoice_successfully', ['invoice_no' => $transaction->invoice_no])];
         } catch (Exception $e) {
             DB::rollBack();
@@ -2809,15 +2837,23 @@ class SellPosController extends Controller
     /**
      * download pdf for given transaction
      */
-    private function createAttractMpdf(): \Mpdf\Mpdf
+    private function createAttractMpdf(string $document_title = 'INVOICE'): \Mpdf\Mpdf
     {
-        $footerPath = public_path('images/footer (1).png');
-
-        // Calculate footer height proportional to A4 width (210mm)
-        $footerHmm = 34;
-        if (file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
-            $footerHmm = round(210 * $fi[1] / $fi[0], 2);
+        $footerPath = public_path('images/footer.png');
+        if (! file_exists($footerPath)) {
+            $footerPath = public_path('images/footer (1).png');
         }
+
+        // Brand footer image height (A4 width 210mm)
+        $footerImgHmm = 34;
+        if (file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
+            $footerImgHmm = round(210 * $fi[1] / $fi[0], 2);
+            $footerImgHmm = min(42, max(28, $footerImgHmm + 1));
+        }
+
+        // Extra space for signature block sitting just above the brand footer
+        $signZoneHmm = 32;
+        $marginBottom = $footerImgHmm + $signZoneHmm;
 
         $mpdf = new \Mpdf\Mpdf([
             'tempDir'        => public_path('uploads/temp'),
@@ -2827,7 +2863,7 @@ class SellPosController extends Controller
             'autoVietnamese'   => true,
             'autoArabic'       => true,
             'margin_top'     => 0,
-            'margin_bottom'  => $footerHmm,
+            'margin_bottom'  => $marginBottom,
             'margin_left'    => 0,
             'margin_right'   => 0,
             'margin_footer'  => 0,
@@ -2835,16 +2871,13 @@ class SellPosController extends Controller
         ]);
 
         $mpdf->useSubstitutions = true;
+        $mpdf->SetAutoPageBreak(true, $marginBottom);
 
-        // Attach footer image via mPDF native footer (most reliable method)
-        if (file_exists($footerPath)) {
-            $footerB64  = base64_encode(file_get_contents($footerPath));
-            $footerHtml = '<div style="margin:0;padding:0;line-height:0;font-size:0;">'
-                        . '<img src="data:image/png;base64,' . $footerB64 . '" '
-                        . 'style="width:210mm;display:block;" />'
-                        . '</div>';
-            $mpdf->SetHTMLFooter($footerHtml);
-        }
+        // Signature + brand footer pinned to page bottom
+        $footerHtml = view('sale_pos.receipts.partials.attract_pdf_footer', [
+            'document_title' => $document_title,
+        ])->render();
+        $mpdf->SetHTMLFooter($footerHtml);
 
         return $mpdf;
     }
@@ -2876,7 +2909,7 @@ class SellPosController extends Controller
             ->render();
 
         if ($blade_file === 'download_pdf') {
-            $mpdf = $this->createAttractMpdf();
+            $mpdf = $this->createAttractMpdf('INVOICE');
         } else {
             $mpdf = new \Mpdf\Mpdf(['tempDir' => public_path('uploads/temp'),
                 'mode' => 'utf-8',
@@ -2918,7 +2951,7 @@ class SellPosController extends Controller
             ->with(compact('receipt_details', 'location_details', 'sub_status'))
             ->render();
         $pdf_name = (!empty($sub_status) && $sub_status == 'proforma') ? __('lang_v1.proforma_invoice') : 'QUOTATION';
-        $mpdf = $this->createAttractMpdf();
+        $mpdf = $this->createAttractMpdf($pdf_name === 'QUOTATION' ? 'QUOTATION' : 'INVOICE');
 
         $mpdf->SetTitle($pdf_name . '-' . $receipt_details->invoice_no . '.pdf');
         $mpdf->WriteHTML($body);
