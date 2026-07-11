@@ -38,27 +38,53 @@ class WhatsappController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        // Merge any LID → real phone mappings discovered by WhatsApp service
-        WhatsappLidResolver::mergeAllFromMap();
+        try {
+            // Merge any LID → real phone mappings discovered by WhatsApp service
+            WhatsappLidResolver::mergeAllFromMap();
+        } catch (\Throwable $e) {
+            \Log::warning('WhatsApp LID merge skipped: '.$e->getMessage());
+        }
 
-        $threads = $this->threadQuery($isAdmin, $isAgent)->get();
+        try {
+            $threads = $this->threadQuery($isAdmin, $isAgent)->get();
+        } catch (\Throwable $e) {
+            \Log::error('WhatsApp inbox query failed: '.$e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->view('whatsapp.inbox_error', [
+                'message' => 'WhatsApp inbox database tables may be missing. Run: php artisan migrate --force',
+                'detail' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
 
         // Build a phone → contact map for the initial server-side render
-        $phones   = $threads->pluck('phone_number')->all();
-        $contacts = WhatsappContact::whereIn('phone_number', $phones)
-            ->with('labels')
-            ->get()
-            ->keyBy('phone_number');
+        $phones = $threads->pluck('phone_number')->all();
+        try {
+            $contacts = WhatsappContact::whereIn('phone_number', $phones)
+                ->with('labels')
+                ->get()
+                ->keyBy('phone_number');
+        } catch (\Throwable $e) {
+            \Log::warning('WhatsApp contacts load failed: '.$e->getMessage());
+            $contacts = collect();
+        }
 
         // Assignment map for initial render
-        $assignments = WhatsappChatAssignment::whereIn('phone_number', $phones)
-            ->where('status', 'open')
-            ->with('agent')
-            ->get()
-            ->keyBy('phone_number');
+        try {
+            $assignments = WhatsappChatAssignment::whereIn('phone_number', $phones)
+                ->where('status', 'open')
+                ->with('agent')
+                ->get()
+                ->keyBy('phone_number');
+        } catch (\Throwable $e) {
+            \Log::warning('WhatsApp assignments load failed: '.$e->getMessage());
+            $assignments = collect();
+        }
 
-        $status    = $this->whatsappService->getStatus();
-        $userId    = $user->id;
+        $status = $this->whatsappService->getStatus();
+        $userId = $user->id;
         $openPhone = preg_replace('/\D/', '', (string) $request->query('phone', ''));
 
         return response()
