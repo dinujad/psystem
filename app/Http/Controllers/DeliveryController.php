@@ -254,31 +254,51 @@ class DeliveryController extends Controller
             $result = $this->fardar->createNewWaybill($apiPayload);
         }
 
-        $parcel = DeliveryParcel::create([
-            'business_id' => $businessId,
-            'transaction_id' => $data['transaction_id'] ?? null,
-            'order_id' => $data['order_id'] ?? null,
-            'waybill_no' => $result['waybill_no'] ?: ($data['waybill_id'] ?? null),
-            'waybill_mode' => $data['waybill_mode'],
-            'parcel_weight' => $data['parcel_weight'],
-            'parcel_description' => $data['parcel_description'],
-            'recipient_name' => $data['recipient_name'],
-            'recipient_contact_1' => $data['recipient_contact_1'],
-            'recipient_contact_2' => $data['recipient_contact_2'] ?? null,
-            'recipient_address' => $data['recipient_address'],
-            'recipient_city' => $data['recipient_city'],
-            'amount' => $data['amount'],
-            'exchange' => (int) $data['exchange'],
-            'current_status' => $result['success'] ? 'Pending' : 'api_failed',
-            'api_status_code' => $result['status'],
-            'api_response' => $result['raw'],
-            'created_by' => auth()->id(),
-        ]);
+        try {
+            $parcel = DeliveryParcel::create([
+                'business_id' => $businessId,
+                'transaction_id' => $data['transaction_id'] ?? null,
+                'order_id' => $data['order_id'] ?? null,
+                'waybill_no' => $result['waybill_no'] ?: ($data['waybill_id'] ?? null),
+                'waybill_mode' => $data['waybill_mode'],
+                'parcel_weight' => $data['parcel_weight'],
+                'parcel_description' => $data['parcel_description'],
+                'recipient_name' => $data['recipient_name'],
+                'recipient_contact_1' => $data['recipient_contact_1'],
+                'recipient_contact_2' => $data['recipient_contact_2'] ?? null,
+                'recipient_address' => $data['recipient_address'],
+                'recipient_city' => $data['recipient_city'],
+                'amount' => $data['amount'],
+                'exchange' => (int) $data['exchange'],
+                'current_status' => $result['success'] ? 'Pending' : 'api_failed',
+                'api_status_code' => $result['status'],
+                'api_response' => $result['raw'],
+                'created_by' => auth()->id(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Delivery parcel save failed: '.$e->getMessage(), [
+                'business_id' => $businessId,
+            ]);
+
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('status', [
+                    'success' => 0,
+                    'msg' => 'Fardar API responded but saving the delivery record failed. Run migrations (tracking_token) or check logs.',
+                ]);
+        }
 
         if ($result['success']) {
-            $parcel->pushStatusHistory($parcel->current_status ?: 'Pending');
-            $parcel->last_update_time = now();
-            $parcel->save();
+            try {
+                $parcel->pushStatusHistory($parcel->current_status ?: 'Pending');
+                $parcel->last_update_time = now();
+                $parcel->save();
+            } catch (\Throwable $e) {
+                Log::warning('Delivery status history save skipped: '.$e->getMessage(), [
+                    'parcel_id' => $parcel->id,
+                ]);
+            }
         }
 
         if ($result['success'] && $parcel->transaction_id) {
@@ -312,11 +332,33 @@ class DeliveryController extends Controller
             ]);
         }
 
+        $successMsg = 'Successfully sent to Fardar Express Domestic. Waybill: '.$parcel->waybill_no;
+
+        // Back to sales list with success popup (do not open packing slip)
+        if (! empty($parcel->transaction_id)) {
+            return redirect()
+                ->action([\App\Http\Controllers\SellController::class, 'index'])
+                ->with('status', [
+                    'success' => 1,
+                    'msg' => $successMsg,
+                ])
+                ->with('swal_popup', [
+                    'type' => 'success',
+                    'title' => 'Sent to Fardar',
+                    'text' => $successMsg,
+                ]);
+        }
+
         return redirect()
-            ->route('delivery.show', $parcel->id)
+            ->route('delivery.index')
             ->with('status', [
                 'success' => 1,
-                'msg' => 'Waybill '.$parcel->waybill_no.' created. Customer tracking WhatsApp sent (if connected).',
+                'msg' => $successMsg,
+            ])
+            ->with('swal_popup', [
+                'type' => 'success',
+                'title' => 'Sent to Fardar',
+                'text' => $successMsg,
             ]);
     }
 

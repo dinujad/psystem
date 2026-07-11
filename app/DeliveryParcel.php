@@ -3,6 +3,7 @@
 namespace App;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class DeliveryParcel extends Model
@@ -23,10 +24,41 @@ class DeliveryParcel extends Model
     protected static function booted()
     {
         static::creating(function (DeliveryParcel $parcel) {
+            if (! static::hasTrackingTokenColumn()) {
+                return;
+            }
             if (empty($parcel->tracking_token)) {
                 $parcel->tracking_token = Str::random(40);
             }
         });
+    }
+
+    public static function hasTrackingTokenColumn(): bool
+    {
+        static $cache = null;
+        if ($cache === null) {
+            try {
+                $cache = Schema::hasColumn((new static)->getTable(), 'tracking_token');
+            } catch (\Throwable $e) {
+                $cache = false;
+            }
+        }
+
+        return $cache;
+    }
+
+    public static function hasStatusHistoryColumn(): bool
+    {
+        static $cache = null;
+        if ($cache === null) {
+            try {
+                $cache = Schema::hasColumn((new static)->getTable(), 'status_history');
+            } catch (\Throwable $e) {
+                $cache = false;
+            }
+        }
+
+        return $cache;
     }
 
     public function business()
@@ -51,9 +83,15 @@ class DeliveryParcel extends Model
 
     public function trackingUrl(): string
     {
+        if (! static::hasTrackingTokenColumn()) {
+            return url('/');
+        }
+
         if (empty($this->tracking_token)) {
             $this->tracking_token = Str::random(40);
-            $this->save();
+            if ($this->exists) {
+                $this->save();
+            }
         }
 
         return url('/track/'.$this->tracking_token);
@@ -61,6 +99,10 @@ class DeliveryParcel extends Model
 
     public function pushStatusHistory(string $status, $at = null): void
     {
+        if (! static::hasStatusHistoryColumn()) {
+            return;
+        }
+
         $history = is_array($this->status_history) ? $this->status_history : [];
         $atStr = $at
             ? (is_string($at) ? $at : $at->format('Y-m-d H:i:s'))

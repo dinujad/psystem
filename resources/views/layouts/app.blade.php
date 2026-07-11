@@ -73,6 +73,12 @@
             <input type="hidden" id="status_span" data-status="{{ session('status.success') }}"
                 data-msg="{{ session('status.msg') }}">
         @endif
+        @if (session('swal_popup'))
+            <input type="hidden" id="swal_popup_span"
+                data-type="{{ session('swal_popup.type', 'success') }}"
+                data-title="{{ session('swal_popup.title') }}"
+                data-text="{{ session('swal_popup.text') }}">
+        @endif
         <main class="tw-flex tw-flex-col tw-flex-1 tw-h-full tw-min-w-0 tw-bg-gray-100">
             @if($request->segment(1) != 'customer-display' && !$pos_layout)
                 @include('layouts.partials.header')

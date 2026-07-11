@@ -34,6 +34,16 @@ $(document).ready(function () {
         }
     }
 
+    if ($('#swal_popup_span').length && typeof swal === 'function') {
+        var swalType = $('#swal_popup_span').attr('data-type') || 'success';
+        swal({
+            title: $('#swal_popup_span').attr('data-title') || '',
+            text: $('#swal_popup_span').attr('data-text') || '',
+            icon: swalType,
+            button: 'OK',
+        });
+    }
+
     //Default setting for select2
     $.fn.select2.defaults.set('minimumResultsForSearch', 6);
     if ($('html').attr('dir') == 'rtl') {
