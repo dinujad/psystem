@@ -264,14 +264,28 @@ class QuotationSmsNotifier
 
     private function resolveSmsSettings(Business $business): array
     {
-        $settings = $business->sms_settings ?? [];
-        $service = $settings['sms_service'] ?? env('SMS_DRIVER', 'textlk');
+        $settings = is_array($business->sms_settings ?? null) ? $business->sms_settings : [];
+
+        // Prefer Coolify / .env TextLK credentials so Business Settings cannot block SMS
+        $envKey = env('TEXTLK_API_KEY');
+        $envDriver = env('SMS_DRIVER', 'textlk');
+
+        if (! empty($envKey)) {
+            return array_merge($settings, [
+                'sms_service' => 'textlk',
+                'textlk_api_key' => $envKey,
+                'textlk_sender_id' => env('TEXTLK_SENDER_ID', $settings['textlk_sender_id'] ?? 'PrintWorks'),
+                'textlk_url' => env('TEXTLK_URL', $settings['textlk_url'] ?? 'https://app.text.lk/api/v3/sms/send'),
+            ]);
+        }
+
+        $service = $settings['sms_service'] ?? $envDriver;
 
         return array_merge($settings, [
             'sms_service' => $service,
-            'textlk_api_key' => ! empty($settings['textlk_api_key']) ? $settings['textlk_api_key'] : env('TEXTLK_API_KEY'),
-            'textlk_sender_id' => ! empty($settings['textlk_sender_id']) ? $settings['textlk_sender_id'] : env('TEXTLK_SENDER_ID', 'PrintWorks'),
-            'textlk_url' => ! empty($settings['textlk_url']) ? $settings['textlk_url'] : env('TEXTLK_URL', 'https://app.text.lk/api/v3/sms/send'),
+            'textlk_api_key' => $settings['textlk_api_key'] ?? null,
+            'textlk_sender_id' => $settings['textlk_sender_id'] ?? env('TEXTLK_SENDER_ID', 'PrintWorks'),
+            'textlk_url' => $settings['textlk_url'] ?? env('TEXTLK_URL', 'https://app.text.lk/api/v3/sms/send'),
         ]);
     }
 }
