@@ -229,6 +229,17 @@
     $('#allow_login').on('ifUnchecked', function(event){
       $('div.user_auth_fields').addClass('hide');
     });
+    // Native fallback when iCheck skin is not applied
+    $('#allow_login').on('change', function(){
+      if ($(this).parent().hasClass('icheckbox_square-blue')) {
+        return;
+      }
+      if ($(this).prop('checked')) {
+        $('div.user_auth_fields').removeClass('hide');
+      } else {
+        $('div.user_auth_fields').addClass('hide');
+      }
+    });
 
     $('#user_allowed_contacts').select2({
         ajax: {
