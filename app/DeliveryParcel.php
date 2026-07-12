@@ -83,18 +83,30 @@ class DeliveryParcel extends Model
 
     public function trackingUrl(): string
     {
-        if (! static::hasTrackingTokenColumn()) {
-            return url('/');
-        }
+        $base = rtrim((string) (config('services.tracking.portal_url') ?: config('app.url')), '/');
 
-        if (empty($this->tracking_token)) {
-            $this->tracking_token = Str::random(40);
-            if ($this->exists) {
-                $this->save();
+        if (static::hasTrackingTokenColumn()) {
+            if (empty($this->tracking_token)) {
+                $this->tracking_token = Str::random(40);
+                if ($this->exists) {
+                    try {
+                        $this->save();
+                    } catch (\Throwable $e) {
+                        // still return a portal link; lookup by waybill as fallback below if needed
+                    }
+                }
+            }
+
+            if (! empty($this->tracking_token)) {
+                return $base.'/tracking-portal/'.$this->tracking_token;
             }
         }
 
-        return url('/track/'.$this->tracking_token);
+        if (! empty($this->waybill_no)) {
+            return $base.'/tracking-portal?waybill='.rawurlencode((string) $this->waybill_no);
+        }
+
+        return $base.'/tracking-portal';
     }
 
     public function pushStatusHistory(string $status, $at = null): void

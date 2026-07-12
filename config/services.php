@@ -47,4 +47,12 @@ return [
         'pickup_phone' => env('FARDAR_PICKUP_PHONE', '706668885'),
     ],
 
+    /*
+    | Public customer Tracking Portal (WhatsApp live-track links).
+    | Optional absolute base, e.g. https://track.printworks.lk
+    */
+    'tracking' => [
+        'portal_url' => env('TRACKING_PORTAL_URL'), // empty = use APP_URL + /tracking-portal
+    ],
+
 ];

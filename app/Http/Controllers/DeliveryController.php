@@ -363,17 +363,91 @@ class DeliveryController extends Controller
     }
 
     /**
-     * Public live tracking page for customers.
+     * Public Tracking Portal home — customers can look up a shipment.
      */
-    public function track(string $token)
+    public function trackingPortalHome(Request $request)
     {
+        $q = trim((string) $request->get('waybill', $request->get('q', '')));
+        $error = null;
+        $parcel = null;
+
+        if ($q !== '') {
+            $parcel = DeliveryParcel::with('transaction')
+                ->where(function ($query) use ($q) {
+                    $query->where('waybill_no', $q)
+                        ->orWhere('order_id', $q);
+                    if (DeliveryParcel::hasTrackingTokenColumn()) {
+                        $query->orWhere('tracking_token', $q);
+                    }
+                    if (ctype_digit($q)) {
+                        $query->orWhere('id', (int) $q);
+                    }
+                })
+                ->orderByDesc('id')
+                ->first();
+
+            if ($parcel && DeliveryParcel::hasTrackingTokenColumn() && ! empty($parcel->tracking_token)) {
+                return redirect()->route('delivery.tracking_portal.show', $parcel->tracking_token);
+            }
+
+            if ($parcel) {
+                return response()
+                    ->view('delivery.tracking_portal', [
+                        'parcel' => $parcel,
+                        'mode' => 'result',
+                        'search' => $q,
+                        'error' => null,
+                    ])
+                    ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+            }
+
+            $error = 'No shipment found for “'.$q.'”. Check the Tracking ID / Waybill and try again.';
+        }
+
+        return response()
+            ->view('delivery.tracking_portal', [
+                'parcel' => null,
+                'mode' => 'home',
+                'search' => $q,
+                'error' => $error,
+            ])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    /**
+     * Public Tracking Portal shipment page (token deep-link from WhatsApp).
+     */
+    public function trackingPortalShow(string $token)
+    {
+        if (! DeliveryParcel::hasTrackingTokenColumn()) {
+            return redirect()
+                ->route('delivery.tracking_portal')
+                ->with('status', [
+                    'success' => 0,
+                    'msg' => 'Tracking portal tokens are not available yet. Search by Waybill ID.',
+                ]);
+        }
+
         $parcel = DeliveryParcel::with('transaction')
             ->where('tracking_token', $token)
             ->firstOrFail();
 
         return response()
-            ->view('delivery.track', compact('parcel'))
+            ->view('delivery.tracking_portal', [
+                'parcel' => $parcel,
+                'mode' => 'result',
+                'search' => $parcel->waybill_no,
+                'error' => null,
+            ])
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    /**
+     * Legacy /track/{token} → Tracking Portal.
+     */
+    public function track(string $token)
+    {
+        return redirect()->route('delivery.tracking_portal.show', $token);
     }
 
     public function show($id)

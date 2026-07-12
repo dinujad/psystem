@@ -108,7 +108,13 @@ Route::post('/whatsapp/webhook/lid-merge', [WhatsappController::class, 'lidMerge
 
 // Fardar Express reverse API (status callbacks)
 Route::post('/delivery/webhook/status', [\App\Http\Controllers\DeliveryController::class, 'statusWebhook']);
-// Public customer live tracking page
+// Public customer Tracking Portal (WhatsApp live-track links)
+Route::get('/tracking-portal', [\App\Http\Controllers\DeliveryController::class, 'trackingPortalHome'])
+    ->name('delivery.tracking_portal');
+Route::get('/tracking-portal/{token}', [\App\Http\Controllers\DeliveryController::class, 'trackingPortalShow'])
+    ->where('token', '[A-Za-z0-9]+')
+    ->name('delivery.tracking_portal.show');
+// Legacy alias
 Route::get('/track/{token}', [\App\Http\Controllers\DeliveryController::class, 'track'])
     ->where('token', '[A-Za-z0-9]+')
     ->name('delivery.track');

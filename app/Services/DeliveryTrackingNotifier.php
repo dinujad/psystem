@@ -84,7 +84,7 @@ class DeliveryTrackingNotifier
 
         $lines = array_merge($lines, [
             '',
-            'Track your order live:',
+            'Track your order live on our Tracking Portal:',
             $trackUrl,
             '',
             '_System generated message_',
