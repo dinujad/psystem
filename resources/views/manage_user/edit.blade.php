@@ -76,9 +76,9 @@
             <div class="col-md-4">
                 <div class="form-group">
                     <div class="checkbox">
-                      <label>
+                      <label style="display:inline-flex;align-items:center;gap:8px;padding-left:0;cursor:pointer;">
                         {!! Form::checkbox('allow_login', 1, !empty($user->allow_login), 
-                        [ 'class' => 'input-icheck', 'id' => 'allow_login']); !!} {{ __( 'lang_v1.allow_login' ) }}
+                        [ 'class' => 'input-icheck', 'id' => 'allow_login', 'style' => 'position:static !important;opacity:1 !important;visibility:visible !important;width:18px !important;height:18px !important;margin:0 8px 0 0 !important;display:inline-block !important;-webkit-appearance:checkbox !important;appearance:auto !important;accent-color:#3c8dbc;cursor:pointer;']); !!} {{ __( 'lang_v1.allow_login' ) }}
                       </label>
                     </div>
                 </div>
@@ -212,12 +212,51 @@
 <script type="text/javascript">
   $(document).ready(function(){
     __page_leave_confirmation('#user_edit_form');
+
+    // Force Allow login + other user form checkboxes to native (iCheck hides them)
+    function unwrapUserCheckboxes() {
+      $('#user_edit_form input.input-icheck, #allow_login').each(function () {
+        var $el = $(this);
+        if ($el.data('iCheck')) {
+          try { $el.iCheck('destroy'); } catch (e) {}
+        }
+        var $parent = $el.parent();
+        if ($parent.hasClass('icheckbox_square-blue') || $parent.hasClass('iradio_square-blue')) {
+          $el.insertBefore($parent);
+          $parent.find('ins').remove();
+          $parent.remove();
+        }
+        $el.css({
+          position: 'static',
+          opacity: 1,
+          visibility: 'visible',
+          width: '18px',
+          height: '18px',
+          margin: '0 8px 0 0',
+          display: 'inline-block',
+          WebkitAppearance: 'checkbox',
+          appearance: 'auto',
+          accentColor: '#3c8dbc',
+          cursor: 'pointer'
+        });
+      });
+    }
+    unwrapUserCheckboxes();
+    setTimeout(unwrapUserCheckboxes, 300);
     
     $('#selected_contacts').on('ifChecked', function(event){
       $('div.selected_contacts_div').removeClass('hide');
     });
     $('#selected_contacts').on('ifUnchecked', function(event){
       $('div.selected_contacts_div').addClass('hide');
+    });
+    $('#selected_contacts').on('change', function(){
+      if ($(this).parent().hasClass('icheckbox_square-blue')) return;
+      if ($(this).prop('checked')) {
+        $('div.selected_contacts_div').removeClass('hide');
+      } else {
+        $('div.selected_contacts_div').addClass('hide');
+      }
     });
 
     $('#is_enable_service_staff_pin').on('ifChecked', function(event){
@@ -228,6 +267,15 @@
       $('div.service_staff_pin_div').addClass('hide');
       $('#service_staff_pin').val('');
     });
+    $('#is_enable_service_staff_pin').on('change', function(){
+      if ($(this).parent().hasClass('icheckbox_square-blue')) return;
+      if ($(this).prop('checked')) {
+        $('div.service_staff_pin_div').removeClass('hide');
+      } else {
+        $('div.service_staff_pin_div').addClass('hide');
+        $('#service_staff_pin').val('');
+      }
+    });
 
     $('#allow_login').on('ifChecked', function(event){
       $('div.user_auth_fields').removeClass('hide');
@@ -235,11 +283,7 @@
     $('#allow_login').on('ifUnchecked', function(event){
       $('div.user_auth_fields').addClass('hide');
     });
-    // Native fallback when iCheck skin is not applied
     $('#allow_login').on('change', function(){
-      if ($(this).parent().hasClass('icheckbox_square-blue')) {
-        return;
-      }
       if ($(this).prop('checked')) {
         $('div.user_auth_fields').removeClass('hide');
       } else {
