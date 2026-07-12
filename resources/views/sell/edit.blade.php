@@ -176,6 +176,29 @@
 						$status = $transaction->status;
 					}
 				@endphp
+				@if($status == 'quotation')
+					@php
+						$validTillTop = !empty($transaction->quotation_valid_till)
+							? \Carbon\Carbon::parse($transaction->quotation_valid_till)->format(session('business.date_format'))
+							: \Carbon\Carbon::now()->addDays(7)->format(session('business.date_format'));
+					@endphp
+					<div class="col-sm-3">
+						<div class="form-group">
+							{!! Form::label('quotation_valid_till', 'Valid till / Due date' . ':*') !!}
+							<div class="input-group">
+								<span class="input-group-addon">
+									<i class="fa fa-calendar"></i>
+								</span>
+								{!! Form::text('quotation_valid_till', old('quotation_valid_till', $validTillTop), [
+									'class' => 'form-control',
+									'id' => 'quotation_valid_till',
+									'readonly',
+									'required',
+								]) !!}
+							</div>
+						</div>
+					</div>
+				@endif
 				@if($transaction->type == 'sales_order')
 					<input type="hidden" name="status" id="status" value="{{$transaction->status}}">
 				@else
@@ -473,8 +496,12 @@
 			    </div>
 			    <div class="col-md-12">
 			    	<div class="form-group">
+					<div class="col-sm-12 @if(!empty($status) && $status == 'quotation') hide @endif">
+						<div class="form-group">
 						{!! Form::label('sell_note',__('sale.sell_note') . ':') !!}
 						{!! Form::textarea('sale_note', $transaction->additional_notes, ['class' => 'form-control', 'rows' => 3]); !!}
+						</div>
+					</div>
 					</div>
 			    </div>
 			    <input type="hidden" name="is_direct_sale" value="1">
@@ -756,12 +783,20 @@
 						<div class="form-group">
 							{!! Form::label('pdf_bank_details', __('lang_v1.bank_details') . ':') !!}
 							@show_tooltip(__('lang_v1.this_will_be_shown_in_pdf'))
-							{!! Form::textarea('pdf_bank_details', $transaction->pdf_bank_details, ['class' => 'form-control', 'rows' => 3, 'placeholder' => "Account number: ...\nBank: ...\nBranch: ..."]); !!}
+							{!! Form::textarea('pdf_bank_details', old('pdf_bank_details', $transaction->pdf_bank_details ?: config('constants.default_pdf_bank_details')), ['class' => 'form-control', 'rows' => 6, 'placeholder' => config('constants.default_pdf_bank_details')]); !!}
 						</div>
 					</div>
 				</div>
 			@endcomponent
 		@endcan
+	@endif
+
+	@if(!empty($status) && $status == 'quotation')
+		@include('sell.partials.quotation_pdf_fields', [
+			'defaultQuotationTerms' => $transaction->quotation_terms ?: config('constants.default_quotation_terms'),
+			'savedAdditionalTermsJson' => $transaction->quotation_additional_terms ?? null,
+			'saleNoteValue' => old('sale_note', $transaction->additional_notes),
+		])
 	@endif
 
 	@if($transaction->type = 'sell')
@@ -879,6 +914,9 @@
     @endif
     <script type="text/javascript">
     	$(document).ready( function(){
+    		if ($('#quotation_valid_till').length) {
+    			$('#quotation_valid_till').datepicker(datepicker_date_format);
+    		}
     		$('#shipping_documents').fileinput({
 		        showUpload: false,
 		        showPreview: false,

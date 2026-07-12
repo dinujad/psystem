@@ -1,94 +1,252 @@
 @php
-    $letterheadPath = public_path('images/attract_letterhead_HQ.png');
-    $signPath       = public_path('images/sign.png');
-    $logoPath       = public_path('images/logo.jpeg');
-    $footerPath     = public_path('images/footer.png');
+    $logoPath = public_path('images/printworks_logo.png');
+    if (! file_exists($logoPath)) {
+        $logoPath = public_path('images/logo.png');
+    }
+    $footerPath = public_path('images/footer.png');
     if (! file_exists($footerPath)) {
         $footerPath = public_path('images/footer (1).png');
     }
 
-    $letterheadB64 = file_exists($letterheadPath) ? base64_encode(file_get_contents($letterheadPath)) : null;
-    $signB64       = file_exists($signPath) ? base64_encode(file_get_contents($signPath)) : null;
-    $logoB64       = file_exists($logoPath) ? base64_encode(file_get_contents($logoPath)) : null;
-    $footerB64     = file_exists($footerPath) ? base64_encode(file_get_contents($footerPath)) : null;
+    $logoB64   = file_exists($logoPath) ? base64_encode(file_get_contents($logoPath)) : null;
+    $footerB64 = file_exists($footerPath) ? base64_encode(file_get_contents($footerPath)) : null;
 
-    // Browser print embeds footer in body; mPDF uses SetHTMLFooter (page bottom).
     $embedFooter = $embed_footer ?? true;
 
     $docTitle = $document_title ?? 'INVOICE';
-    $isQuotation = ! empty($receipt_details->is_quotation);
-    if ($isQuotation && empty($document_title)) {
+    $isProforma = ! empty($receipt_details->is_proforma)
+        || ($receipt_details->sub_status ?? '') === 'proforma'
+        || strtoupper((string) ($document_title ?? '')) === 'PROFORMA INVOICE';
+    $isQuotation = ! empty($receipt_details->is_quotation) && ! $isProforma;
+
+    if ($isProforma) {
+        $docTitle = 'PROFORMA INVOICE';
+    } elseif ($isQuotation && empty($document_title)) {
         $docTitle = 'QUOTATION';
     }
 
     $invNo = (string) ($receipt_details->invoice_no ?? '');
-    $label = $isQuotation ? 'QUOTE NO' : 'INVOICE NO';
+    $primaryNoLabel = $isProforma ? 'PI NO' : ($isQuotation ? 'QUOTE NO' : 'INVOICE NO');
+    $quoteNo = $isQuotation
+        ? $invNo
+        : (string) ($receipt_details->quotation_no ?? $receipt_details->parent_invoice_no ?? $receipt_details->quotation_ref_no ?? '');
 
+    $customerName = trim((string) ($receipt_details->customer_name ?? 'Walk-In Customer'));
     $customerAddress = trim(strip_tags($receipt_details->customer_info_address ?? ''));
-    if ($customerAddress === '' && ! empty($receipt_details->customer_mobile)) {
-        $customerAddress = 'Mobile: '.$receipt_details->customer_mobile;
-    }
     if ($customerAddress === '' && ! empty($receipt_details->customer_info)) {
         $plain = trim(preg_replace('/\s+/', ' ', strip_tags($receipt_details->customer_info)));
-        $cname = trim($receipt_details->customer_name ?? '');
-        if ($cname !== '' && str_starts_with($plain, $cname)) {
-            $plain = trim(substr($plain, strlen($cname)));
+        if ($customerName !== '' && str_starts_with($plain, $customerName)) {
+            $plain = trim(substr($plain, strlen($customerName)));
         }
-        $customerAddress = $plain !== '' ? $plain : '—';
+        $customerAddress = $plain;
+    }
+    // Remove duplicated name / phone / email from address blob
+    $customerEmail = trim((string) ($receipt_details->customer_email ?? ''));
+    $customerPhone = trim((string) ($receipt_details->customer_mobile ?? ''));
+    if ($customerAddress !== '') {
+        $parts = array_values(array_filter(array_map('trim', explode(',', $customerAddress))));
+        $clean = [];
+        $seen = [];
+        foreach ($parts as $part) {
+            $key = strtolower(preg_replace('/\s+/', ' ', $part));
+            if ($key === '') {
+                continue;
+            }
+            if ($customerName !== '' && strcasecmp($part, $customerName) === 0) {
+                continue;
+            }
+            if ($customerPhone !== '' && preg_replace('/\D+/', '', $part) === preg_replace('/\D+/', '', $customerPhone)) {
+                continue;
+            }
+            if ($customerEmail !== '' && strcasecmp($part, $customerEmail) === 0) {
+                continue;
+            }
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $clean[] = $part;
+        }
+        $customerAddress = implode(', ', $clean);
     }
 
-    $bankTransferTotal = $receipt_details->bank_transfer_total ?? null;
-    $brandRed = '#ED1C24';
-    $brandPink = '#FCE8E9';
-    $brandPinkSoft = '#FFF5F5';
+    $invoiceDateRaw = (string) ($receipt_details->invoice_date ?? '');
+    $dateDisplay = $invoiceDateRaw;
+    $dayName = '';
+    try {
+        $dt = \Carbon\Carbon::parse(strip_tags($invoiceDateRaw));
+        $dayName = strtoupper($dt->format('l'));
+        $dateDisplay = $dt->format('jS F, Y');
+    } catch (\Throwable $e) {
+        // keep original string
+    }
+
+    $salesChannel = trim((string) ($receipt_details->types_of_service ?? ''));
+    if ($salesChannel === '') {
+        $salesChannel = trim((string) ($receipt_details->sales_person ?? ''));
+    }
+    if ($salesChannel === '') {
+        $salesChannel = $isQuotation ? 'Quotation' : ($isProforma ? 'Proforma' : 'POS');
+    }
+
+    $currencySym = $receipt_details->currency['symbol'] ?? 'Rs.';
+    $showDueFields = ! $isQuotation && ! $isProforma;
+    $showBalanceDueHeader = ! $isQuotation;
+    $grandTotalDisplay = (string) ($receipt_details->total ?? '');
+    $totalDueRaw = $receipt_details->total_due ?? null;
+    $totalPaid = $receipt_details->total_paid ?? ($currencySym.' 0.00');
+    $dueDate = $receipt_details->due_date ?? $dateDisplay;
+    $paymentStatusRaw = strtolower(trim((string) ($receipt_details->payment_status ?? '')));
+    $isPaid = $showDueFields && (
+        $paymentStatusRaw === 'paid'
+        || (is_numeric($totalDueRaw) && (float) $totalDueRaw == 0)
+        || (is_string($totalDueRaw) && preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalDueRaw))
+    );
+    $hasAdvancePayment = $showDueFields
+        && ! empty($totalPaid)
+        && $totalPaid !== 0
+        && $totalPaid !== '0'
+        && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalPaid);
+
+    $balanceDue = $currencySym.' 0.00';
+    if ($isProforma && $grandTotalDisplay !== '') {
+        // Proforma: payment not yet received — show full grand total as balance due
+        $balanceDue = $grandTotalDisplay;
+    } elseif ($showDueFields) {
+        if (! empty($totalDueRaw) && $totalDueRaw !== 0 && $totalDueRaw !== '0'
+            && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalDueRaw)) {
+            $balanceDue = (string) $totalDueRaw;
+        } elseif (! $isPaid && $grandTotalDisplay !== '') {
+            $balanceDue = $grandTotalDisplay;
+        }
+    }
+
+    $showTotalDueRow = $showDueFields && (
+        ! $isPaid
+        || (! empty($totalDueRaw) && $totalDueRaw !== 0 && $totalDueRaw !== '0'
+            && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalDueRaw))
+    );
+
+    $paymentStatus = ucfirst((string) ($receipt_details->payment_status ?? ''));
+    if ($isPaid) {
+        $paymentStatus = 'Paid';
+    } elseif ($paymentStatus === '') {
+        $paymentStatus = $isQuotation ? 'Quotation' : ($isProforma ? 'Proforma' : '—');
+    }
 
     $bankText = trim((string) ($receipt_details->pdf_bank_details ?? ''));
-    if ($bankText === '' && ! empty($receipt_details->preferred_payment_method)) {
-        $bankText = 'Payment mode: '.$receipt_details->preferred_payment_method;
-    }
     if ($bankText === '' && ! empty($receipt_details->preferred_account_details)) {
         $acc = (array) $receipt_details->preferred_account_details;
         $bankLines = [];
         if (! empty($acc['account_holder_name'])) {
-            $bankLines[] = 'Account Name: '.$acc['account_holder_name'];
+            $bankLines[] = $acc['account_holder_name'];
         }
         if (! empty($acc['account_number'])) {
-            $bankLines[] = 'Account Number: '.$acc['account_number'];
+            $bankLines[] = 'Account No : '.$acc['account_number'];
         }
-        if (! empty($acc['bank_name'])) {
-            $bankLines[] = 'Bank: '.$acc['bank_name'];
+        if (! empty($acc['bank_name']) || ! empty($acc['branch'])) {
+            $bankLines[] = trim(($acc['bank_name'] ?? '').(! empty($acc['branch']) ? ' - '.$acc['branch'] : ''));
         }
-        if (! empty($acc['branch'])) {
-            $bankLines[] = 'Branch: '.$acc['branch'];
+        if (! empty($acc['swift_code'])) {
+            $bankLines[] = 'Swift Code : '.$acc['swift_code'];
         }
         $bankText = implode("\n", $bankLines);
     }
-    if ($bankText === '' && ! empty($receipt_details->payments)) {
-        $bankText = 'Payment mode: '.collect($receipt_details->payments)->pluck('method')->filter()->unique()->implode(' / ');
+    if ($bankText === '') {
+        $bankText = (string) config('constants.default_pdf_bank_details');
     }
 
-    // Split free-text bank box into label/value rows when possible
-    $bankRows = [];
-    $paymentModeLine = null;
+    // Normalize into neat display lines (mockup style)
+    $bankDisplayLines = [];
+    $paymentModeLine = 'cash / cheque / bank transfer';
     foreach (preg_split("/\r\n|\n|\r/", $bankText) as $line) {
         $line = trim($line);
         if ($line === '') {
             continue;
         }
-        if (preg_match('/^payment\s*mode\s*:\s*(.+)$/i', $line, $m)) {
+        if (preg_match('/^payment\s*mode\s*:?\s*(.+)$/i', $line, $m)) {
             $paymentModeLine = trim($m[1]);
             continue;
         }
-        if (preg_match('/^([^:]+):\s*(.+)$/', $line, $m)) {
-            $bankRows[] = ['label' => trim($m[1]), 'value' => trim($m[2])];
-        } else {
-            $bankRows[] = ['label' => '', 'value' => $line];
+        // Strip redundant "Company:" / "Bank/Branch:" prefixes for clean look
+        if (preg_match('/^(company|account\s*holder)\s*:?\s*(.+)$/i', $line, $m)) {
+            $bankDisplayLines[] = trim($m[2]);
+            continue;
+        }
+        if (preg_match('/^bank\s*\/?\s*branch\s*:?\s*(.+)$/i', $line, $m)) {
+            $bankDisplayLines[] = trim($m[1]);
+            continue;
+        }
+        if (preg_match('/^account\s*no\.?\s*:?\s*(.+)$/i', $line, $m)) {
+            $bankDisplayLines[] = 'Account No : '.trim($m[1]);
+            continue;
+        }
+        if (preg_match('/^swift\s*code\s*:?\s*(.+)$/i', $line, $m)) {
+            $bankDisplayLines[] = 'Swift Code : '.trim($m[1]);
+            continue;
+        }
+        $bankDisplayLines[] = $line;
+    }
+    $bankDisplayLines[] = 'Payment mode : '.$paymentModeLine;
+
+    $quotationTermsText = trim((string) ($receipt_details->quotation_terms ?? ''));
+    if ($quotationTermsText === '' && $isQuotation) {
+        $quotationTermsText = (string) config('constants.default_quotation_terms');
+    }
+    $quotationTermLines = array_values(array_filter(array_map('trim', preg_split("/\r\n|\n|\r/", $quotationTermsText))));
+    $additionalNoteLines = array_values(array_filter(array_map('trim', preg_split("/\r\n|\n|\r/", (string) ($receipt_details->additional_notes ?? '')))));
+    $additionalTermsSections = \App\Utils\QuotationAdditionalTermsUtil::sectionsForPdf(
+        $receipt_details->quotation_additional_terms ?? null
+    );
+
+    $validTillDisplay = '—';
+    if (! empty($receipt_details->quotation_valid_till)) {
+        try {
+            $validTillDisplay = \Carbon\Carbon::parse($receipt_details->quotation_valid_till)->format('jS F, Y');
+        } catch (\Throwable $e) {
+            $validTillDisplay = (string) $receipt_details->quotation_valid_till;
+        }
+    } elseif ($isQuotation && $dateDisplay !== '') {
+        try {
+            $validTillDisplay = \Carbon\Carbon::parse(strip_tags($invoiceDateRaw))->addDays(7)->format('jS F, Y');
+        } catch (\Throwable $e) {
+            $validTillDisplay = $dateDisplay;
         }
     }
 
-    $paymentHistory = collect($receipt_details->payments ?? [])->filter(function ($p) {
-        return ! empty($p['amount']);
-    })->values();
+    $preparedByName = trim((string) ($receipt_details->prepared_by_name ?? $receipt_details->added_by ?? $receipt_details->sales_person ?? ''));
+    if ($preparedByName === '') {
+        $preparedByName = 'Name';
+    }
+
+    $brandRed = '#E31E24';
+    $rowGrey = '#E8E8E8';
+    $lines = collect($receipt_details->lines ?? [])->values();
+    $itemCount = $lines->count();
+
+    // Fewer line items → slightly larger type/spacing so A4 fills naturally (invoice + quotation).
+    if ($itemCount <= 1) {
+        $contentScale = 1.22;
+    } elseif ($itemCount <= 3) {
+        $contentScale = 1.15;
+    } elseif ($itemCount <= 6) {
+        $contentScale = 1.10;
+    } elseif ($itemCount <= 10) {
+        $contentScale = 1.05;
+    } else {
+        $contentScale = 1.0;
+    }
+
+    $fs = static fn (float $base): string => round($base * $contentScale, 1).'px';
+    $sp = static fn (float $base): string => round($base * $contentScale, 1).'px';
+    $itemRowMinHeight = $itemCount <= 2 ? $sp(36) : ($itemCount <= 5 ? $sp(26) : $sp(18));
+
+    $shadowRed = $embedFooter ? "box-shadow:inset 0 0 0 1000px {$brandRed} !important;" : '';
+    $shadowGrey = $embedFooter ? "box-shadow:inset 0 0 0 1000px {$rowGrey} !important;" : '';
+
+    $logoSrc = (! $embedFooter && file_exists($logoPath))
+        ? $logoPath
+        : (! empty($logoB64) ? 'data:image/png;base64,'.$logoB64 : null);
 @endphp
 <!DOCTYPE html>
 <html>
@@ -96,516 +254,648 @@
 <meta charset="utf-8">
 <title>{{ $docTitle }} {{ $invNo }}</title>
 <style>
-  @page { margin: 0; size: A4; }
+  @if($embedFooter)
+  @page { margin: 10mm 0 0 0; size: A4; color-adjust: exact; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @else
+  @page { margin: 0; }
+  @endif
   html, body {
-    background: #fff;
+    background: #fff !important;
     margin: 0;
     padding: 0;
     font-family: DejaVu Sans, Arial, Helvetica, sans-serif;
     color: #111;
+    font-size: {{ $fs(11) }};
+  }
+  html, body, *, *::before, *::after,
+  table, thead, tbody, tr, th, td, div, span {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     color-adjust: exact !important;
   }
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-    color-adjust: exact !important;
-  }
-  .a4-sheet {
-    width: 210mm;
-    min-height: 297mm;
-    margin: 0 auto;
-    background: #fff;
+  .sheet {
+    width: 100%;
     position: relative;
+    @if($embedFooter)
+    min-height: 277mm;
+    box-sizing: border-box;
+    padding: 0 12mm 48mm 12mm;
+    @else
+    /* mPDF page has 0 side margins so content padding keeps text inset; footer stays full-bleed */
+    box-sizing: border-box;
+    padding: 0 12mm;
+    @endif
   }
-  .letterhead img { width: 100%; display: block; }
-  .content-area { padding: 7mm 12mm 8mm 12mm; }
-
-  .doc-title {
+  .paid-watermark {
+    position: absolute;
+    top: 38%;
+    left: 0;
+    width: 100%;
     text-align: center;
-    font-size: 26px;
+    font-size: 92px;
     font-weight: 800;
-    color: #ED1C24;
-    letter-spacing: 3px;
-    margin: 4px 0 14px 0;
-    text-transform: uppercase;
+    color: {{ $brandRed }};
+    opacity: 0.16;
+    letter-spacing: 8px;
+    transform: rotate(-32deg);
+    -webkit-transform: rotate(-32deg);
+    z-index: 50;
+    pointer-events: none;
+    line-height: 1;
   }
-
-  /* Rounded table shells — works in browser print + mPDF */
-  .table-shell {
-    border: 1.5px solid #ED1C24;
-    border-radius: 10px;
-    overflow: hidden;
-    margin-bottom: 14px;
-    background-color: #FFF5F5;
-  }
-  .table-shell table {
-    width: 100%;
-    border-collapse: collapse;
-    border-spacing: 0;
-    margin: 0;
-    font-size: 12px;
-  }
-  .table-shell th,
-  .table-shell td {
-    border: none;
-    border-right: 1px solid #ED1C24;
-    border-bottom: 1px solid #ED1C24;
-    padding: 8px 10px;
-    vertical-align: middle;
-  }
-  .table-shell th:last-child,
-  .table-shell td:last-child { border-right: none; }
-  .table-shell tr:last-child td { border-bottom: none; }
-  .table-shell thead th,
-  .table-shell th.lbl-cell {
-    background-color: #ED1C24 !important;
-    color: #ffffff !important;
-    font-weight: 700;
-    text-transform: uppercase;
-    font-size: 10px;
-    letter-spacing: .04em;
-    text-align: center;
-  }
-  .table-shell td {
-    background-color: #FFF5F5 !important;
-    color: #111111;
-    text-align: center;
-  }
-  .table-shell td.desc,
-  .table-shell td.left { text-align: left; }
-  .table-shell td.money,
-  .table-shell td.amt { text-align: right; white-space: nowrap; font-weight: 700; }
-
-  /* Info grid: label cells red, value cells pink */
-  .info-shell .lbl-cell {
-    width: 14%;
-    text-align: left !important;
-    background-color: #ED1C24 !important;
-    color: #ffffff !important;
-  }
-  .info-shell td.val-cell {
-    text-align: left;
-    background-color: #FCE8E9 !important;
-  }
-
-  .prod-shell td.desc { text-align: left; }
-
-  .summary-row {
-    width: 100%;
-    border-collapse: collapse;
+  .paid-stamp {
+    display: inline-block;
     margin-top: 6px;
-    table-layout: fixed;
-  }
-  .summary-row > td { vertical-align: top; padding: 0; border: none; }
-  .summary-row td.pay-col { width: 52%; padding-right: 12px; }
-  .summary-row td.total-col { width: 48%; padding-left: 4px; }
-
-  .bank-box {
-    background-color: #FCE8E9 !important;
-    padding: 12px 14px;
-    border: 1.5px solid #ED1C24;
-    border-radius: 10px;
-    overflow: hidden;
-  }
-  .bank-box .bank-title {
-    color: #ED1C24;
-    font-size: 13px;
+    padding: 3px 10px;
+    border: 2px solid {{ $brandRed }};
+    color: {{ $brandRed }} !important;
     font-weight: 800;
-    margin: 0 0 8px 0;
-  }
-  .bank-box .bank-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 11px;
-  }
-  .bank-box .bank-table td {
-    padding: 3px 0;
-    vertical-align: top;
-    border: none;
-  }
-  .bank-box .bank-table td.lbl {
-    font-weight: 700;
-    color: #111111;
-    width: 38%;
-    white-space: nowrap;
-  }
-  .bank-box .bank-table td.val { color: #333333; }
-  .bank-box .mode-line {
-    margin-bottom: 6px;
-    font-size: 11px;
-  }
-  .bank-box .mode-line strong { color: #111111; }
-
-  .totals-table {
-    width: 100%;
-    border-collapse: collapse;
     font-size: 12px;
-  }
-  .totals-table td {
-    padding: 4px 2px;
-    border: none;
-    text-decoration: none;
-  }
-  .totals-table td.label { text-align: left; color: #333333; }
-  .totals-table td.value { text-align: right; white-space: nowrap; color: #111111; }
-  .totals-table tr.rule td {
-    padding: 0;
-    height: 0;
-    line-height: 0;
-    font-size: 0;
-    border-top: 1.5px solid #111111;
-  }
-  .totals-table tr.rule-double td {
-    padding: 0;
-    height: 0;
-    line-height: 0;
-    font-size: 0;
-    border-top: 3px double #111111;
-  }
-  .totals-table tr.grand td {
-    font-weight: 800;
-    font-size: 13px;
-    color: #111111;
-    padding-top: 6px;
-    padding-bottom: 6px;
-  }
-  .totals-table tr.paid td {
-    color: #16a34a;
-    font-weight: 700;
-  }
-  .totals-table tr.due td {
-    color: #ED1C24;
-    font-weight: 800;
-    font-size: 14px;
-    padding-top: 6px;
-    padding-bottom: 6px;
-  }
-
-  .pay-history-title {
-    margin-top: 14px;
-    margin-bottom: 6px;
-    font-size: 11px;
-    font-weight: 800;
-    color: #ED1C24;
+    letter-spacing: 1px;
     text-transform: uppercase;
-    letter-spacing: 0.3px;
   }
-
-  /* Push signature + footer to bottom of A4 for browser print */
-  .a4-sheet-flex {
-    display: flex;
-    flex-direction: column;
-    min-height: 297mm;
-  }
-  .a4-sheet-flex .content-area {
-    flex: 1 1 auto;
-    padding-bottom: 4mm;
-  }
-  .a4-sheet-flex .sign-zone {
-    flex: 0 0 auto;
-    margin-top: auto;
-    padding: 0 12mm 3mm 12mm;
-  }
-  .a4-sheet-flex .page-footer {
-    flex: 0 0 auto;
-    margin-top: 0;
-    padding: 0;
-  }
-  .page-footer img {
-    width: 100%;
+  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 2px; }
+  .header-table td { vertical-align: top; border: none; padding: 0; }
+  .logo-wrap img {
+    max-height: {{ $sp(58) }};
+    max-width: 210px;
+    width: auto;
+    height: auto;
     display: block;
   }
-
-  .bottom-row {
-    width: 100%;
-    margin: 0;
-    border-collapse: collapse;
+  .brand-tag {
+    font-size: {{ $fs(9.5) }};
+    color: #333;
+    margin-top: {{ $sp(4) }};
+    line-height: 1.35;
   }
-  .bottom-row td { vertical-align: bottom; }
-  .sys-msg {
-    font-size: 10px;
-    font-style: italic;
-    color: #9ca3af;
-    padding-bottom: 6px;
+  .doc-title {
+    font-size: {{ $fs(34) }};
+    font-weight: 800;
+    color: #111;
+    letter-spacing: 1px;
+    text-align: right;
+    line-height: 1;
+    margin: 0 0 {{ $sp(8) }} 0;
+    text-transform: uppercase;
+  }
+  .meta-table { width: auto; margin-left: auto; border-collapse: collapse; font-size: {{ $fs(11) }}; }
+  .meta-table td { padding: 1px 0; border: none; vertical-align: top; }
+  .meta-table td.lbl { text-align: left; white-space: nowrap; padding-right: 2px; font-weight: 700; color: #111; }
+  .meta-table td.sep { width: 10px; text-align: center; padding: 1px 5px; font-weight: 700; }
+  .meta-table td.val { text-align: left; font-weight: 700; padding-left: 2px; }
+  .meta-table .accent { color: {{ $brandRed }} !important; }
+  .meta-table .day {
+    color: {{ $brandRed }} !important;
+    font-weight: 800;
+    font-size: {{ $fs(12) }};
+    letter-spacing: 0.5px;
+  }
+  .bill-to { margin: {{ $sp(14) }} 0 {{ $sp(12) }} 0; }
+  .bill-to .title { color: {{ $brandRed }} !important; font-weight: 800; font-size: {{ $fs(13) }}; margin-bottom: {{ $sp(5) }}; }
+  .bill-to .line { margin: 2px 0; color: #222; font-size: {{ $fs(11) }}; line-height: 1.45; }
+  .items { width: 100%; border-collapse: collapse; margin-top: {{ $sp(2) }}; }
+  .items th {
+    background-color: {{ $brandRed }} !important;
+    background: {{ $brandRed }} !important;
+    @if($embedFooter)
+    box-shadow: inset 0 0 0 1000px {{ $brandRed }} !important;
+    @endif
+    color: #ffffff !important;
+    font-weight: 700;
+    font-size: {{ $fs(11) }};
+    padding: {{ $sp(7) }} {{ $sp(5) }};
+    text-align: center;
+    border: none;
+  }
+  .items th.desc { text-align: left; padding-left: {{ $sp(8) }}; }
+  .items td {
+    border-bottom: 1px solid #d0d0d0;
+    padding: {{ $sp(7) }} {{ $sp(5) }};
+    vertical-align: top;
+    font-size: {{ $fs(10.5) }};
+    min-height: {{ $itemRowMinHeight }};
+  }
+  .items td.num {
+    text-align: center;
+    width: 28px;
+    background-color: {{ $rowGrey }} !important;
+    background: {{ $rowGrey }} !important;
+    @if($embedFooter)
+    box-shadow: inset 0 0 0 1000px {{ $rowGrey }} !important;
+    @endif
+  }
+  .items td.desc { text-align: left; background: #fff !important; }
+  .items td.money,
+  .items td.qty,
+  .items td.disc {
+    text-align: center;
+    background-color: {{ $rowGrey }} !important;
+    background: {{ $rowGrey }} !important;
+    @if($embedFooter)
+    box-shadow: inset 0 0 0 1000px {{ $rowGrey }} !important;
+    @endif
+  }
+  .items td.total {
+    text-align: center;
+    white-space: nowrap;
+    background: #fff !important;
+  }
+  .items td.money { white-space: nowrap; }
+  .prod-name { font-weight: 700; color: #111; font-size: {{ $fs(10.5) }}; }
+  .prod-note { margin-top: {{ $sp(3) }}; color: #444; font-size: {{ $fs(9.5) }}; line-height: 1.45; word-wrap: break-word; }
+  .bottom { width: 100%; border-collapse: collapse; margin-top: {{ $sp(14) }}; }
+  .bottom > td { vertical-align: top; border: none; padding: 0; }
+  .bank-title {
+    color: {{ $brandRed }} !important;
+    font-weight: 800;
+    font-size: {{ $fs(13) }};
+    margin: 0 0 {{ $sp(8) }} 0;
+    letter-spacing: 0.2px;
+  }
+  .bank-lines {
+    font-size: {{ $fs(11) }};
+    color: #111;
+    line-height: 1.6;
+  }
+  .bank-lines .bank-line {
+    margin: 0 0 {{ $sp(4) }} 0;
+    font-weight: 600;
   }
   .sign-block {
-    text-align: right;
-    font-size: 12px;
+    margin-top: {{ $sp(18) }};
+    font-size: {{ $fs(11) }};
+    line-height: 1.75;
     color: #111;
-    line-height: 1.35;
-    padding-bottom: 2px;
   }
-  .sign-block .sign-img {
-    height: 58px;
-    width: auto;
-    display: block;
-    margin: 0 0 4px auto;
-  }
-  .sign-block .sign-closing {
-    font-size: 12px;
-    color: #222;
-    margin: 0 0 2px 0;
-  }
-  .sign-block .sign-name {
-    font-size: 13px;
-    font-weight: 700;
+  .sys-note {
+    font-weight: 800;
+    font-size: {{ $fs(11) }};
+    margin: 0 0 {{ $sp(8) }} 0;
     color: #111;
+  }
+  .sign-line {
+    margin: 0 0 {{ $sp(3) }} 0;
+    font-weight: 500;
+  }
+  .tagline {
+    margin-top: {{ $sp(10) }};
+    color: {{ $brandRed }} !important;
+    font-style: italic;
+    font-size: {{ $fs(10.5) }};
+  }
+  .totals { width: 100%; border-collapse: separate; border-spacing: 0 {{ $sp(4) }}; font-size: {{ $fs(11) }}; }
+  .totals-wrap {
+    width: 100%;
+    margin-top: {{ $sp(8) }};
+    margin-bottom: {{ $sp(14) }};
+  }
+  .totals-wrap .totals {
+    width: 48%;
+    margin-left: auto;
+    margin-right: 0;
+  }
+  .totals td {
+    padding: {{ $sp(8) }} {{ $sp(10) }};
+    border: none;
+    background-color: {{ $rowGrey }} !important;
+    background: {{ $rowGrey }} !important;
+    @if($embedFooter)
+    box-shadow: inset 0 0 0 1000px {{ $rowGrey }} !important;
+    @endif
+  }
+  .totals td.lbl { text-align: left; font-weight: 800; width: 55%; }
+  .totals td.val { text-align: right; white-space: nowrap; font-weight: 800; }
+  .totals tr.grand td {
+    background-color: {{ $brandRed }} !important;
+    background: {{ $brandRed }} !important;
+    @if($embedFooter)
+    box-shadow: inset 0 0 0 1000px {{ $brandRed }} !important;
+    @endif
+    color: #ffffff !important;
+    font-weight: 800;
+    font-size: {{ $fs(12) }};
+    padding: {{ $sp(9) }} {{ $sp(10) }};
+  }
+  .terms-title { color: {{ $brandRed }} !important; font-weight: 800; font-size: {{ $fs(12) }}; margin: 0 0 {{ $sp(6) }} 0; }
+  .terms-list { margin: 0; padding-left: {{ $sp(16) }}; font-size: {{ $fs(10.5) }}; line-height: 1.65; color: #111; }
+  .terms-list li { margin: 0 0 {{ $sp(4) }} 0; }
+  .quote-meta { margin-top: {{ $sp(10) }}; font-size: {{ $fs(11) }}; line-height: 1.65; }
+  .quote-meta .lbl { font-weight: 700; }
+  .due-meta { margin-top: {{ $sp(10) }}; font-size: {{ $fs(11) }}; line-height: 1.65; }
+  .due-meta .lbl { font-weight: 700; }
+  .page-break-before {
+    page-break-before: always;
+    break-before: page;
+  }
+  .additional-terms-page {
+    padding-top: {{ $sp(8) }};
+  }
+  .additional-terms-page-header {
+    border-bottom: 2px solid {{ $brandRed }};
+    padding-bottom: {{ $sp(10) }};
+    margin-bottom: {{ $sp(16) }};
+  }
+  .additional-terms-page-title {
+    color: {{ $brandRed }} !important;
+    font-weight: 800;
+    font-size: {{ $fs(16) }};
+    margin: 0 0 {{ $sp(4) }} 0;
+    letter-spacing: 0.3px;
+  }
+  .additional-terms-page-sub {
+    font-size: {{ $fs(10.5) }};
+    color: #666;
     margin: 0;
   }
-  .sign-block .sign-role {
-    font-size: 11px;
-    color: #444;
-    margin: 1px 0 0 0;
+  .additional-terms-card {
+    border: 1px solid #E8E8E8;
+    border-left: 4px solid {{ $brandRed }};
+    background: #fafafa;
+    padding: {{ $sp(12) }} {{ $sp(14) }};
+    margin: 0 0 {{ $sp(14) }} 0;
+    page-break-inside: avoid;
   }
-
+  .additional-section-title {
+    color: {{ $brandRed }} !important;
+    font-weight: 800;
+    font-size: {{ $fs(11.5) }};
+    margin: 0 0 {{ $sp(8) }} 0;
+    text-transform: uppercase;
+    letter-spacing: 0.2px;
+  }
+  .additional-section-body {
+    margin: 0;
+    font-size: {{ $fs(10.5) }};
+    line-height: 1.65;
+    color: #222;
+  }
+  .additional-section-body p {
+    margin: 0 0 {{ $sp(8) }} 0;
+  }
+  .additional-section-body p:last-child {
+    margin-bottom: 0;
+  }
+  .page-footer {
+    @if($embedFooter)
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    @else
+    margin-top: 14px;
+    @endif
+  }
+  .page-footer img {
+    width: 100% !important;
+    max-width: none !important;
+    height: auto;
+    display: block;
+  }
+  .footer-bar {
+    @if($embedFooter)
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    margin: 0 !important;
+    @else
+    margin-top: 10px;
+    @endif
+    border-top: 2px solid #5b1a3a;
+    padding-top: 8px;
+    font-size: 9px;
+    color: #444;
+    text-align: center;
+    line-height: 1.45;
+  }
   @media print {
-    html, body, * {
+    html, body, *, *::before, *::after,
+    table, thead, tbody, tr, th, td, div, span {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       color-adjust: exact !important;
     }
-    .a4-sheet, .a4-sheet-flex { width: 100%; min-height: 297mm; }
-    .table-shell,
-    .bank-box {
-      border-radius: 10px !important;
-      overflow: hidden !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
+    @if($embedFooter)
+    .sheet {
+      min-height: 277mm;
+      padding: 0 12mm 40mm 12mm !important;
+      box-sizing: border-box;
     }
-    .table-shell th,
-    .table-shell td,
-    .table-shell .lbl-cell,
-    .info-shell td.val-cell {
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
+    .page-footer,
+    .footer-bar {
+      position: fixed !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: 210mm !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+      padding: 0 !important;
     }
+    .page-footer img {
+      width: 210mm !important;
+      max-width: 100% !important;
+      height: auto !important;
+      display: block !important;
+    }
+    @endif
   }
 </style>
 </head>
 <body>
-<div class="a4-sheet {{ $embedFooter ? 'a4-sheet-flex' : '' }}">
-
-  <div class="letterhead">
-    @if(! empty($letterheadB64))
-      <img src="data:image/png;base64,{{ $letterheadB64 }}" alt="Letterhead">
-    @elseif(! empty($logoB64))
-      <div style="padding:14px 16px;text-align:center;">
-        <img src="data:image/jpeg;base64,{{ $logoB64 }}" style="max-height:70px;width:auto;" alt="Logo">
-      </div>
-    @endif
-  </div>
-
-  <div class="content-area">
-    <div class="doc-title" style="color:#ED1C24;text-align:center;font-size:26px;font-weight:800;letter-spacing:3px;margin:4px 0 14px 0;text-transform:uppercase;">{{ $docTitle }}</div>
-
-    <div class="table-shell info-shell" style="border:1.5px solid #ED1C24;border-radius:10px;overflow:hidden;margin-bottom:14px;background-color:#FCE8E9;">
-      <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0;font-size:12px;">
-        <tr>
-          <th class="lbl-cell" style="width:14%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:8px 10px;text-align:left;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Name</th>
-          <td class="val-cell" style="background-color:#FCE8E9;color:#111111;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:8px 10px;text-align:left;" bgcolor="#FCE8E9">{{ $receipt_details->customer_name ?? 'Walk-In Customer' }}</td>
-          <th class="lbl-cell" style="width:14%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:8px 10px;text-align:left;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Date</th>
-          <td class="val-cell" style="background-color:#FCE8E9;color:#111111;border-bottom:1px solid #ED1C24;padding:8px 10px;text-align:left;" bgcolor="#FCE8E9">{{ $receipt_details->invoice_date ?? '' }}</td>
-        </tr>
-        <tr>
-          <th class="lbl-cell" style="width:14%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;padding:8px 10px;text-align:left;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Address</th>
-          <td class="val-cell" style="background-color:#FCE8E9;color:#111111;border-right:1px solid #ED1C24;padding:8px 10px;text-align:left;" bgcolor="#FCE8E9">{{ $customerAddress }}</td>
-          <th class="lbl-cell" style="width:14%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;padding:8px 10px;text-align:left;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">{{ $label }}</th>
-          <td class="val-cell" style="background-color:#FCE8E9;color:#111111;padding:8px 10px;text-align:left;" bgcolor="#FCE8E9">{{ $invNo }}</td>
-        </tr>
-      </table>
-    </div>
-
-    <div class="table-shell prod-shell" style="border:1.5px solid #ED1C24;border-radius:10px;overflow:hidden;margin-bottom:14px;background-color:#FFF5F5;">
-      <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0;font-size:12px;">
-        <thead>
-          <tr>
-            <th style="width:9%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:9px 8px;text-align:center;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Item</th>
-            <th style="width:47%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:9px 8px;text-align:center;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Description</th>
-            <th style="width:10%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:9px 8px;text-align:center;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Qty</th>
-            <th style="width:17%;background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:9px 8px;text-align:center;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Unit Price</th>
-            <th style="width:17%;background-color:#ED1C24;color:#ffffff;border-bottom:1px solid #ED1C24;padding:9px 8px;text-align:center;font-weight:700;text-transform:uppercase;font-size:10px;" bgcolor="#ED1C24">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          @forelse(($receipt_details->lines ?? []) as $index => $line)
-            @php
-              $desc = trim(($line['name'] ?? '').' '.($line['variation'] ?? ''));
-              $qty = ($line['quantity'] ?? '').(! empty($line['units']) ? ' '.$line['units'] : '');
-              $unitPrice = $line['unit_price_inc_tax'] ?? $line['unit_price'] ?? '';
-              $lineTotal = $line['line_total'] ?? '';
-              $isLast = $loop->last;
-            @endphp
-            <tr>
-              <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $isLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:9px 8px;text-align:center;" bgcolor="#FFF5F5">{{ $index + 1 }}</td>
-              <td class="desc" style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $isLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:9px 8px;text-align:left;" bgcolor="#FFF5F5">
-                {{ $desc }}
-                @if(! empty($line['product_description']))
-                  <div style="font-size:10px;margin-top:3px;color:#6b7280;">{!! strip_tags($line['product_description']) !!}</div>
-                @endif
-              </td>
-              <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $isLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:9px 8px;text-align:center;" bgcolor="#FFF5F5">{{ $qty }}</td>
-              <td class="money" style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $isLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:9px 8px;text-align:right;white-space:nowrap;" bgcolor="#FFF5F5">{{ $unitPrice }}</td>
-              <td class="money" style="background-color:#FFF5F5;color:#111111;{{ $isLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:9px 8px;text-align:right;white-space:nowrap;" bgcolor="#FFF5F5">{{ $lineTotal }}</td>
-            </tr>
-          @empty
-            <tr>
-              <td colspan="5" style="background-color:#FFF5F5;padding:9px 8px;" bgcolor="#FFF5F5">No items</td>
-            </tr>
-          @endforelse
-        </tbody>
-      </table>
-    </div>
-
-    <table class="summary-row" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin-top:6px;">
-      <tr>
-        <td class="pay-col" width="52%" valign="top" style="width:52%;vertical-align:top;padding:0 12px 0 0;border:none;">
-          @if($bankText !== '')
-            <table width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1.5px solid #ED1C24;background-color:#FCE8E9;">
-              <tr>
-                <td colspan="2" style="color:#ED1C24;font-size:13px;font-weight:800;padding:10px 12px 6px 12px;background-color:#FCE8E9;">Bank Details</td>
-              </tr>
-              @if(! empty($paymentModeLine))
-              <tr>
-                <td colspan="2" style="font-size:11px;padding:0 12px 6px 12px;background-color:#FCE8E9;"><strong>Payment mode:</strong> {{ $paymentModeLine }}</td>
-              </tr>
-              @endif
-              @forelse($bankRows as $row)
-                <tr>
-                  @if($row['label'] !== '')
-                    <td width="38%" style="font-weight:700;color:#111111;font-size:11px;padding:3px 4px 3px 12px;vertical-align:top;background-color:#FCE8E9;white-space:nowrap;">{{ $row['label'] }}:</td>
-                    <td style="color:#333333;font-size:11px;padding:3px 12px 3px 4px;vertical-align:top;background-color:#FCE8E9;">{{ $row['value'] }}</td>
-                  @else
-                    <td colspan="2" style="color:#333333;font-size:11px;padding:3px 12px;background-color:#FCE8E9;">{{ $row['value'] }}</td>
-                  @endif
-                </tr>
-              @empty
-                <tr>
-                  <td colspan="2" style="color:#333333;font-size:11px;padding:3px 12px 10px 12px;background-color:#FCE8E9;">{!! nl2br(e($bankText)) !!}</td>
-                </tr>
-              @endforelse
-              @if(count($bankRows) > 0)
-              <tr>
-                <td colspan="2" style="padding:0 0 8px 0;background-color:#FCE8E9;font-size:1px;line-height:1px;">&nbsp;</td>
-              </tr>
-              @endif
-            </table>
-          @endif
-        </td>
-        <td class="total-col" width="48%" valign="top" style="width:48%;vertical-align:top;padding:0 0 0 4px;border:none;">
-          @php
-            $taxLabel = trim(str_replace(':', '', (string) ($receipt_details->tax_label ?? 'VAT')));
-            if ($taxLabel === '' || strcasecmp($taxLabel, 'Tax') === 0) {
-                $taxLabel = 'VAT';
-            }
-            $taxValue = $receipt_details->tax ?? null;
-            if ($taxValue === null || $taxValue === '' || $taxValue === 0 || $taxValue === '0') {
-                $sym = $receipt_details->currency['symbol'] ?? 'LKR';
-                $taxValue = $sym.' 0.00';
-            }
-            $hasPaid = ! empty($receipt_details->total_paid) && $receipt_details->total_paid != 0 && $receipt_details->total_paid != '0.00';
-            $showPaidBlock = ! $isQuotation && isset($receipt_details->total_paid);
-          @endphp
-          <table class="totals-table" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:12px;">
-            @if(! empty($receipt_details->subtotal))
-            <tr>
-              <td class="label" style="text-align:left;color:#333333;padding:4px 2px;">Subtotal</td>
-              <td class="value" style="text-align:right;white-space:nowrap;color:#111111;padding:4px 2px;">{{ $receipt_details->subtotal }}</td>
-            </tr>
-            @endif
-            @if(! empty($receipt_details->discount))
-            <tr>
-              <td class="label" style="text-align:left;color:#333333;padding:4px 2px;">{{ trim(str_replace(':', '', (string) ($receipt_details->discount_label ?? 'Discount'))) }}</td>
-              <td class="value" style="text-align:right;white-space:nowrap;color:#111111;padding:4px 2px;">(-) {{ $receipt_details->discount }}</td>
-            </tr>
-            @endif
-            <tr>
-              <td class="label" style="text-align:left;color:#333333;padding:4px 2px;">{{ $taxLabel }}</td>
-              <td class="value" style="text-align:right;white-space:nowrap;color:#111111;padding:4px 2px;">{{ $taxValue }}</td>
-            </tr>
-            @if(! empty($receipt_details->shipping_charges))
-            <tr>
-              <td class="label" style="text-align:left;color:#333333;padding:4px 2px;">{{ trim(str_replace(':', '', (string) ($receipt_details->shipping_charges_label ?? 'Shipping'))) }}</td>
-              <td class="value" style="text-align:right;white-space:nowrap;color:#111111;padding:4px 2px;">{{ $receipt_details->shipping_charges }}</td>
-            </tr>
-            @endif
-            <tr class="rule"><td colspan="2" style="padding:0;border-top:1.5px solid #111111;height:0;font-size:0;line-height:0;">&nbsp;</td></tr>
-            <tr class="grand">
-              <td class="label" style="text-align:left;font-weight:800;font-size:13px;color:#111111;padding:6px 2px;">Total (LKR)</td>
-              <td class="value" style="text-align:right;white-space:nowrap;font-weight:800;font-size:13px;color:#111111;padding:6px 2px;">{{ $receipt_details->total ?? '' }}</td>
-            </tr>
-            @if($showPaidBlock)
-              @if($hasPaid)
-              <tr class="paid">
-                <td class="label" style="text-align:left;color:#16a34a;font-weight:700;padding:4px 2px;">Paid to Date</td>
-                <td class="value" style="text-align:right;white-space:nowrap;color:#16a34a;font-weight:700;padding:4px 2px;">- {{ $receipt_details->total_paid }}</td>
-              </tr>
-              @endif
-              <tr class="rule"><td colspan="2" style="padding:0;border-top:1.5px solid #111111;height:0;font-size:0;line-height:0;">&nbsp;</td></tr>
-              <tr class="due">
-                <td class="label" style="text-align:left;color:#ED1C24;font-weight:800;font-size:14px;padding:6px 2px;">Balance Due</td>
-                <td class="value" style="text-align:right;white-space:nowrap;color:#ED1C24;font-weight:800;font-size:14px;padding:6px 2px;">{{ (! empty($receipt_details->total_due) && $receipt_details->total_due != 0) ? $receipt_details->total_due : (($receipt_details->currency['symbol'] ?? 'LKR').' 0.00') }}</td>
-              </tr>
-              <tr class="rule-double"><td colspan="2" style="padding:0;border-top:3px double #111111;height:0;font-size:0;line-height:0;">&nbsp;</td></tr>
-            @endif
-          </table>
-        </td>
-      </tr>
-    </table>
-
-    @if($paymentHistory->isNotEmpty())
-      <div class="pay-history-title" style="margin-top:14px;margin-bottom:6px;font-size:11px;font-weight:800;color:#ED1C24;text-transform:uppercase;">Payment History</div>
-      <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0;font-size:10px;border:1.5px solid #ED1C24;">
-        <thead>
-          <tr>
-            <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Date</th>
-            <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Method</th>
-            <th style="background-color:#ED1C24;color:#ffffff;border-right:1px solid #ED1C24;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:left;font-weight:700;" bgcolor="#ED1C24">Note</th>
-            <th style="background-color:#ED1C24;color:#ffffff;border-bottom:1px solid #ED1C24;padding:6px 8px;text-align:right;font-weight:700;" bgcolor="#ED1C24">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          @foreach($paymentHistory as $payment)
-            @php $payLast = $loop->last; @endphp
-            <tr>
-              <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ $payment['date'] ?? '—' }}</td>
-              <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ $payment['method'] ?? '—' }}</td>
-              <td style="background-color:#FFF5F5;color:#111111;border-right:1px solid #ED1C24;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;" bgcolor="#FFF5F5">{{ ! empty($payment['note']) ? $payment['note'] : '—' }}</td>
-              <td style="background-color:#FFF5F5;color:#111111;{{ $payLast ? '' : 'border-bottom:1px solid #ED1C24;' }}padding:6px 8px;text-align:right;font-weight:700;white-space:nowrap;" bgcolor="#FFF5F5">{{ $payment['amount'] }}</td>
-            </tr>
-          @endforeach
-        </tbody>
-      </table>
-    @endif
-
-  </div>{{-- /.content-area --}}
-
-  {{-- Browser: pin signature just above brand footer at page bottom --}}
-  @if($embedFooter)
-  <div class="sign-zone">
-    <table class="bottom-row">
-      <tr>
-        <td class="sys-msg">*This is a system generated {{ strtolower($docTitle) }}.</td>
-        <td class="sign-block">
-          @if(! empty($signB64))
-            <img class="sign-img" src="data:image/png;base64,{{ $signB64 }}" alt="Signature">
-          @endif
-          <div class="sign-closing">Yours faithfully,</div>
-          <div class="sign-name">Sandaruwan Dharampriya</div>
-          <div class="sign-role">Director, PrintWorks</div>
-        </td>
-      </tr>
-    </table>
-  </div>
+<div class="sheet">
+  @if($isPaid)
+    <div class="paid-watermark">PAID</div>
   @endif
 
-  @if($embedFooter && ! empty($footerB64))
-  <div class="page-footer">
-    <img src="data:image/png;base64,{{ $footerB64 }}" alt="Footer">
+  <table class="header-table">
+    <tr>
+      <td style="width:48%;">
+        <div class="logo-wrap">
+          @if($logoSrc)
+            <img src="{{ $logoSrc }}" alt="printworks.lk">
+          @else
+            <div style="font-size:24px;font-weight:800;color:#111;">printworks<span style="color:{{ $brandRed }};">.lk</span></div>
+            <div style="font-size:10px;color:#666;">promotional &amp; branding solutions</div>
+          @endif
+        </div>
+        <div class="brand-tag">A trademark of Attract Wear &amp; Printing Solutions</div>
+
+        <div class="bill-to">
+          <div class="title">{{ $isQuotation ? 'Quotation To' : 'Bill To' }}</div>
+          <div class="line">{{ $customerName !== '' ? $customerName : 'Client Name Here' }}</div>
+          <div class="line">Address : {{ $customerAddress !== '' ? $customerAddress : '—' }}</div>
+          <div class="line">Email : {{ $customerEmail !== '' ? $customerEmail : '—' }}</div>
+          <div class="line">Phone number : {{ $customerPhone !== '' ? $customerPhone : '—' }}</div>
+        </div>
+      </td>
+      <td style="width:52%;text-align:right;">
+        <div class="doc-title">{{ $docTitle }}</div>
+        <table class="meta-table" align="right">
+          <tr>
+            <td class="lbl">{{ $primaryNoLabel }}</td>
+            <td class="sep">:</td>
+            <td class="val">{{ $invNo !== '' ? $invNo : '—' }}</td>
+          </tr>
+          <tr>
+            <td class="lbl" colspan="3" style="padding-top:4px;">
+              @if($dayName !== '')
+                <span class="day">{{ $dayName }}</span>
+              @else
+                Date
+              @endif
+            </td>
+          </tr>
+          <tr>
+            <td class="val" colspan="3" style="padding-bottom:3px;">{{ $dateDisplay !== '' ? $dateDisplay : '—' }}</td>
+          </tr>
+          @if(! $isQuotation)
+          <tr>
+            <td class="lbl">Quote No</td>
+            <td class="sep">:</td>
+            <td class="val accent">{{ $quoteNo !== '' ? $quoteNo : '—' }}</td>
+          </tr>
+          @endif
+          <tr>
+            <td class="lbl">Sales Channel</td>
+            <td class="sep">:</td>
+            <td class="val accent">{{ $salesChannel }}</td>
+          </tr>
+          @if($showBalanceDueHeader)
+          <tr>
+            <td class="lbl">Balance Due</td>
+            <td class="sep">:</td>
+            <td class="val accent">{{ $balanceDue }}</td>
+          </tr>
+          @endif
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <table class="items" cellpadding="0" cellspacing="0">
+    <thead>
+      <tr>
+        <th bgcolor="{{ $brandRed }}" style="width:5%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">#</th>
+        <th class="desc" bgcolor="{{ $brandRed }}" style="width:42%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;text-align:left;padding-left:8px;">Description</th>
+        <th bgcolor="{{ $brandRed }}" style="width:13%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Rate</th>
+        <th bgcolor="{{ $brandRed }}" style="width:11%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Qty.</th>
+        <th bgcolor="{{ $brandRed }}" style="width:14%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Discount</th>
+        <th bgcolor="{{ $brandRed }}" style="width:15%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      @forelse($lines as $i => $line)
+        @php
+          $descName = trim(($line['name'] ?? '').(! empty($line['variation']) ? ' - '.$line['variation'] : ''));
+          $descNote = trim(html_entity_decode(strip_tags($line['sell_line_note'] ?? ''), ENT_QUOTES, 'UTF-8'));
+          if ($descNote === '' && ! empty($line['product_description'])) {
+              $descNote = trim(html_entity_decode(strip_tags($line['product_description']), ENT_QUOTES, 'UTF-8'));
+          }
+          $rate = $line['unit_price_before_discount'] ?? $line['unit_price_inc_tax'] ?? $line['unit_price'] ?? '';
+          $qty = ($line['quantity'] ?? '').(! empty($line['units']) ? ' '.$line['units'] : '');
+          $discVal = $line['total_line_discount'] ?? $line['line_discount'] ?? '';
+          $disc = ($discVal !== '' && $discVal !== '0' && $discVal !== '0.00') ? $discVal : '—';
+          $total = $line['line_total'] ?? '';
+        @endphp
+        <tr>
+          <td class="num" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $i + 1 }}</td>
+          <td class="desc">
+            <div class="prod-name">{{ $descName }}</div>
+            @if($descNote !== '')
+              <div class="prod-note">{!! nl2br(e($descNote)) !!}</div>
+            @endif
+          </td>
+          <td class="money" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $rate }}</td>
+          <td class="qty" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $qty }}</td>
+          <td class="disc" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $disc }}</td>
+          <td class="total">{{ $total }}</td>
+        </tr>
+      @empty
+        <tr>
+          <td colspan="6" style="padding:10px;text-align:center;color:#888;">No items</td>
+        </tr>
+      @endforelse
+    </tbody>
+  </table>
+
+  <div class="totals-wrap">
+    <table class="totals" cellspacing="0" cellpadding="0">
+      <tr>
+        <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Sub Total</td>
+        <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $receipt_details->subtotal ?? ($currencySym.' 0.00') }}</td>
+      </tr>
+      @php
+        $discountRaw = $receipt_details->discount_amount_unformatted ?? null;
+        $discountDisplay = $receipt_details->discount ?? null;
+        $hasDiscount = (is_numeric($discountRaw) && (float) $discountRaw != 0)
+          || (! empty($discountDisplay) && $discountDisplay !== 0 && $discountDisplay !== '0'
+              && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $discountDisplay));
+      @endphp
+      @if($hasDiscount)
+      <tr>
+        <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Total Discount</td>
+        <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $discountDisplay }}</td>
+      </tr>
+      @endif
+      @php
+        $shippingDisplay = $receipt_details->shipping_charges ?? null;
+        $hasShipping = ! empty($shippingDisplay)
+          && $shippingDisplay !== 0
+          && $shippingDisplay !== '0'
+          && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $shippingDisplay);
+        $shippingLabel = ! empty($receipt_details->shipping_charges_label)
+          ? rtrim((string) $receipt_details->shipping_charges_label, ':')
+          : 'Shipping Charge';
+      @endphp
+      @if($hasShipping)
+      <tr>
+        <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $shippingLabel }}</td>
+        <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $shippingDisplay }}</td>
+      </tr>
+      @endif
+      @if($hasAdvancePayment)
+      <tr>
+        <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Advance Payment</td>
+        <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $totalPaid }}</td>
+      </tr>
+      @endif
+      <tr class="grand">
+        <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Grand Total</td>
+        <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">{{ $receipt_details->total ?? ($currencySym.' 0.00') }}</td>
+      </tr>
+      @if($showTotalDueRow)
+      <tr>
+        <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Total Due</td>
+        <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $balanceDue }}</td>
+      </tr>
+      @endif
+    </table>
   </div>
+
+  <table class="bottom">
+    <tr>
+      <td style="width:52%;padding-right:16px;">
+        @if($isQuotation)
+          <div class="terms-title">Terms &amp; Conditions</div>
+          <ul class="terms-list">
+            @forelse($quotationTermLines as $term)
+              <li>{{ $term }}</li>
+            @empty
+              <li>—</li>
+            @endforelse
+          </ul>
+          <div class="terms-title" style="margin-top:12px;">Additional Notes</div>
+          <ul class="terms-list">
+            @forelse($additionalNoteLines as $note)
+              <li>{{ $note }}</li>
+            @empty
+              <li>—</li>
+            @endforelse
+          </ul>
+        @else
+          <div class="bank-title">Bank details</div>
+          <div class="bank-lines">
+            @foreach($bankDisplayLines as $bankLine)
+              <div class="bank-line">{{ $bankLine }}</div>
+            @endforeach
+          </div>
+
+          <div class="sign-block">
+            @if($embedFooter)
+              <div class="sys-note">System-generated {{ strtolower($docTitle) }}. No signature required.</div>
+            @endif
+            <div class="sign-line">Prepared by: {{ $preparedByName }}</div>
+            <div class="sign-line">Items received in good condition.</div>
+            <div class="sign-line">Received by: Date .............................. Signature ..............................</div>
+            @if($embedFooter)
+              <div class="tagline">“Every print tells a story. Thank you for making us part of yours.”</div>
+            @endif
+          </div>
+        @endif
+      </td>
+      <td style="width:48%;vertical-align:top;">
+        @if($isQuotation)
+          <div class="quote-meta">
+            <div><span class="lbl">Valid till</span> : {{ $validTillDisplay }}</div>
+            <div><span class="lbl">Prepared by</span> : {{ $preparedByName }}</div>
+            @if($embedFooter)
+              <div class="sys-note" style="margin-top:10px;">System generated Quotation. No signature required.</div>
+              <div class="tagline">Committed to excellence with every project.</div>
+            @endif
+          </div>
+        @else
+          <div class="due-meta">
+            @if($showDueFields)
+              @if(! empty($receipt_details->due_date))
+                <div><span class="lbl">Due</span> : {{ $dueDate }}</div>
+              @endif
+              <div><span class="lbl">Status</span> : {{ $paymentStatus }}</div>
+              @if($isPaid)
+                <div class="paid-stamp">PAID</div>
+              @endif
+            @elseif($isProforma)
+              <div><span class="lbl">Prepared by</span> : {{ $preparedByName }}</div>
+            @endif
+          </div>
+        @endif
+      </td>
+    </tr>
+  </table>
+
+  @if($embedFooter && ! empty($footerB64))
+    <div class="page-footer">
+      <img src="data:image/png;base64,{{ $footerB64 }}" alt="Footer">
+    </div>
+  @elseif($embedFooter)
+    <div class="footer-bar">
+      Attract Wear &amp; Printing Solutions<br>
+      1st Floor, No. 210/15, New Kandy Road, Biyagama, Sri Lanka<br>
+      Voice: 070 666 8885 &nbsp;|&nbsp; Email: sales@printworks.lk &nbsp;|&nbsp; Web: www.printworks.lk
+    </div>
   @endif
 
 </div>
+
+@if($isQuotation && ! empty($additionalTermsSections))
+<div class="sheet page-break-before additional-terms-page">
+  <div class="additional-terms-page-header">
+    <div class="additional-terms-page-title">Additional Terms &amp; Conditions</div>
+    <p class="additional-terms-page-sub">
+      Quote No : {{ $invNo !== '' ? $invNo : '—' }}
+      &nbsp;|&nbsp;
+      {{ $dateDisplay !== '' ? $dateDisplay : '' }}
+    </p>
+  </div>
+
+  @foreach($additionalTermsSections as $section)
+    <div class="additional-terms-card">
+      <div class="additional-section-title">{{ $section['title'] }}</div>
+      <div class="additional-section-body">
+        @foreach($section['paragraphs'] as $paragraph)
+          <p>{{ $paragraph }}</p>
+        @endforeach
+      </div>
+    </div>
+  @endforeach
+
+  @if($embedFooter && ! empty($footerB64))
+    <div class="page-footer">
+      <img src="data:image/png;base64,{{ $footerB64 }}" alt="Footer">
+    </div>
+  @elseif($embedFooter)
+    <div class="footer-bar">
+      Attract Wear &amp; Printing Solutions<br>
+      1st Floor, No. 210/15, New Kandy Road, Biyagama, Sri Lanka<br>
+      Voice: 070 666 8885 &nbsp;|&nbsp; Email: sales@printworks.lk &nbsp;|&nbsp; Web: www.printworks.lk
+    </div>
+  @endif
+</div>
+@endif
 </body>
 </html>

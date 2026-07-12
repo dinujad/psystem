@@ -25,11 +25,14 @@ class QuotationSmsNotifier
         $isQuotation = (int) $transaction->is_quotation === 1
             || ($transaction->status === 'draft' && ($transaction->sub_status ?? '') === 'quotation');
 
-        $isInvoice = ! $isQuotation
+        $isProforma = $transaction->status === 'draft'
+            && ($transaction->sub_status ?? '') === 'proforma';
+
+        $isInvoice = ! $isQuotation && ! $isProforma
             && $transaction->type === 'sell'
             && $transaction->status === 'final';
 
-        if (! $isQuotation && ! $isInvoice) {
+        if (! $isQuotation && ! $isInvoice && ! $isProforma) {
             return false;
         }
 
@@ -37,7 +40,7 @@ class QuotationSmsNotifier
         if (! $contact || empty(trim((string) $contact->mobile))) {
             Log::info('DocumentNotify: skipped — no customer mobile', [
                 'transaction_id' => $transaction->id,
-                'type' => $isQuotation ? 'quotation' : 'invoice',
+                'type' => $isQuotation ? 'quotation' : ($isProforma ? 'proforma' : 'invoice'),
             ]);
 
             return false;
@@ -48,14 +51,24 @@ class QuotationSmsNotifier
             return false;
         }
 
-        $docType = $isQuotation ? 'quotation' : 'invoice';
-        $docLabel = $isQuotation ? 'Quotation' : 'Invoice';
+        if ($isProforma) {
+            $docType = 'proforma';
+            $docLabel = 'Proforma Invoice';
+            $readyLine = 'Your proforma invoice is ready.';
+        } elseif ($isQuotation) {
+            $docType = 'quotation';
+            $docLabel = 'Quotation';
+            $readyLine = 'Your quotation is ready.';
+        } else {
+            $docType = 'invoice';
+            $docLabel = 'Invoice';
+            $readyLine = 'Your invoice is ready.';
+        }
         $docNo = (string) $transaction->invoice_no;
         $amount = $this->util->num_f($transaction->final_total, true, $business);
         $brand = trim((string) (config('app.name') ?: 'PrintWorks'));
         $customerName = $this->customerDisplayName($contact);
         $viewUrl = $this->util->getInvoiceUrl($transaction->id, $businessId);
-        $readyLine = $isQuotation ? 'Your quotation is ready.' : 'Your invoice is ready.';
 
         $smsMessage = implode("\n", [
             $brand,

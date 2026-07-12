@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\System;
 use App\WhatsappChatAssignment;
 use App\WhatsappContact;
 use App\WhatsappConversation;
@@ -15,6 +16,8 @@ use Illuminate\Support\Facades\Schema;
 
 class WhatsappService
 {
+    public const LINKED_PHONE_KEY = 'whatsapp_linked_phone';
+
     protected function baseUrl(): string
     {
         return rtrim((string) config('services.whatsapp.url'), '/');
@@ -410,6 +413,59 @@ class WhatsappService
     }
 
     /**
+     * When a different WhatsApp number is linked, wipe stale inbox data
+     * so only the current account's chats appear.
+     *
+     * @return array{cleared:bool,phone:?string,previous_phone:?string,counts?:array}
+     */
+    public function syncInboxToLinkedAccount(?array $status = null): array
+    {
+        $status = $status ?? $this->getStatus();
+        $connected = ($status['status'] ?? '') === 'connected';
+        $currentPhone = $this->normalizeLinkedPhone($status['phone'] ?? null);
+
+        if (! $connected || ! $currentPhone) {
+            return ['cleared' => false, 'phone' => $currentPhone];
+        }
+
+        $storedPhone = System::getProperty(self::LINKED_PHONE_KEY);
+
+        if ($storedPhone && $storedPhone !== $currentPhone) {
+            $counts = $this->clearLocalInboxData();
+            System::addProperty(self::LINKED_PHONE_KEY, $currentPhone);
+            Log::info('WhatsApp inbox cleared — linked account changed', [
+                'from' => $storedPhone,
+                'to' => $currentPhone,
+                'counts' => $counts,
+            ]);
+
+            return [
+                'cleared' => true,
+                'phone' => $currentPhone,
+                'previous_phone' => $storedPhone,
+                'counts' => $counts,
+            ];
+        }
+
+        if (! $storedPhone) {
+            System::addProperty(self::LINKED_PHONE_KEY, $currentPhone);
+        }
+
+        return ['cleared' => false, 'phone' => $currentPhone];
+    }
+
+    public function normalizeLinkedPhone(?string $phone): ?string
+    {
+        if ($phone === null || $phone === '') {
+            return null;
+        }
+
+        $digits = preg_replace('/\D/', '', $phone);
+
+        return preg_match('/^\d{8,15}$/', $digits) ? $digits : null;
+    }
+
+    /**
      * Wipe inbox history when the linked WhatsApp account is unlinked,
      * so a newly linked number does not show the previous account's chats.
      *
@@ -446,6 +502,8 @@ class WhatsappService
             if (Schema::hasTable('whatsapp_inquiry_status_logs')) {
                 WhatsappInquiryStatusLog::query()->delete();
             }
+
+            System::removeProperty(self::LINKED_PHONE_KEY);
 
             Log::info('WhatsApp local inbox cleared after unlink', $counts);
         } catch (\Throwable $e) {

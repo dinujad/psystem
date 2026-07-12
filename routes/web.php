@@ -105,6 +105,7 @@ Route::middleware(['setData'])->group(function () {
 Route::post('/whatsapp/webhook/incoming', [WhatsappController::class, 'incomingWebhook']);
 Route::post('/whatsapp/webhook/contacts', [WhatsappController::class, 'contactWebhook']);
 Route::post('/whatsapp/webhook/lid-merge', [WhatsappController::class, 'lidMergeWebhook']);
+Route::post('/whatsapp/webhook/connected', [WhatsappController::class, 'connectedWebhook']);
 
 // Fardar Express reverse API (status callbacks)
 Route::post('/delivery/webhook/status', [\App\Http\Controllers\DeliveryController::class, 'statusWebhook']);
@@ -235,6 +236,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/sells/convert-to-draft/{id}', 'SellPosController@convertToInvoice');
     Route::get('/sells/convert-to-proforma/{id}', 'SellPosController@convertToProforma');
     Route::get('/sells/quotations', 'SellController@getQuotations');
+    Route::get('/sells/proformas', 'SellController@getProformas');
     Route::get('/sells/draft-dt', 'SellController@getDraftDatables');
     Route::resource('sells', 'SellController')->except(['show']);
     Route::get('/sells/copy-quotation/{id}', [SellPosController::class, 'copyQuotation']);
@@ -255,6 +257,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::get('/sells/convert-to-draft/{id}', [SellPosController::class, 'convertToInvoice']);
     Route::get('/sells/convert-to-proforma/{id}', [SellPosController::class, 'convertToProforma']);
     Route::get('/sells/quotations', [SellController::class, 'getQuotations']);
+    Route::get('/sells/proformas', [SellController::class, 'getProformas']);
     Route::get('/sells/draft-dt', [SellController::class, 'getDraftDatables']);
     Route::resource('sells', SellController::class)->except(['show']);
 
@@ -540,6 +543,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/whatsapp/sync-contacts', [WhatsappController::class, 'syncContacts']);
     Route::post('/whatsapp/send', [WhatsappController::class, 'send'])->middleware('throttle:whatsapp-send');
     Route::post('/whatsapp/logout', [WhatsappController::class, 'logout']);
+    Route::post('/whatsapp/clear-inbox', [WhatsappController::class, 'clearInbox']);
     Route::get('/whatsapp/inbox', [WhatsappController::class, 'inbox'])->name('whatsapp.inbox');
     Route::get('/whatsapp/inbox/{phone}', [WhatsappController::class, 'conversation'])->name('whatsapp.conversation');
     Route::post('/whatsapp/inbox/send', [WhatsappController::class, 'sendFromInbox'])->middleware('throttle:whatsapp-send')->name('whatsapp.sendFromInbox');

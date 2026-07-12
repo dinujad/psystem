@@ -3,30 +3,22 @@
     if (! file_exists($footerPath)) {
         $footerPath = public_path('images/footer (1).png');
     }
-    $signPath = public_path('images/sign.png');
-    $signB64 = file_exists($signPath) ? base64_encode(file_get_contents($signPath)) : null;
     $docLabel = strtolower($document_title ?? 'invoice');
+    $isQuote = str_contains(strtoupper((string) ($document_title ?? '')), 'QUOT');
+    $brandRed = '#E31E24';
+    $tagline = $isQuote
+        ? 'Committed to excellence with every project.'
+        : '“Every print tells a story. Thank you for making us part of yours.”';
+    $sysNote = $isQuote
+        ? 'System generated Quotation. No signature required.'
+        : 'System-generated '.$docLabel.'. No signature required.';
 @endphp
-{{-- Signature sits directly above brand footer on every page bottom --}}
-<div style="width:100%; margin:0; padding:0 12mm 3mm 12mm; box-sizing:border-box;">
-    <table style="width:100%; border-collapse:collapse;">
-        <tr>
-            <td style="vertical-align:bottom; text-align:left; font-size:10px; font-style:italic; color:#9ca3af; padding:0 0 6px 0;">
-                *This is a system generated {{ $docLabel }}.
-            </td>
-            <td style="vertical-align:bottom; text-align:right; font-size:12px; color:#111; line-height:1.35; padding:0 0 2px 0;">
-                @if(! empty($signB64))
-                    <img src="data:image/png;base64,{{ $signB64 }}" style="height:58px; width:auto; display:block; margin:0 0 4px auto;" alt="Signature">
-                @endif
-                <div style="font-size:12px; color:#222; margin:0;">Yours faithfully,</div>
-                <div style="font-size:13px; font-weight:700; color:#111; margin:0;">Sandaruwan Dharampriya</div>
-                <div style="font-size:11px; color:#444; margin:0;">Director, PrintWorks</div>
-            </td>
-        </tr>
-    </table>
+<div style="width:210mm; margin:0; padding:0 12mm 2mm 12mm; box-sizing:border-box; text-align:left; font-size:9px; color:#666;">
+    <div style="font-weight:700; color:#111; margin:0 0 3px 0;">{{ $sysNote }}</div>
+    <div style="color:{{ $brandRed }}; font-style:italic; margin:0 0 6px 0;">{{ $tagline }}</div>
 </div>
 @if(file_exists($footerPath))
-<div style="width:100%; margin:0; padding:0; text-align:center; line-height:0; font-size:0;">
-    <img src="data:image/png;base64,{{ base64_encode(file_get_contents($footerPath)) }}" style="width:210mm; display:block; margin:0;" alt="Footer">
+<div style="width:210mm; margin:0; padding:0; text-align:center;">
+    <img src="{{ $footerPath }}" style="width:210mm; height:auto; display:block; margin:0; padding:0; border:0;" alt="Footer">
 </div>
 @endif

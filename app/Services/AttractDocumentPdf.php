@@ -22,14 +22,24 @@ class AttractDocumentPdf
             $location_details = $contents['location_details'];
 
             $isQuotation = ! empty($receipt_details->is_quotation);
-            $document_title = $isQuotation ? 'QUOTATION' : 'INVOICE';
-            $blade = $isQuotation ? 'download_quotation_pdf' : 'download_pdf';
+            $isProforma = ! empty($receipt_details->is_proforma) || ($receipt_details->sub_status ?? '') === 'proforma';
+            if ($isQuotation) {
+                $document_title = 'QUOTATION';
+                $blade = 'download_quotation_pdf';
+            } elseif ($isProforma) {
+                $document_title = 'PROFORMA INVOICE';
+                $blade = 'download_proforma_pdf';
+            } else {
+                $document_title = 'INVOICE';
+                $blade = 'download_pdf';
+            }
 
             $body = view('sale_pos.receipts.'.$blade)
                 ->with(compact('receipt_details', 'location_details'))
                 ->render();
 
             $mpdf = $this->makeMpdf($document_title);
+            $this->applyPaidWatermark($mpdf, $receipt_details);
             $filename = $document_title.'-'.($receipt_details->invoice_no ?? $transactionId).'.pdf';
             $mpdf->SetTitle($filename);
             $mpdf->WriteHTML($body);
@@ -49,21 +59,20 @@ class AttractDocumentPdf
         }
     }
 
-    private function makeMpdf(string $document_title): \Mpdf\Mpdf
+    public function makeMpdf(string $document_title): \Mpdf\Mpdf
     {
         $footerPath = public_path('images/footer.png');
         if (! file_exists($footerPath)) {
             $footerPath = public_path('images/footer (1).png');
         }
 
-        $footerImgHmm = 34;
+        $footerImgHmm = 30;
         if (file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
             $footerImgHmm = round(210 * $fi[1] / $fi[0], 2);
-            $footerImgHmm = min(42, max(28, $footerImgHmm + 1));
+            $footerImgHmm = min(38, max(24, $footerImgHmm));
         }
 
-        $signZoneHmm = 32;
-        $marginBottom = $footerImgHmm + $signZoneHmm;
+        $marginBottom = $footerImgHmm + 16;
 
         $mpdf = new \Mpdf\Mpdf([
             'tempDir' => public_path('uploads/temp'),
@@ -72,7 +81,7 @@ class AttractDocumentPdf
             'autoLangToFont' => true,
             'autoVietnamese' => true,
             'autoArabic' => true,
-            'margin_top' => 0,
+            'margin_top' => 10,
             'margin_bottom' => $marginBottom,
             'margin_left' => 0,
             'margin_right' => 0,
@@ -82,6 +91,7 @@ class AttractDocumentPdf
 
         $mpdf->useSubstitutions = true;
         $mpdf->SetAutoPageBreak(true, $marginBottom);
+        $mpdf->setAutoBottomMargin = 'stretch';
 
         $footerHtml = view('sale_pos.receipts.partials.attract_pdf_footer', [
             'document_title' => $document_title,
@@ -89,5 +99,32 @@ class AttractDocumentPdf
         $mpdf->SetHTMLFooter($footerHtml);
 
         return $mpdf;
+    }
+
+    private function applyPaidWatermark(\Mpdf\Mpdf $mpdf, $receipt_details): void
+    {
+        if (! empty($receipt_details->is_quotation)) {
+            return;
+        }
+
+        if (! empty($receipt_details->is_proforma) || ($receipt_details->sub_status ?? '') === 'proforma') {
+            return;
+        }
+
+        $status = strtolower(trim((string) ($receipt_details->payment_status ?? '')));
+        $due = $receipt_details->total_due ?? null;
+        $isPaid = $status === 'paid'
+            || $due === 0
+            || $due === '0'
+            || (is_string($due) && preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', $due));
+
+        if (! $isPaid) {
+            return;
+        }
+
+        $mpdf->SetWatermarkText('PAID', 0.15);
+        $mpdf->watermark_font = 'DejaVuSansCondensed';
+        $mpdf->showWatermarkText = true;
+        $mpdf->watermarkTextAlpha = 0.15;
     }
 }

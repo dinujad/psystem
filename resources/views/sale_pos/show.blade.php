@@ -423,7 +423,10 @@
       </a>
     @endif
     @can('print_invoice')
-      <a href="{{ route('sell.downloadPdf', [$sell->id]) }}" target="_blank" class="tw-dw-btn tw-dw-btn-primary tw-text-white no-print">
+      @php
+        $invoice_preview_url = app(\App\Utils\TransactionUtil::class)->getInvoiceUrl($sell->id, $sell->business_id);
+      @endphp
+      <a href="{{ $invoice_preview_url }}" target="_blank" class="tw-dw-btn tw-dw-btn-primary tw-text-white no-print">
         <i class="fa fa-print" aria-hidden="true"></i> @lang("lang_v1.print_invoice") / PDF
       </a>
     @endcan

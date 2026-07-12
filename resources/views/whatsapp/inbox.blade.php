@@ -560,6 +560,11 @@
                 </div>
             </div>
             <div class="wa-left-head-actions">
+                @if($isAdmin)
+                <button type="button" class="wa-icon-btn" title="Clear all inbox chats" onclick="clearAllInboxChats()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
+                @endif
                 <a href="{{ route('whatsapp.link') }}" class="wa-icon-btn" title="Manage Connection">
                     <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
                 </a>
@@ -1535,6 +1540,30 @@
                 showToast('Chat deleted', 'success');
             }
         } catch(e){ showToast('Error deleting chat', 'error'); }
+    };
+
+    /* ── Clear all inbox chats (previous WhatsApp account) ── */
+    window.clearAllInboxChats = async function(){
+        if(!confirm('Clear ALL inbox chats?\n\nUse this after linking a new WhatsApp number to remove chats from the old account. This cannot be undone.')) return;
+        try {
+            const r = await fetch('/whatsapp/clear-inbox', {
+                method: 'POST',
+                headers:{ Accept:'application/json', 'X-CSRF-TOKEN':CSRF },
+            });
+            const d = await r.json();
+            if(d.success){
+                document.getElementById('wa-thread-list').innerHTML = '';
+                document.getElementById('wa-chat').style.display = 'none';
+                document.getElementById('wa-splash').style.display = '';
+                document.getElementById('wa-contact-panel').classList.remove('open');
+                knownPhones.clear();
+                phone = null; lastId = 0;
+                if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+                showToast('All inbox chats cleared', 'success');
+            } else {
+                showToast(d.message || 'Failed to clear chats', 'error');
+            }
+        } catch(e){ showToast('Error clearing chats', 'error'); }
     };
 
     /* ── Fix LID number ── */

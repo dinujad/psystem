@@ -45,6 +45,13 @@ class WhatsappController extends Controller
             \Log::warning('WhatsApp LID merge skipped: '.$e->getMessage());
         }
 
+        $status = $this->whatsappService->getStatus();
+        $waConnected = ($status['status'] ?? '') === 'connected';
+
+        if ($waConnected) {
+            $this->whatsappService->syncInboxToLinkedAccount($status);
+        }
+
         try {
             $threads = $this->threadQuery($isAdmin, $isAgent)->get();
         } catch (\Throwable $e) {
@@ -82,9 +89,6 @@ class WhatsappController extends Controller
             \Log::warning('WhatsApp assignments load failed: '.$e->getMessage());
             $assignments = collect();
         }
-
-        $status = $this->whatsappService->getStatus();
-        $waConnected = ($status['status'] ?? '') === 'connected';
 
         // When WhatsApp is not linked, do not show previous account chats
         if (! $waConnected) {
@@ -269,6 +273,11 @@ class WhatsappController extends Controller
 
         WhatsappLidResolver::mergeAllFromMap();
 
+        $status = $this->whatsappService->getStatus();
+        if (($status['status'] ?? '') === 'connected') {
+            $this->whatsappService->syncInboxToLinkedAccount($status);
+        }
+
         $threads = $this->threadQuery($isAdmin, $isAgent)->get();
 
         $phones      = $threads->pluck('phone_number')->all();
@@ -370,7 +379,15 @@ class WhatsappController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        return response()->json($this->whatsappService->getStatus());
+        $status = $this->whatsappService->getStatus();
+        if (($status['status'] ?? '') === 'connected') {
+            $sync = $this->whatsappService->syncInboxToLinkedAccount($status);
+            if (! empty($sync['cleared'])) {
+                $status['inbox_cleared'] = true;
+            }
+        }
+
+        return response()->json($status);
     }
 
     public function syncStatus()
@@ -421,6 +438,51 @@ class WhatsappController extends Controller
         }
 
         return response()->json($result);
+    }
+
+    /** Clear all local inbox chats (admin). Keeps current linked phone if still connected. */
+    public function clearInbox()
+    {
+        if (! auth()->user()->can('send_notifications')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $cleared = $this->whatsappService->clearLocalInboxData();
+
+        $status = $this->whatsappService->getStatus();
+        if (($status['status'] ?? '') === 'connected') {
+            $phone = $this->whatsappService->normalizeLinkedPhone($status['phone'] ?? null);
+            if ($phone) {
+                \App\System::addProperty(\App\Services\WhatsappService::LINKED_PHONE_KEY, $phone);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'All inbox chats cleared.',
+            'cleared' => $cleared,
+        ]);
+    }
+
+    public function connectedWebhook(Request $request)
+    {
+        $apiKey = $request->header('x-api-key');
+        $expectedKey = config('services.whatsapp.api_key');
+
+        if (empty($expectedKey) || $apiKey !== $expectedKey) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $validated = $request->validate([
+            'phone' => ['required', 'string'],
+        ]);
+
+        $sync = $this->whatsappService->syncInboxToLinkedAccount([
+            'status' => 'connected',
+            'phone' => $validated['phone'],
+        ]);
+
+        return response()->json(['success' => true, 'sync' => $sync]);
     }
 
     public function incomingWebhook(Request $request)

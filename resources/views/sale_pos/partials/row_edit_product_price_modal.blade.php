@@ -45,8 +45,8 @@
 					</div>
 				@endif
 				<div class="form-group col-xs-12">
-		      		<label>@lang('lang_v1.description')</label>
-		      		<textarea class="form-control" name="products[{{$row_count}}][sell_line_note]" rows="3">{{$sell_line_note}}</textarea>
+		      		<label>@lang('lang_v1.product_description_label')</label>
+		      		<textarea class="form-control" name="products[{{$row_count}}][sell_line_note]" rows="3" placeholder="@lang('lang_v1.product_description_label')">{{$sell_line_note}}</textarea>
 		      		<p class="help-block">@lang('lang_v1.sell_line_description_help')</p>
 		      	</div>
 			</div>

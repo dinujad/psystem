@@ -535,6 +535,20 @@ class AdminSidebarMenu
                                 ['icon' => '', 'active' => request()->segment(1) == 'sells' && request()->segment(2) == 'quotations']
                             );
                         }
+                        if (in_array('add_sale', $enabled_modules) && auth()->user()->can('direct_sell.access')) {
+                            $sub->url(
+                                action([\App\Http\Controllers\SellController::class, 'create'], ['status' => 'proforma']),
+                                __('lang_v1.add_proforma_invoice'),
+                                ['icon' => '', 'active' => request()->get('status') == 'proforma']
+                            );
+                        }
+                        if (in_array('add_sale', $enabled_modules) && ($is_admin || auth()->user()->hasAnyPermission(['quotation.view_all', 'quotation.view_own', 'draft.view_all', 'draft.view_own', 'direct_sell.access']))) {
+                            $sub->url(
+                                action([\App\Http\Controllers\SellController::class, 'getProformas']),
+                                __('lang_v1.list_proforma_invoices'),
+                                ['icon' => '', 'active' => request()->segment(1) == 'sells' && request()->segment(2) == 'proformas']
+                            );
+                        }
 
                         if (auth()->user()->can('access_sell_return') || auth()->user()->can('access_own_sell_return')) {
                             $sub->url(

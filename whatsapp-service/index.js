@@ -26,6 +26,8 @@ const LARAVEL_CONTACT_WEBHOOK_URL = process.env.LARAVEL_CONTACT_WEBHOOK_URL
   || (LARAVEL_WEBHOOK_URL ? LARAVEL_WEBHOOK_URL.replace(/\/incoming\/?$/, '/contacts') : null);
 const LARAVEL_LID_MERGE_URL = process.env.LARAVEL_LID_MERGE_URL
   || (LARAVEL_WEBHOOK_URL ? LARAVEL_WEBHOOK_URL.replace(/\/incoming\/?$/, '/lid-merge') : null);
+const LARAVEL_CONNECTED_WEBHOOK_URL = process.env.LARAVEL_CONNECTED_WEBHOOK_URL
+  || (LARAVEL_WEBHOOK_URL ? LARAVEL_WEBHOOK_URL.replace(/\/incoming\/?$/, '/connected') : null);
 const AUTH_DIR = path.join(__dirname, 'auth_session');
 const LID_MAP_FILE = path.join(__dirname, 'lid_map.json');
 const CONTACT_STORE_FILE = path.join(__dirname, 'contact_store.json');
@@ -348,6 +350,32 @@ async function forwardToLaravel(payload) {
     }
   } catch (error) {
     logState(`Webhook error: ${error.message}`);
+  }
+}
+
+function getLinkedPhone() {
+  if (!sock?.user?.id) return null;
+  const num = normalizeJidToNumber(sock.user.id);
+  return /^\d{8,15}$/.test(num) ? num : null;
+}
+
+async function notifyLaravelConnected() {
+  const phone = getLinkedPhone();
+  if (!phone || !LARAVEL_CONNECTED_WEBHOOK_URL) return;
+  try {
+    const response = await fetch(LARAVEL_CONNECTED_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      body: JSON.stringify({ phone }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      logState(`Connected webhook failed (${response.status}): ${body}`);
+    } else {
+      logState(`Connected webhook sent for +${phone}`);
+    }
+  } catch (error) {
+    logState(`Connected webhook error: ${error.message}`);
   }
 }
 
@@ -963,6 +991,9 @@ async function startWhatsApp() {
         isStarting = false;
         logState('Connected.');
 
+        // Tell Laravel which number is linked — clears stale inbox if account changed
+        await notifyLaravelConnected();
+
         // Upload pre-keys so recipients can decrypt our messages.
         // Stale/exhausted pre-keys are the #1 cause of "Waiting for this message".
         try {
@@ -1060,6 +1091,7 @@ app.get('/health', (req, res) => {
   res.json({
     ok: true,
     status: connectionStatus,
+    phone: getLinkedPhone(),
     lid_map_size: Object.keys(lidToRealJid).length,
     pending_messages: pendingMessages.length,
     history_sync_queue: historySyncQueue.length,
@@ -1070,7 +1102,9 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/qr', authMiddleware, async (req, res) => {
-  if (connectionStatus === 'connected') return res.json({ status: 'connected' });
+  if (connectionStatus === 'connected') {
+    return res.json({ status: 'connected', phone: getLinkedPhone() });
+  }
   if (!currentQr) return res.json({ status: 'waiting' });
   try {
     const qr = await qrToBase64Png(currentQr);
@@ -1081,7 +1115,7 @@ app.get('/qr', authMiddleware, async (req, res) => {
 });
 
 app.get('/status', authMiddleware, (req, res) => {
-  res.json({ status: connectionStatus });
+  res.json({ status: connectionStatus, phone: getLinkedPhone() });
 });
 
 app.post('/send', authMiddleware, async (req, res) => {

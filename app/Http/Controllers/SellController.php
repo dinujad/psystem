@@ -221,7 +221,7 @@ class SellController extends Controller
             $datatable = Datatables::of($sells)
                 ->addColumn(
                     'action',
-                    function ($row) use ($only_shipments, $is_admin, $sale_type, $is_zatca) {
+                    function ($row) use ($only_shipments, $is_admin, $sale_type, $is_zatca, $business_id) {
 
                         // this action button for zatca module
                         if ($is_zatca) {
@@ -293,7 +293,8 @@ class SellController extends Controller
                         }
 
                         if (auth()->user()->can('print_invoice') && $sale_type != 'sales_order') {
-                            $html .= '<li><a href="'.route('sell.downloadPdf', [$row->id]).'" target="_blank"><i class="fas fa-file-pdf" aria-hidden="true"></i> '.__('messages.print').' / PDF</a></li>';
+                            $invoice_preview_url = $this->transactionUtil->getInvoiceUrl($row->id, $business_id);
+                            $html .= '<li><a href="'.$invoice_preview_url.'" target="_blank"><i class="fas fa-print" aria-hidden="true"></i> '.__('messages.print').' / PDF</a></li>';
                             $html .= '<li><a href="'.route('delivery.sale_packing_slip', [$row->id]).'" target="_blank"><i class="fas fa-box-open" aria-hidden="true"></i> Packing Slip</a></li>';
                         }
 
@@ -1190,6 +1191,34 @@ class SellController extends Controller
     }
 
     /**
+     * Display a listing of proforma invoices.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function getProformas()
+    {
+        if (
+            ! auth()->user()->can('quotation.view_all')
+            && ! auth()->user()->can('quotation.view_own')
+            && ! auth()->user()->can('draft.view_all')
+            && ! auth()->user()->can('draft.view_own')
+            && ! auth()->user()->can('direct_sell.access')
+        ) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $business_id = request()->session()->get('user.business_id');
+
+        $business_locations = BusinessLocation::forDropdown($business_id, false);
+        $customers = Contact::customersDropdown($business_id, false);
+
+        $sales_representative = User::forDropdown($business_id, false, false, true);
+
+        return view('sale_pos.proformas')
+            ->with(compact('business_locations', 'customers', 'sales_representative'));
+    }
+
+    /**
      * Send the datatable response for draft or quotations.
      *
      * @return \Illuminate\Http\Response
@@ -1199,6 +1228,7 @@ class SellController extends Controller
         if (request()->ajax()) {
             $business_id = request()->session()->get('user.business_id');
             $is_quotation = request()->input('is_quotation', 0);
+            $is_proforma = request()->input('is_proforma', 0);
 
             $is_woocommerce = $this->moduleUtil->isModuleInstalled('Woocommerce');
 
@@ -1233,13 +1263,29 @@ class SellController extends Controller
                     'transactions.is_export'
                 );
 
-            if ($is_quotation == 1) {
+            if ($is_proforma == 1) {
+                $sells->where('transactions.sub_status', 'proforma');
+
+                if (
+                    ! auth()->user()->can('quotation.view_all')
+                    && ! auth()->user()->can('draft.view_all')
+                    && ! auth()->user()->can('direct_sell.access')
+                    && (auth()->user()->can('quotation.view_own') || auth()->user()->can('draft.view_own'))
+                ) {
+                    $sells->where('transactions.created_by', request()->session()->get('user.id'));
+                }
+            } elseif ($is_quotation == 1) {
                 $sells->where('transactions.sub_status', 'quotation');
 
                 if (! auth()->user()->can('quotation.view_all') && auth()->user()->can('quotation.view_own')) {
                     $sells->where('transactions.created_by', request()->session()->get('user.id'));
                 }
             } else {
+                $sells->where(function ($q) {
+                    $q->whereNull('transactions.sub_status')
+                        ->orWhereNotIn('transactions.sub_status', ['quotation', 'proforma']);
+                });
+
                 if (! auth()->user()->can('draft.view_all') && auth()->user()->can('draft.view_own')) {
                     $sells->where('transactions.created_by', request()->session()->get('user.id'));
                 }
@@ -1316,15 +1362,20 @@ class SellController extends Controller
                         }
 
                         $html .= '<li>
-                                    <a href="'.route('quotation.downloadPdf', ['id' => $row->id, 'sub_status' => ($row->sub_status == 'proforma' ? 'proforma' : '')]).'" target="_blank">
-                                        <i class="fas fa-file-pdf" aria-hidden="true"></i> '.__('messages.print').' / PDF
+                                    <a href="'.$this->transactionUtil->getInvoiceUrl($row->id, session('user.business_id')).'" target="_blank">
+                                        <i class="fas fa-print" aria-hidden="true"></i> '.__('messages.print').' / PDF
                                     </a>
                                 </li>';
 
-                        if ((auth()->user()->can('sell.create') || auth()->user()->can('direct_sell.access')) && config('constants.enable_convert_draft_to_invoice')) {
-                            $html .= '<li>
-                                        <a href="'.action([\App\Http\Controllers\SellPosController::class, 'convertToInvoice'], [$row->id]).'" class="convert-draft"><i class="fas fa-sync-alt"></i>'.__('lang_v1.convert_to_invoice').'</a>
-                                    </li>';
+                        if (auth()->user()->can('sell.create') || auth()->user()->can('direct_sell.access')) {
+                            $canConvertToInvoice = ($row->sub_status == 'proforma')
+                                || config('constants.enable_convert_draft_to_invoice');
+
+                            if ($canConvertToInvoice) {
+                                $html .= '<li>
+                                            <a href="'.action([\App\Http\Controllers\SellPosController::class, 'convertToInvoice'], [$row->id]).'" class="convert-draft"><i class="fas fa-sync-alt"></i>'.__('lang_v1.convert_to_invoice').'</a>
+                                        </li>';
+                            }
                         }
 
                         if ($row->sub_status != 'proforma') {
@@ -1434,7 +1485,17 @@ class SellController extends Controller
             $duplicate_transaction_data['invoice_token'] = null;
 
             DB::beginTransaction();
-            $duplicate_transaction_data['invoice_no'] = $this->transactionUtil->getInvoiceNumber($business_id, 'draft', $duplicate_transaction_data['location_id']);
+            $duplicate_is_quotation = ! empty($duplicate_transaction_data['is_quotation']);
+            $duplicate_is_proforma = ($duplicate_transaction_data['sub_status'] ?? '') === 'proforma';
+            $duplicate_transaction_data['invoice_no'] = $this->transactionUtil->getInvoiceNumber(
+                $business_id,
+                'draft',
+                $duplicate_transaction_data['location_id'],
+                null,
+                null,
+                $duplicate_is_quotation,
+                $duplicate_is_proforma
+            );
 
             //Create duplicate transaction
             $duplicate_transaction = Transaction::create($duplicate_transaction_data);

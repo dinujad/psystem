@@ -83,7 +83,20 @@ return [
     'enable_product_bulk_edit' => false,  //Will be depreciated in future
     'enable_convert_draft_to_invoice' => false, //Experimental beta feature.
     'enable_download_pdf' => true,
+    // Default Attract / PrintWorks bank details shown on invoice & quotation PDFs (editable per sale)
+    'default_pdf_bank_details' => "Attract wear & printing solutions\nAccount No : 0162 1000 2468\nSampath bank - Kaduwela\nSwift Code : BSAMLKLX\nPayment mode : cash / cheque / bank transfer",
+    'default_quotation_terms' => "Prices apply only to the given order quantity\nPayment: 50% advance with purchase order\nCompletion within 3 working days after approval\nQuotation valid for 7 days from date of issue",
+    'default_quotation_additional_terms' => [
+        'artwork_preproduction' => "All design work and pre-production sketches will begin once the advance payment has been received.\n\nFor bulk orders and selected custom orders, we may prepare a sample for approval after receiving the advance payment. Photos and videos of the sample will be shared with the customer for confirmation. If physical inspection is required, the customer may collect the sample from our office, or we can arrange delivery to the customer's location. Delivery charges will be borne by the customer.\n\nIf a sample is required before confirming the order, sample charges may apply. Once the final order is placed, 50% of the sample cost will be deducted from the final invoice.",
+        'delivery' => '',
+        'installation' => '',
+        'additional_accessories' => '',
+    ],
     'invoice_scheme_separator' => '-',
+    'quotation_no_prefix' => 'QTN ',
+    'quotation_no_start' => 650,
+    'proforma_no_prefix' => 'PI ',
+    'proforma_no_start' => 650,
     'show_payments_recovered_today' => false, //Displays payment recovered today table on dashboard
     'enable_b2b_marketplace' => false,
     'enable_contact_assign' => true, //Used in add/edit contacts screen

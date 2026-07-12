@@ -635,8 +635,9 @@ class SellPosController extends Controller
 
                 DB::commit();
 
-                // SMS + WhatsApp (with PDF) for invoices and quotations
+                // SMS + WhatsApp for invoices, quotations, and proforma invoices
                 $shouldNotifyDocument = (! empty($input['is_quotation']) && (int) $input['is_quotation'] === 1)
+                    || (! empty($input['sub_status']) && $input['sub_status'] === 'proforma')
                     || (($input['status'] ?? '') === 'final' && ($transaction->type ?? '') === 'sell');
 
                 if ($shouldNotifyDocument) {
@@ -668,6 +669,9 @@ class SellPosController extends Controller
 
                         if ($input['is_quotation'] == 1) {
                             $msg = trans('lang_v1.quotation_added');
+                            $print_invoice = true;
+                        } elseif (($input['sub_status'] ?? '') === 'proforma') {
+                            $msg = __('lang_v1.proforma_invoice').' '.__('lang_v1.added_success');
                             $print_invoice = true;
                         }
                     } elseif ($input['status'] == 'final') {
@@ -821,7 +825,13 @@ class SellPosController extends Controller
             $output['data'] = $receipt_details;
         } else {
             // Always use PrintWorks branded A4 layout (letterhead + footer) for browser print
-            $document_title = ! empty($receipt_details->is_quotation) ? 'QUOTATION' : 'INVOICE';
+            if (! empty($receipt_details->is_quotation)) {
+                $document_title = 'QUOTATION';
+            } elseif (! empty($receipt_details->is_proforma) || ($receipt_details->sub_status ?? '') === 'proforma') {
+                $document_title = 'PROFORMA INVOICE';
+            } else {
+                $document_title = 'INVOICE';
+            }
             $embed_footer = true;
             $output['html_content'] = view('sale_pos.receipts.partials.attract_pdf_layout', compact(
                 'receipt_details',
@@ -2764,10 +2774,29 @@ class SellPosController extends Controller
 
             $transaction_before = $transaction->replicate();
 
+            $quoteRef = null;
+            if ($transaction->is_quotation || preg_match('/^QTN\s/i', (string) $transaction->invoice_no)) {
+                $quoteRef = $transaction->invoice_no;
+            }
+
+            $transaction->is_quotation = 0;
             $transaction->sub_status = 'proforma';
+            if ($quoteRef) {
+                $transaction->quotation_ref_no = $quoteRef;
+            }
+            $transaction->invoice_no = $this->transactionUtil->generateProformaNumber($business_id);
             $transaction->save();
 
             $this->transactionUtil->activityLog($transaction, 'edited', $transaction_before);
+
+            try {
+                app(QuotationSmsNotifier::class)->notifyCustomer(
+                    $transaction->fresh(['contact']),
+                    $business_id
+                );
+            } catch (\Throwable $e) {
+                \Log::warning('Document notify (proforma): '.$e->getMessage(), ['transaction_id' => $transaction->id]);
+            }
 
             $output = ['success' => 1, 'msg' => __('lang_v1.converted_to_proforma_successfully')];
         } catch (Exception $e) {
@@ -2803,7 +2832,7 @@ class SellPosController extends Controller
 
             $quotation->transaction_date = \Carbon::now()->format('Y-m-d H:i:s');
             $quotation->invoice_no = $this->transactionUtil->getInvoiceNumber($business_id, 'draft',
-                $transaction->location_id);
+                $transaction->location_id, null, null, true);
             $quotation->save();
 
             $sell_lines = TransactionSellLine::where('transaction_id', $transaction->id)->get();
@@ -2844,42 +2873,70 @@ class SellPosController extends Controller
             $footerPath = public_path('images/footer (1).png');
         }
 
-        // Brand footer image height (A4 width 210mm)
-        $footerImgHmm = 34;
+        $footerImgHmm = 30;
         if (file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
-            $footerImgHmm = round(210 * $fi[1] / $fi[0], 2);
-            $footerImgHmm = min(42, max(28, $footerImgHmm + 1));
+            $footerImgHmm = round(210 * $fi[1] / $fi[0], 2); // full A4 width
+            $footerImgHmm = min(38, max(24, $footerImgHmm));
         }
 
-        // Extra space for signature block sitting just above the brand footer
-        $signZoneHmm = 32;
-        $marginBottom = $footerImgHmm + $signZoneHmm;
+        $marginBottom = $footerImgHmm + 16;
+
+        if (! is_dir(public_path('uploads/temp'))) {
+            @mkdir(public_path('uploads/temp'), 0775, true);
+        }
 
         $mpdf = new \Mpdf\Mpdf([
-            'tempDir'        => public_path('uploads/temp'),
-            'mode'           => 'utf-8',
+            'tempDir' => public_path('uploads/temp'),
+            'mode' => 'utf-8',
             'autoScriptToLang' => true,
-            'autoLangToFont'   => true,
-            'autoVietnamese'   => true,
-            'autoArabic'       => true,
-            'margin_top'     => 0,
-            'margin_bottom'  => $marginBottom,
-            'margin_left'    => 0,
-            'margin_right'   => 0,
-            'margin_footer'  => 0,
-            'format'         => 'A4',
+            'autoLangToFont' => true,
+            'autoVietnamese' => true,
+            'autoArabic' => true,
+            'margin_top' => 10,
+            'margin_bottom' => $marginBottom,
+            'margin_left' => 0,
+            'margin_right' => 0,
+            'margin_footer' => 0,
+            'format' => 'A4',
         ]);
 
         $mpdf->useSubstitutions = true;
         $mpdf->SetAutoPageBreak(true, $marginBottom);
+        $mpdf->setAutoBottomMargin = 'stretch';
 
-        // Signature + brand footer pinned to page bottom
         $footerHtml = view('sale_pos.receipts.partials.attract_pdf_footer', [
             'document_title' => $document_title,
         ])->render();
         $mpdf->SetHTMLFooter($footerHtml);
 
         return $mpdf;
+    }
+
+    private function applyPaidWatermark(\Mpdf\Mpdf $mpdf, $receipt_details): void
+    {
+        if (! empty($receipt_details->is_quotation)) {
+            return;
+        }
+
+        if (! empty($receipt_details->is_proforma) || ($receipt_details->sub_status ?? '') === 'proforma') {
+            return;
+        }
+
+        $status = strtolower(trim((string) ($receipt_details->payment_status ?? '')));
+        $due = $receipt_details->total_due ?? null;
+        $isPaid = $status === 'paid'
+            || $due === 0
+            || $due === '0'
+            || (is_string($due) && preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', $due));
+
+        if (! $isPaid) {
+            return;
+        }
+
+        $mpdf->SetWatermarkText('PAID', 0.15);
+        $mpdf->watermark_font = 'DejaVuSansCondensed';
+        $mpdf->showWatermarkText = true;
+        $mpdf->watermarkTextAlpha = 0.15;
     }
 
     /**
@@ -2893,26 +2950,31 @@ class SellPosController extends Controller
 
         $business_id = request()->session()->get('user.business_id');
 
-        $receipt_contents = $this->transactionUtil->getPdfContentsForGivenTransaction($business_id, $id);
-        $receipt_details = $receipt_contents['receipt_details'];
-        $location_details = $receipt_contents['location_details'];
-        $is_email_attachment = false;
-
-        $blade_file = 'download_pdf';
-        if (!empty($receipt_details->is_export)) {
-            $blade_file = 'download_export_pdf';
-        }
-
-        //Generate pdf
         try {
+            $receipt_contents = $this->transactionUtil->getPdfContentsForGivenTransaction($business_id, $id);
+            $receipt_details = $receipt_contents['receipt_details'];
+            $location_details = $receipt_contents['location_details'];
+            $is_email_attachment = false;
+
+            $blade_file = 'download_pdf';
+            $document_title = 'INVOICE';
+            if (! empty($receipt_details->is_export)) {
+                $blade_file = 'download_export_pdf';
+            } elseif (! empty($receipt_details->is_proforma) || ($receipt_details->sub_status ?? '') === 'proforma') {
+                $blade_file = 'download_proforma_pdf';
+                $document_title = 'PROFORMA INVOICE';
+            } elseif (! empty($receipt_details->is_quotation)) {
+                $blade_file = 'download_quotation_pdf';
+                $document_title = 'QUOTATION';
+            }
+
             $body = view('sale_pos.receipts.'.$blade_file)
                 ->with(compact('receipt_details', 'location_details', 'is_email_attachment'))
                 ->render();
 
-            if ($blade_file === 'download_pdf') {
-                $mpdf = $this->createAttractMpdf('INVOICE');
-            } else {
-                $mpdf = new \Mpdf\Mpdf(['tempDir' => public_path('uploads/temp'),
+            if ($blade_file === 'download_export_pdf') {
+                $mpdf = new \Mpdf\Mpdf([
+                    'tempDir' => public_path('uploads/temp'),
                     'mode' => 'utf-8',
                     'autoScriptToLang' => true,
                     'autoLangToFont' => true,
@@ -2925,16 +2987,27 @@ class SellPosController extends Controller
                 $mpdf->useSubstitutions = true;
                 $mpdf->SetWatermarkText($receipt_details->business_name, 0.1);
                 $mpdf->showWatermarkText = true;
+            } else {
+                $mpdf = $this->createAttractMpdf($document_title);
+                $this->applyPaidWatermark($mpdf, $receipt_details);
             }
 
-            $mpdf->SetTitle('INVOICE-'.$receipt_details->invoice_no.'.pdf');
+            $filename = $document_title.'-'.($receipt_details->invoice_no ?? $id).'.pdf';
+            $mpdf->SetTitle($filename);
             $mpdf->WriteHTML($body);
-            $mpdf->Output('INVOICE-'.$receipt_details->invoice_no.'.pdf', 'I');
+
+            return response($mpdf->Output($filename, 'S'), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'inline; filename="'.$filename.'"',
+                'Cache-Control' => 'private, max-age=0, must-revalidate',
+                'Pragma' => 'public',
+            ]);
         } catch (\Throwable $e) {
             \Log::error('Invoice PDF failed: '.$e->getMessage(), [
                 'transaction_id' => $id,
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
             ]);
             abort(500, 'Invoice PDF could not be generated. Please check logs.');
         }
@@ -2956,15 +3029,26 @@ class SellPosController extends Controller
         $location_details = $receipt_contents['location_details'];
 
         //Generate pdf
-        $body = view('sale_pos.receipts.download_quotation_pdf')
+        $isProforma = ! empty($sub_status) && $sub_status == 'proforma';
+        $blade = $isProforma ? 'download_proforma_pdf' : 'download_quotation_pdf';
+        $document_title = $isProforma ? 'PROFORMA INVOICE' : 'QUOTATION';
+
+        $body = view('sale_pos.receipts.'.$blade)
             ->with(compact('receipt_details', 'location_details', 'sub_status'))
             ->render();
-        $pdf_name = (!empty($sub_status) && $sub_status == 'proforma') ? __('lang_v1.proforma_invoice') : 'QUOTATION';
-        $mpdf = $this->createAttractMpdf($pdf_name === 'QUOTATION' ? 'QUOTATION' : 'INVOICE');
+        $mpdf = $this->createAttractMpdf($document_title);
 
-        $mpdf->SetTitle($pdf_name . '-' . $receipt_details->invoice_no . '.pdf');
+        $mpdf->SetTitle($document_title.'-'.($receipt_details->invoice_no ?? $id).'.pdf');
         $mpdf->WriteHTML($body);
-        $mpdf->Output($pdf_name . '-' . $receipt_details->invoice_no . '.pdf', 'I');
+
+        $filename = $document_title.'-'.($receipt_details->invoice_no ?? $id).'.pdf';
+
+        return response($mpdf->Output($filename, 'S'), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="'.$filename.'"',
+            'Cache-Control' => 'private, max-age=0, must-revalidate',
+            'Pragma' => 'public',
+        ]);
     }
 
     /**

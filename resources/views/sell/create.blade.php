@@ -5,6 +5,8 @@
 
 	if (!empty($status) && $status == 'quotation') {
 		$title = __('lang_v1.add_quotation');
+	} else if (!empty($status) && $status == 'proforma') {
+		$title = __('lang_v1.add_proforma_invoice');
 	} else if (!empty($status) && $status == 'draft') {
 		$title = __('lang_v1.add_draft');
 	} else if ($invoice_mode) {
@@ -215,6 +217,28 @@
 						</div>
 					</div>
 				</div>
+				@if(!empty($status) && $status == 'quotation')
+					@php
+						$defaultValidTillTop = \Carbon\Carbon::now()->addDays(7)->format(session('business.date_format'));
+					@endphp
+					<div class="@if(!empty($commission_agent)) col-sm-3 @else col-sm-4 @endif">
+						<div class="form-group">
+							{!! Form::label('quotation_valid_till', 'Valid till / Due date' . ':*') !!}
+							<div class="input-group">
+								<span class="input-group-addon">
+									<i class="fa fa-calendar"></i>
+								</span>
+								{!! Form::text('quotation_valid_till', old('quotation_valid_till', $defaultValidTillTop), [
+									'class' => 'form-control',
+									'id' => 'quotation_valid_till',
+									'readonly',
+									'required',
+								]) !!}
+							</div>
+							<p class="help-block">Quotation PDF එකේ Valid till එකට යනවා.</p>
+						</div>
+					</div>
+				@endif
 				@if($invoice_mode)
 					<input type="hidden" name="status" id="status" value="final">
 					<input type="hidden" name="is_credit_sale" id="is_credit_sale" value="1">
@@ -222,7 +246,7 @@
 				@elseif(!empty($status))
 					<input type="hidden" name="status" id="status" value="{{$status}}">
 
-					@if(in_array($status, ['draft', 'quotation']))
+					@if(in_array($status, ['draft', 'quotation', 'proforma']))
 						<input type="hidden" id="disable_qty_alert">
 					@endif
 				@else
@@ -530,7 +554,7 @@
 					<span class="display_currency" id="order_tax">0</span>
 			    </div>				
 				
-			    <div class="col-md-12">
+			    <div class="col-md-12 @if(!empty($status) && $status == 'quotation') hide @endif">
 			    	<div class="form-group">
 						{!! Form::label('sell_note',__('sale.sell_note')) !!}
 						{!! Form::textarea('sale_note', null, ['class' => 'form-control', 'rows' => 3]); !!}
@@ -780,7 +804,7 @@
 			$payment_body_id = '';
 		}
 	@endphp
-	@if(!$invoice_mode && (empty($status) || !in_array($status, ['quotation', 'draft'])) && $sale_type != 'sales_order')
+	@if(!$invoice_mode && (empty($status) || !in_array($status, ['quotation', 'draft', 'proforma'])) && $sale_type != 'sales_order')
 		@can('sell.payments')
 			@component('components.widget', ['class' => 'box-solid', 'id' => $payment_body_id, 'title' => __('purchase.add_payment')])
 			@if($is_enabled_download_pdf)
@@ -815,12 +839,12 @@
 						<div class="form-group">
 							{!! Form::label('pdf_bank_details', __('lang_v1.bank_details') . ':') !!}
 							@show_tooltip(__('lang_v1.this_will_be_shown_in_pdf'))
-							{!! Form::textarea('pdf_bank_details', null, ['class' => 'form-control', 'rows' => 3, 'placeholder' => "Account number: ...\nBank: ...\nBranch: ..."]); !!}
+							{!! Form::textarea('pdf_bank_details', old('pdf_bank_details', config('constants.default_pdf_bank_details')), ['class' => 'form-control', 'rows' => 5, 'placeholder' => config('constants.default_pdf_bank_details')]); !!}
 						</div>
 					</div>
 				</div>
 			@endif
-			@if(empty($status) || !in_array($status, ['quotation', 'draft']))
+			@if(empty($status) || !in_array($status, ['quotation', 'draft', 'proforma']))
 				<div class="payment_row" @if($is_enabled_download_pdf) id="payment_rows_div" @endif>
 					<div class="row">
 						<div class="col-md-12 mb-12">
@@ -894,9 +918,9 @@
 		@endcan
 	@endif
 
-	@if($invoice_mode || (!empty($status) && in_array($status, ['quotation', 'draft'])))
+	@if($invoice_mode)
 		@php
-			$defaultBankDetails = "Payment mode: Cash / Cheque\nAccount Name: Attract Wear and Printing Solutions\nAccount Number: 8002311634\nBank: Commercial Bank of Ceylon PLC";
+			$defaultBankDetails = config('constants.default_pdf_bank_details');
 		@endphp
 		@component('components.widget', ['class' => 'box-solid', 'title' => 'Payment / Bank Details (shown on PDF)'])
 			<div class="row">
@@ -904,12 +928,43 @@
 					<div class="form-group">
 						{!! Form::label('pdf_bank_details', 'Payment mode & Bank details') !!}
 						<p class="help-block" style="margin-top:0;">
-							Quotation / Invoice PDF එකේ payment box එකට යන text. ඕන විදිහට edit කරන්න.
+							Invoice PDF එකේ Bank details එකට යන text. Edit නොකළොත් මේ default details එනවා.
 						</p>
 						{!! Form::textarea('pdf_bank_details', old('pdf_bank_details', $defaultBankDetails), [
 							'class' => 'form-control',
-							'rows' => 5,
-							'placeholder' => "Payment mode: Cash / Cheque\nBank: ...\nAccount: ...\nName: ...",
+							'rows' => 6,
+							'placeholder' => $defaultBankDetails,
+						]) !!}
+					</div>
+				</div>
+			</div>
+		@endcomponent
+	@elseif(!empty($status) && $status == 'quotation')
+		@include('sell.partials.quotation_pdf_fields', [
+			'defaultQuotationTerms' => config('constants.default_quotation_terms'),
+			'savedAdditionalTermsJson' => null,
+			'saleNoteValue' => old('sale_note'),
+		])
+	@elseif(!empty($status) && in_array($status, ['draft', 'proforma']))
+		@php
+			$defaultBankDetails = config('constants.default_pdf_bank_details');
+		@endphp
+		@component('components.widget', ['class' => 'box-solid', 'title' => 'Payment / Bank Details (shown on PDF)'])
+			<div class="row">
+				<div class="col-md-12">
+					<div class="form-group">
+						{!! Form::label('pdf_bank_details', 'Payment mode & Bank details') !!}
+						<p class="help-block" style="margin-top:0;">
+							@if($status == 'proforma')
+								Proforma Invoice PDF එකේ Bank details එකට යන text. Edit නොකළොත් මේ default details එනවා.
+							@else
+								Invoice PDF එකේ Bank details එකට යන text. Edit නොකළොත් මේ default details එනවා.
+							@endif
+						</p>
+						{!! Form::textarea('pdf_bank_details', old('pdf_bank_details', $defaultBankDetails), [
+							'class' => 'form-control',
+							'rows' => 6,
+							'placeholder' => $defaultBankDetails,
 						]) !!}
 					</div>
 				</div>
@@ -973,6 +1028,9 @@
     @endif
     <script type="text/javascript">
     	$(document).ready( function() {
+    		if ($('#quotation_valid_till').length) {
+    			$('#quotation_valid_till').datepicker(datepicker_date_format);
+    		}
     		$('#status').change(function(){
     			if ($(this).val() == 'final') {
     				$('#payment_rows_div').removeClass('hide');

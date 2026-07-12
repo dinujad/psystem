@@ -16,6 +16,7 @@ use App\Exceptions\PurchaseSellMismatch;
 use App\InvoiceScheme;
 use App\Product;
 use App\PurchaseLine;
+use App\ReferenceCount;
 use App\Restaurant\ResTable;
 use App\TaxRate;
 use App\Transaction;
@@ -44,7 +45,9 @@ class TransactionUtil extends Util
     {
         $sale_type = ! empty($input['type']) ? $input['type'] : 'sell';
         $invoice_scheme_id = ! empty($input['invoice_scheme_id']) ? $input['invoice_scheme_id'] : null;
-        $invoice_no = ! empty($input['invoice_no']) ? $input['invoice_no'] : $this->getInvoiceNumber($business_id, $input['status'], $input['location_id'], $invoice_scheme_id, $sale_type);
+        $is_quotation = ! empty($input['is_quotation']);
+        $is_proforma = ! empty($input['sub_status']) && $input['sub_status'] === 'proforma';
+        $invoice_no = ! empty($input['invoice_no']) ? $input['invoice_no'] : $this->getInvoiceNumber($business_id, $input['status'], $input['location_id'], $invoice_scheme_id, $sale_type, $is_quotation, $is_proforma);
 
         $final_total = $uf_data ? $this->num_uf($input['final_total']) : $input['final_total'];
 
@@ -66,6 +69,7 @@ class TransactionUtil extends Util
             'contact_id' => $input['contact_id'],
             'customer_group_id' => ! empty($input['customer_group_id']) ? $input['customer_group_id'] : null,
             'invoice_no' => $invoice_no,
+            'quotation_ref_no' => ! empty($input['quotation_ref_no']) ? $input['quotation_ref_no'] : null,
             'ref_no' => '',
             'source' => ! empty($input['source']) ? $input['source'] : null,
             'total_before_tax' => $invoice_total['total_before_tax'],
@@ -132,7 +136,18 @@ class TransactionUtil extends Util
             'sales_order_ids' => ! empty($input['sales_order_ids']) ? $input['sales_order_ids'] : null,
             'prefer_payment_method' => ! empty($input['prefer_payment_method']) ? $input['prefer_payment_method'] : null,
             'prefer_payment_account' => ! empty($input['prefer_payment_account']) ? $input['prefer_payment_account'] : null,
-            'pdf_bank_details' => ! empty($input['pdf_bank_details']) ? $input['pdf_bank_details'] : null,
+            'pdf_bank_details' => ! empty($input['pdf_bank_details'])
+                ? $input['pdf_bank_details']
+                : ((! empty($input['is_quotation']) || ($input['status'] ?? '') === 'quotation')
+                    ? null
+                    : config('constants.default_pdf_bank_details')),
+            'quotation_terms' => array_key_exists('quotation_terms', $input)
+                ? (! empty($input['quotation_terms']) ? $input['quotation_terms'] : config('constants.default_quotation_terms'))
+                : ((! empty($input['is_quotation']) || ($input['status'] ?? '') === 'quotation')
+                    ? config('constants.default_quotation_terms')
+                    : null),
+            'quotation_additional_terms' => $this->resolveQuotationAdditionalTerms($input, null, ! empty($input['is_quotation']) || ($input['status'] ?? '') === 'quotation'),
+            'quotation_valid_till' => $this->resolveQuotationValidTill($input),
             'is_export' => ! empty($input['is_export']) ? 1 : 0,
             'export_custom_fields_info' => (! empty($input['is_export']) && ! empty($input['export_custom_fields_info'])) ? $input['export_custom_fields_info'] : null,
             'additional_expense_value_1' => isset($input['additional_expense_value_1']) ? $uf_data ? $this->num_uf($input['additional_expense_value_1']) : $input['additional_expense_value_1'] : 0,
@@ -148,6 +163,47 @@ class TransactionUtil extends Util
         ]);
 
         return $transaction;
+    }
+
+    /**
+     * Resolve quotation_valid_till from request input.
+     */
+    private function resolveQuotationValidTill(array $input, bool $allowNull = false): ?string
+    {
+        if (! empty($input['quotation_valid_till'])) {
+            try {
+                return $this->uf_date($input['quotation_valid_till']);
+            } catch (\Throwable $e) {
+                return \Carbon\Carbon::now()->addDays(7)->format('Y-m-d');
+            }
+        }
+
+        if ($allowNull) {
+            return null;
+        }
+
+        if (! empty($input['is_quotation']) || ($input['status'] ?? '') === 'quotation') {
+            return \Carbon\Carbon::now()->addDays(7)->format('Y-m-d');
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve quotation_additional_terms JSON from request input.
+     */
+    private function resolveQuotationAdditionalTerms(array $input, ?string $existing = null, bool $isQuotation = false): ?string
+    {
+        $encoded = QuotationAdditionalTermsUtil::encodeFromInput($input);
+        if ($encoded !== null) {
+            return $encoded;
+        }
+
+        if ($isQuotation && empty($existing)) {
+            return QuotationAdditionalTermsUtil::defaultJson();
+        }
+
+        return $existing;
     }
 
     /**
@@ -174,7 +230,9 @@ class TransactionUtil extends Util
         $invoice_no = $transaction->invoice_no;
         if ($transaction->status != $input['status'] && $change_invoice_number) {
             $invoice_scheme_id = ! empty($input['invoice_scheme_id']) ? $input['invoice_scheme_id'] : null;
-            $invoice_no = $this->getInvoiceNumber($business_id, $input['status'], $transaction->location_id, $invoice_scheme_id);
+            $is_quotation = ! empty($input['is_quotation']);
+            $is_proforma = ! empty($input['sub_status']) && $input['sub_status'] === 'proforma';
+            $invoice_no = $this->getInvoiceNumber($business_id, $input['status'], $transaction->location_id, $invoice_scheme_id, null, $is_quotation, $is_proforma);
         }
         $final_total = $uf_data ? $this->num_uf($input['final_total']) : $input['final_total'];
 
@@ -251,7 +309,27 @@ class TransactionUtil extends Util
             'sales_order_ids' => ! empty($input['sales_order_ids']) ? $input['sales_order_ids'] : null,
             'prefer_payment_method' => ! empty($input['prefer_payment_method']) ? $input['prefer_payment_method'] : null,
             'prefer_payment_account' => ! empty($input['prefer_payment_account']) ? $input['prefer_payment_account'] : null,
-            'pdf_bank_details' => ! empty($input['pdf_bank_details']) ? $input['pdf_bank_details'] : null,
+            'pdf_bank_details' => array_key_exists('pdf_bank_details', $input)
+                ? (! empty($input['pdf_bank_details']) ? $input['pdf_bank_details'] : (
+                    (! empty($transaction->is_quotation) || ($input['status'] ?? '') === 'quotation' || ! empty($input['is_quotation']))
+                        ? null
+                        : config('constants.default_pdf_bank_details')
+                ))
+                : $transaction->pdf_bank_details,
+            'quotation_terms' => array_key_exists('quotation_terms', $input)
+                ? (! empty($input['quotation_terms']) ? $input['quotation_terms'] : config('constants.default_quotation_terms'))
+                : $transaction->quotation_terms,
+            'quotation_additional_terms' => $this->resolveQuotationAdditionalTerms(
+                $input,
+                $transaction->quotation_additional_terms,
+                ! empty($transaction->is_quotation) || ($input['status'] ?? '') === 'quotation' || ! empty($input['is_quotation'])
+            ),
+            'quotation_valid_till' => array_key_exists('quotation_valid_till', $input)
+                ? $this->resolveQuotationValidTill($input, true)
+                : $transaction->quotation_valid_till,
+            'quotation_ref_no' => array_key_exists('quotation_ref_no', $input)
+                ? $input['quotation_ref_no']
+                : $transaction->quotation_ref_no,
             'is_export' => ! empty($input['is_export']) ? 1 : 0,
             'export_custom_fields_info' => (! empty($input['is_export']) && ! empty($input['export_custom_fields_info'])) ? $input['export_custom_fields_info'] : null,
             'additional_expense_value_1' => isset($input['additional_expense_value_1']) ? $uf_data ? $this->num_uf($input['additional_expense_value_1']) : $input['additional_expense_value_1'] : 0,
@@ -1104,6 +1182,7 @@ class TransactionUtil extends Util
             $output['customer_label'] = ! empty($il->customer_label) ? $il->customer_label : '';
             $output['customer_name'] = ! empty($customer->name) ? $customer->name : $customer->supplier_business_name;
             $output['customer_mobile'] = $customer->mobile;
+            $output['customer_email'] = $customer->email ?? '';
 
             if ($receipt_printer_type != 'printer') {
                 $output['customer_info'] .= $customer->contact_address;
@@ -1499,6 +1578,7 @@ class TransactionUtil extends Util
             $output['total_paid_label'] = $il->paid_label;
             $output['total_due'] = ($due == 0) ? 0 : $this->num_f($due, $show_currency, $business_details);
             $output['total_due_label'] = $il->total_due_label;
+            $output['payment_status'] = $transaction->payment_status;
 
             if ($il->show_previous_bal == 1) {
                 $all_due = $this->getContactDue($transaction->contact_id);
@@ -1922,7 +2002,25 @@ class TransactionUtil extends Util
         }
 
         $output['is_quotation'] = (int) $transaction->is_quotation;
-        $output['pdf_bank_details'] = $transaction->pdf_bank_details;
+        $output['is_proforma'] = (int) (
+            $transaction->status === 'draft'
+            && ($transaction->sub_status ?? '') === 'proforma'
+        );
+        $output['sub_status'] = $transaction->sub_status ?? null;
+        $output['quotation_no'] = $transaction->quotation_ref_no ?? null;
+        $output['pdf_bank_details'] = ! empty($transaction->pdf_bank_details)
+            ? $transaction->pdf_bank_details
+            : ((! empty($transaction->is_quotation))
+                ? null
+                : config('constants.default_pdf_bank_details'));
+        $output['quotation_terms'] = ! empty($transaction->quotation_terms)
+            ? $transaction->quotation_terms
+            : ((! empty($transaction->is_quotation)) ? config('constants.default_quotation_terms') : null);
+        $output['quotation_additional_terms'] = $transaction->quotation_additional_terms ?? null;
+        $output['quotation_valid_till'] = $transaction->quotation_valid_till ?? null;
+        $output['prepared_by_name'] = $output['added_by'] ?: (
+            ! empty($transaction->sales_person->user_full_name) ? $transaction->sales_person->user_full_name : ''
+        );
 
         //export custom fields
         $output['is_export'] = $transaction->is_export;
@@ -2137,9 +2235,8 @@ class TransactionUtil extends Util
             if ($il->show_cat_code == 1) {
                 $line_array['cat_code'] = ! empty($cat->short_code) ? $cat->short_code : '';
             }
-            if ($il->show_sale_description == 1) {
-                $line_array['sell_line_note'] = ! empty($line->sell_line_note) ? nl2br($line->sell_line_note) : '';
-            }
+            // Always pass line description so Attract invoice/quotation PDFs can show it
+            $line_array['sell_line_note'] = ! empty($line->sell_line_note) ? nl2br($line->sell_line_note) : '';
             if ($is_lot_number_enabled == 1 && $il->show_lot == 1) {
                 $line_array['lot_number'] = ! empty($line->lot_details->lot_number) ? $line->lot_details->lot_number : null;
                 $line_array['lot_number_label'] = __('lang_v1.lot');
@@ -2196,9 +2293,9 @@ class TransactionUtil extends Util
                     if ($il->show_cat_code == 1) {
                         $modifier_line_array['cat_code'] = ! empty($cat->short_code) ? $cat->short_code : '';
                     }
-                    if ($il->show_sale_description == 1) {
-                        $modifier_line_array['sell_line_note'] = ! empty($line->sell_line_note) ? nl2br($line->sell_line_note) : '';
-                    }
+                    $modifier_line_array['sell_line_note'] = ! empty($modifier_line->sell_line_note)
+                        ? nl2br($modifier_line->sell_line_note)
+                        : (! empty($line->sell_line_note) ? nl2br($line->sell_line_note) : '');
 
                     $line_array['modifiers'][] = $modifier_line_array;
                 }
@@ -2318,9 +2415,7 @@ class TransactionUtil extends Util
             if ($il->show_cat_code == 1) {
                 $line_array['cat_code'] = ! empty($cat->short_code) ? $cat->short_code : '';
             }
-            if ($il->show_sale_description == 1) {
-                $line_array['sell_line_note'] = ! empty($line->sell_line_note) ? $line->sell_line_note : '';
-            }
+            $line_array['sell_line_note'] = ! empty($line->sell_line_note) ? $line->sell_line_note : '';
             // if ($is_lot_number_enabled == 1 && $il->show_lot == 1) {
             //     $line_array['lot_number'] = !empty($line->lot_details->lot_number) ? $line->lot_details->lot_number : null;
             //     $line_array['lot_number_label'] = __('lang_v1.lot');
@@ -2345,8 +2440,16 @@ class TransactionUtil extends Util
      * @param  string  $location_id
      * @return string
      */
-    public function getInvoiceNumber($business_id, $status, $location_id, $invoice_scheme_id = null, $sale_type = null)
+    public function getInvoiceNumber($business_id, $status, $location_id, $invoice_scheme_id = null, $sale_type = null, $is_quotation = false, $is_proforma = false)
     {
+        if ($is_quotation) {
+            return $this->generateQuotationNumber($business_id);
+        }
+
+        if ($is_proforma) {
+            return $this->generateProformaNumber($business_id);
+        }
+
         if ($status == 'final') {
             if (empty($invoice_scheme_id)) {
                 $scheme = $this->getInvoiceScheme($business_id, $location_id);
@@ -2411,6 +2514,58 @@ class TransactionUtil extends Util
         }
 
         return $scheme;
+    }
+
+    /**
+     * Generate sequential quotation number: QTN 650, QTN 651, ...
+     */
+    public function generateQuotationNumber($business_id): string
+    {
+        $prefix = (string) config('constants.quotation_no_prefix', 'QTN ');
+        $start = (int) config('constants.quotation_no_start', 650);
+
+        $ref = ReferenceCount::where('ref_type', 'quotation')
+            ->where('business_id', $business_id)
+            ->first();
+
+        if (empty($ref)) {
+            $ref = ReferenceCount::create([
+                'ref_type' => 'quotation',
+                'business_id' => $business_id,
+                'ref_count' => max(0, $start - 1),
+            ]);
+        }
+
+        $ref->ref_count += 1;
+        $ref->save();
+
+        return $prefix.$ref->ref_count;
+    }
+
+    /**
+     * Generate sequential proforma number: PI 650, PI 651, ...
+     */
+    public function generateProformaNumber($business_id): string
+    {
+        $prefix = (string) config('constants.proforma_no_prefix', 'PI ');
+        $start = (int) config('constants.proforma_no_start', 650);
+
+        $ref = ReferenceCount::where('ref_type', 'proforma')
+            ->where('business_id', $business_id)
+            ->first();
+
+        if (empty($ref)) {
+            $ref = ReferenceCount::create([
+                'ref_type' => 'proforma',
+                'business_id' => $business_id,
+                'ref_count' => max(0, $start - 1),
+            ]);
+        }
+
+        $ref->ref_count += 1;
+        $ref->save();
+
+        return $prefix.$ref->ref_count;
     }
 
     /**
