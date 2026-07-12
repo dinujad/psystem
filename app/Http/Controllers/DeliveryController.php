@@ -422,9 +422,10 @@ class DeliveryController extends Controller
             $location = BusinessLocation::where('business_id', $businessId)->first();
         }
 
-        $pickupName = trim((string) (optional($location)->name ?: optional($business)->name ?: config('app.name', 'PrintWorks')));
-        $pickupPhone = trim((string) (optional($location)->mobile ?: optional($business)->mobile ?: ''));
-        $pickupAddress = $this->formatLocationAddress($location);
+        $pickup = $this->packingSlipPickupDetails();
+        $pickupName = $pickup['name'];
+        $pickupPhone = $pickup['phone'];
+        $pickupAddress = $pickup['address'];
 
         $orientation = in_array($request->get('orientation'), ['portrait', 'landscape'], true)
             ? $request->get('orientation')
@@ -539,9 +540,10 @@ class DeliveryController extends Controller
         $parcel->id = 0;
         $parcel->setRelation('transaction', $transaction);
 
-        $pickupName = trim((string) (optional($location)->name ?: optional($business)->name ?: config('app.name', 'PrintWorks')));
-        $pickupPhone = trim((string) (optional($location)->mobile ?: optional($business)->mobile ?: ''));
-        $pickupAddress = $this->formatLocationAddress($location);
+        $pickup = $this->packingSlipPickupDetails();
+        $pickupName = $pickup['name'];
+        $pickupPhone = $pickup['phone'];
+        $pickupAddress = $pickup['address'];
 
         $orientation = in_array($request->get('orientation'), ['portrait', 'landscape'], true)
             ? $request->get('orientation')
@@ -606,6 +608,20 @@ class DeliveryController extends Controller
             'formAction' => route('delivery.sale_packing_slip', $transaction->id),
             'backUrl' => action([\App\Http\Controllers\SellController::class, 'index']),
         ]);
+    }
+
+    /**
+     * Fixed Attract pickup block for packing slips.
+     *
+     * @return array{name: string, address: string, phone: string}
+     */
+    protected function packingSlipPickupDetails(): array
+    {
+        return [
+            'name' => trim((string) config('services.fardar.pickup_name', 'Attract wear & printing solutions')),
+            'address' => trim((string) config('services.fardar.pickup_address', '387 7 Sama Mawatha Biyagama')),
+            'phone' => trim((string) config('services.fardar.pickup_phone', '706668885')),
+        ];
     }
 
     protected function formatLocationAddress(?BusinessLocation $location): string

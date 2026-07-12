@@ -41,6 +41,10 @@ return [
         'api_key' => env('FARDAR_API_KEY'),
         'new_waybill_url' => env('FARDAR_NEW_WAYBILL_URL', 'https://www.fdedomestic.com/api/parcel/new_api_v1.php'),
         'existing_waybill_url' => env('FARDAR_EXISTING_WAYBILL_URL', 'https://www.fdedomestic.com/api/parcel/existing_waybill_api_v1.php'),
+        // Packing slip pickup block (Attract)
+        'pickup_name' => env('FARDAR_PICKUP_NAME', 'Attract wear & printing solutions'),
+        'pickup_address' => env('FARDAR_PICKUP_ADDRESS', '387 7 Sama Mawatha Biyagama'),
+        'pickup_phone' => env('FARDAR_PICKUP_PHONE', '706668885'),
     ],
 
 ];
