@@ -1150,4 +1150,88 @@
       overflow-y: auto;
       overflow-x: hidden;
     }
+
+    /*
+     * Fix: Role permission checkboxes invisible (iCheck + Tailwind/Admin Pro).
+     * Force native boxes visible when not wrapped; keep iCheck skins visible when wrapped.
+     */
+    .check_group .checkbox label,
+    .check_group .radio label {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding-left: 0 !important;
+      min-height: 24px !important;
+      cursor: pointer !important;
+    }
+
+    /* Unwrapped native checkbox / radio (iCheck not applied yet, or failed) */
+    .check_group .checkbox > label > input[type="checkbox"],
+    .check_group .checkbox > label > input[type="radio"],
+    .check_group .radio > label > input[type="checkbox"],
+    .check_group .radio > label > input[type="radio"],
+    .check_group .radio-group input[type="checkbox"].input-icheck,
+    .check_group .radio-group input[type="radio"].input-icheck {
+      position: static !important;
+      margin: 0 !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      width: 18px !important;
+      height: 18px !important;
+      min-width: 18px !important;
+      min-height: 18px !important;
+      flex-shrink: 0 !important;
+      display: inline-block !important;
+      -webkit-appearance: auto !important;
+      -moz-appearance: checkbox !important;
+      appearance: auto !important;
+      accent-color: #3c8dbc;
+      pointer-events: auto !important;
+      vertical-align: middle !important;
+    }
+
+    /* iCheck wrapper must stay visible */
+    .check_group .icheckbox_square-blue,
+    .check_group .iradio_square-blue {
+      display: inline-block !important;
+      width: 22px !important;
+      height: 22px !important;
+      min-width: 22px !important;
+      min-height: 22px !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      flex-shrink: 0 !important;
+      opacity: 1 !important;
+      visibility: visible !important;
+      vertical-align: middle !important;
+      cursor: pointer !important;
+      background-image: url("{{ asset('images/vendor/icheck/skins/square/blue.png') }}") !important;
+      background-repeat: no-repeat !important;
+      border: none !important;
+    }
+
+    .check_group .icheckbox_square-blue {
+      background-position: 0 0 !important;
+    }
+    .check_group .icheckbox_square-blue.hover {
+      background-position: -24px 0 !important;
+    }
+    .check_group .icheckbox_square-blue.checked {
+      background-position: -48px 0 !important;
+    }
+    .check_group .iradio_square-blue {
+      background-position: -120px 0 !important;
+    }
+    .check_group .iradio_square-blue.checked {
+      background-position: -168px 0 !important;
+    }
+
+    /* When iCheck has wrapped the input, keep the real input hidden */
+    .check_group .icheckbox_square-blue > input,
+    .check_group .iradio_square-blue > input {
+      position: absolute !important;
+      opacity: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+    }
   </style>

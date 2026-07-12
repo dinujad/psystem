@@ -1805,3 +1805,34 @@
 </section>
 <!-- /.content -->
 @endsection
+
+@section('javascript')
+<script>
+$(function () {
+    var $boxes = $('form input.input-icheck').filter(function () {
+        return !$(this).parent().hasClass('icheckbox_square-blue')
+            && !$(this).parent().hasClass('iradio_square-blue');
+    });
+    if ($boxes.length && typeof $.fn.iCheck === 'function') {
+        $boxes.iCheck({
+            checkboxClass: 'icheckbox_square-blue',
+            radioClass: 'iradio_square-blue',
+        });
+    }
+
+    $(document).on('change', 'form .check_all', function () {
+        if ($(this).parent().hasClass('icheckbox_square-blue')) {
+            return;
+        }
+        var checked = $(this).prop('checked');
+        $(this).closest('.check_group').find('input.input-icheck').not(this).each(function () {
+            if ($(this).parent().hasClass('icheckbox_square-blue') || $(this).parent().hasClass('iradio_square-blue')) {
+                $(this).iCheck(checked ? 'check' : 'uncheck');
+            } else {
+                $(this).prop('checked', checked);
+            }
+        });
+    });
+});
+</script>
+@endsection

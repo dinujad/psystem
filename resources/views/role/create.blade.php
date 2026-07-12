@@ -1812,3 +1812,36 @@
 </section>
 <!-- /.content -->
 @endsection
+
+@section('javascript')
+<script>
+$(function () {
+    // Ensure permission checkboxes are iCheck-initialized (Tailwind theme can skip them)
+    var $boxes = $('#role_add_form input.input-icheck').filter(function () {
+        return !$(this).parent().hasClass('icheckbox_square-blue')
+            && !$(this).parent().hasClass('iradio_square-blue');
+    });
+    if ($boxes.length && typeof $.fn.iCheck === 'function') {
+        $boxes.iCheck({
+            checkboxClass: 'icheckbox_square-blue',
+            radioClass: 'iradio_square-blue',
+        });
+    }
+
+    // Native fallback for Select all if iCheck events are unavailable
+    $(document).on('change', '#role_add_form .check_all', function () {
+        if ($(this).parent().hasClass('icheckbox_square-blue')) {
+            return;
+        }
+        var checked = $(this).prop('checked');
+        $(this).closest('.check_group').find('input.input-icheck').not(this).each(function () {
+            if ($(this).parent().hasClass('icheckbox_square-blue') || $(this).parent().hasClass('iradio_square-blue')) {
+                $(this).iCheck(checked ? 'check' : 'uncheck');
+            } else {
+                $(this).prop('checked', checked);
+            }
+        });
+    });
+});
+</script>
+@endsection
