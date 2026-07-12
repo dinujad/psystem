@@ -1257,42 +1257,82 @@ $(document).ready(function() {
         get_expense_sub_categories();
     });
 
-    //initialize iCheck
-    $('input[type="checkbox"].input-icheck, input[type="radio"].input-icheck').iCheck({
-        checkboxClass: 'icheckbox_square-blue',
-        radioClass: 'iradio_square-blue',
+    // Native checkboxes instead of iCheck (iCheck skins invisible with Tailwind/Admin Pro)
+    function forceNativeCheckboxes($scope) {
+        var $root = $scope && $scope.length ? $scope : $(document);
+        $root.find('input[type="checkbox"].input-icheck, input[type="radio"].input-icheck').each(function () {
+            var $el = $(this);
+            if ($el.data('iCheck')) {
+                try { $el.iCheck('destroy'); } catch (e) {}
+            }
+            // Unwrap leftover iCheck markup if present
+            var $parent = $el.parent();
+            if ($parent.hasClass('icheckbox_square-blue') || $parent.hasClass('iradio_square-blue')) {
+                $el.insertBefore($parent);
+                $parent.find('ins').remove();
+                $parent.remove();
+            }
+            $el.css({
+                position: 'static',
+                opacity: 1,
+                visibility: 'visible',
+                width: '18px',
+                height: '18px',
+                minWidth: '18px',
+                minHeight: '18px',
+                margin: '0 8px 0 0',
+                display: 'inline-block',
+                verticalAlign: 'middle',
+                WebkitAppearance: 'checkbox',
+                MozAppearance: 'checkbox',
+                appearance: 'auto',
+                accentColor: '#3c8dbc',
+                cursor: 'pointer',
+                flexShrink: '0',
+            });
+        });
+        $root.find('.checkbox label, .radio label').css({
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            paddingLeft: '0',
+            cursor: 'pointer',
+        });
+    }
+
+    forceNativeCheckboxes($(document));
+
+    // Bridge native change → ifChecked/ifUnchecked for existing handlers
+    $(document).on('change', 'input.input-icheck', function () {
+        $(this).trigger($(this).is(':checked') ? 'ifChecked' : 'ifUnchecked');
     });
-    $(document).on('ifChecked', '.check_all', function() {
+
+    $(document).on('change', '.check_all', function () {
+        var checked = $(this).prop('checked');
         $(this)
             .closest('.check_group')
-            .find('.input-icheck')
-            .each(function() {
-                $(this).iCheck('check');
+            .find('input.input-icheck')
+            .not(this)
+            .each(function () {
+                $(this).prop('checked', checked).trigger(checked ? 'ifChecked' : 'ifUnchecked');
             });
     });
-    $(document).on('ifUnchecked', '.check_all', function() {
-        $(this)
-            .closest('.check_group')
-            .find('.input-icheck')
-            .each(function() {
-                $(this).iCheck('uncheck');
-            });
-    });
-    $('.check_all').each(function() {
+
+    $('.check_all').each(function () {
         var length = 0;
         var checked_length = 0;
         $(this)
             .closest('.check_group')
-            .find('.input-icheck')
-            .each(function() {
+            .find('input.input-icheck')
+            .each(function () {
                 length += 1;
-                if ($(this).iCheck('update')[0].checked) {
+                if ($(this).prop('checked')) {
                     checked_length += 1;
                 }
             });
         length = length - 1;
         if (checked_length != 0 && length == checked_length) {
-            $(this).iCheck('check');
+            $(this).prop('checked', true);
         }
     });
 

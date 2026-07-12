@@ -1152,90 +1152,66 @@
     }
 
     /*
-     * Fix: iCheck checkboxes invisible with Tailwind/Admin Pro
-     * (Roles permissions, Allow login, and other .input-icheck fields)
+     * Force visible native checkboxes (iCheck skins break under Tailwind/Admin Pro)
      */
-    .checkbox label:has(> input.input-icheck),
-    .checkbox label:has(> .icheckbox_square-blue),
-    .radio label:has(> input.input-icheck),
-    .radio label:has(> .iradio_square-blue),
-    .check_group .checkbox label,
-    .check_group .radio label {
-      display: flex !important;
-      align-items: center !important;
-      gap: 8px !important;
-      padding-left: 0 !important;
-      min-height: 24px !important;
-      cursor: pointer !important;
-    }
-
-    /* Unwrapped native checkbox / radio */
-    .checkbox > label > input[type="checkbox"].input-icheck,
-    .checkbox > label > input[type="radio"].input-icheck,
-    .radio > label > input[type="checkbox"].input-icheck,
-    .radio > label > input[type="radio"].input-icheck,
-    .check_group .radio-group input[type="checkbox"].input-icheck,
-    .check_group .radio-group input[type="radio"].input-icheck {
+    input[type="checkbox"].input-icheck,
+    input[type="radio"].input-icheck {
       position: static !important;
-      margin: 0 !important;
       opacity: 1 !important;
       visibility: visible !important;
+      display: inline-block !important;
       width: 18px !important;
       height: 18px !important;
       min-width: 18px !important;
       min-height: 18px !important;
-      flex-shrink: 0 !important;
-      display: inline-block !important;
-      -webkit-appearance: auto !important;
+      margin: 0 8px 0 0 !important;
+      vertical-align: middle !important;
+      -webkit-appearance: checkbox !important;
       -moz-appearance: checkbox !important;
       appearance: auto !important;
-      accent-color: #3c8dbc;
+      accent-color: #3c8dbc !important;
+      cursor: pointer !important;
+      flex-shrink: 0 !important;
       pointer-events: auto !important;
-      vertical-align: middle !important;
+      z-index: 2 !important;
     }
-
-    /* iCheck wrapper must stay visible everywhere */
+    .checkbox label,
+    .radio label {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      padding-left: 0 !important;
+      cursor: pointer !important;
+      min-height: 22px !important;
+    }
     .icheckbox_square-blue,
     .iradio_square-blue {
-      display: inline-block !important;
-      width: 22px !important;
-      height: 22px !important;
-      min-width: 22px !important;
-      min-height: 22px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      width: auto !important;
+      height: auto !important;
+      min-width: 0 !important;
+      min-height: 0 !important;
       margin: 0 8px 0 0 !important;
       padding: 0 !important;
-      flex-shrink: 0 !important;
+      background: none !important;
+      border: none !important;
       opacity: 1 !important;
       visibility: visible !important;
       vertical-align: middle !important;
-      cursor: pointer !important;
-      background-image: url("{{ asset('images/vendor/icheck/skins/square/blue.png') }}") !important;
-      background-repeat: no-repeat !important;
-      border: none !important;
     }
-
-    .icheckbox_square-blue {
-      background-position: 0 0 !important;
-    }
-    .icheckbox_square-blue.hover {
-      background-position: -24px 0 !important;
-    }
-    .icheckbox_square-blue.checked {
-      background-position: -48px 0 !important;
-    }
-    .iradio_square-blue {
-      background-position: -120px 0 !important;
-    }
-    .iradio_square-blue.checked {
-      background-position: -168px 0 !important;
-    }
-
-    /* When iCheck has wrapped the input, keep the real input hidden */
     .icheckbox_square-blue > input,
     .iradio_square-blue > input {
-      position: absolute !important;
-      opacity: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
+      position: static !important;
+      opacity: 1 !important;
+      width: 18px !important;
+      height: 18px !important;
+      margin: 0 !important;
+      -webkit-appearance: checkbox !important;
+      appearance: auto !important;
+    }
+    .icheckbox_square-blue > ins,
+    .iradio_square-blue > ins {
+      display: none !important;
     }
   </style>
