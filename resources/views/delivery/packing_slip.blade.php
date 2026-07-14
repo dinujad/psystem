@@ -115,6 +115,14 @@
             object-fit: contain;
             object-position: left center;
             display: block;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        @media print {
+            .hdr-logo img {
+                max-height: 18mm !important;
+                max-width: 70% !important;
+            }
         }
         .hdr-waybill {
             flex: 0 0 auto;
@@ -243,8 +251,20 @@
     $recipientAddress = preg_replace("/\r\n|\r|\n/", "\n", (string) $parcel->recipient_address);
     $orderNo = optional($parcel->transaction)->invoice_no ?: ($parcel->order_id ?: '—');
     $cod = number_format((float) $parcel->amount, 2);
-    $letterhead = public_path('images/footer.png');
-    $letterheadUrl = file_exists($letterhead) ? asset('images/footer.png') : null;
+    $letterheadCandidates = [
+        public_path('images/footer.png'),
+        public_path('images/printworks_logo.png'),
+        public_path('images/logo.png'),
+        public_path('images/logo.jpeg'),
+    ];
+    $letterheadUrl = null;
+    foreach ($letterheadCandidates as $letterhead) {
+        if (file_exists($letterhead)) {
+            $mime = mime_content_type($letterhead) ?: 'image/png';
+            $letterheadUrl = 'data:'.$mime.';base64,'.base64_encode(file_get_contents($letterhead));
+            break;
+        }
+    }
 @endphp
 
 <form class="toolbar no-print" method="get" action="{{ $formAction ?? route('delivery.packing_slip', $parcel->id) }}">

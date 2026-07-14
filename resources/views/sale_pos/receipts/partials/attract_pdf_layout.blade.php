@@ -1,14 +1,24 @@
 @php
-    $logoPath = public_path('images/printworks_logo.png');
-    if (! file_exists($logoPath)) {
-        $logoPath = public_path('images/logo.png');
+    $logoCandidates = [
+        public_path('images/printworks_logo.png'),
+        public_path('images/logo.png'),
+        public_path('images/logo.jpeg'),
+        public_path('images/attract_letterhead_HQ.png'),
+    ];
+    $logoPath = null;
+    foreach ($logoCandidates as $candidate) {
+        if (file_exists($candidate)) {
+            $logoPath = $candidate;
+            break;
+        }
     }
     $footerPath = public_path('images/footer.png');
     if (! file_exists($footerPath)) {
         $footerPath = public_path('images/footer (1).png');
     }
 
-    $logoB64   = file_exists($logoPath) ? base64_encode(file_get_contents($logoPath)) : null;
+    $logoMime = $logoPath ? (mime_content_type($logoPath) ?: 'image/png') : 'image/png';
+    $logoB64 = $logoPath ? base64_encode(file_get_contents($logoPath)) : null;
     $footerB64 = file_exists($footerPath) ? base64_encode(file_get_contents($footerPath)) : null;
 
     $embedFooter = $embed_footer ?? true;
@@ -244,9 +254,15 @@
     $shadowRed = $embedFooter ? "box-shadow:inset 0 0 0 1000px {$brandRed} !important;" : '';
     $shadowGrey = $embedFooter ? "box-shadow:inset 0 0 0 1000px {$rowGrey} !important;" : '';
 
-    $logoSrc = (! $embedFooter && file_exists($logoPath))
-        ? $logoPath
-        : (! empty($logoB64) ? 'data:image/png;base64,'.$logoB64 : null);
+    // Browser print needs data-URI; mPDF prefers absolute filesystem path.
+    $logoSrc = null;
+    if ($logoPath && file_exists($logoPath)) {
+        $logoSrc = $embedFooter
+            ? ('data:'.$logoMime.';base64,'.$logoB64)
+            : $logoPath;
+    } elseif (! empty($logoB64)) {
+        $logoSrc = 'data:'.$logoMime.';base64,'.$logoB64;
+    }
 @endphp
 <!DOCTYPE html>
 <html>

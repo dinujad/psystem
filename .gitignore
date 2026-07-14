@@ -50,6 +50,8 @@ npm-debug.log
 !/public/images/attract_letterhead_HQ.png
 !/public/images/sign.png
 !/public/images/logo.jpeg
+!/public/images/logo.png
+!/public/images/printworks_logo.png
 /public/modules/
 /public/mix-manifest.json
 .scribe

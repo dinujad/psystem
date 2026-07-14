@@ -219,8 +219,19 @@
     $mode = $mode ?? 'home';
     $search = $search ?? '';
     $error = $error ?? null;
-    $letterhead = public_path('images/footer.png');
-    $letterheadUrl = file_exists($letterhead) ? asset('images/footer.png') : null;
+    $letterheadCandidates = [
+        public_path('images/footer.png'),
+        public_path('images/printworks_logo.png'),
+        public_path('images/logo.png'),
+    ];
+    $letterheadUrl = null;
+    foreach ($letterheadCandidates as $letterhead) {
+        if (file_exists($letterhead)) {
+            $mime = mime_content_type($letterhead) ?: 'image/png';
+            $letterheadUrl = 'data:'.$mime.';base64,'.base64_encode(file_get_contents($letterhead));
+            break;
+        }
+    }
     $badge = ! empty($parcel) ? \App\DeliveryParcel::statusBadgeClass($parcel->current_status) : 'pending';
     $history = collect(optional($parcel)->status_history ?? [])->reverse()->values();
     if (! empty($parcel) && $history->isEmpty() && $parcel->current_status) {
