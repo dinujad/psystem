@@ -258,6 +258,16 @@
         || (! empty($discountDisplay) && $discountDisplay !== 0 && $discountDisplay !== '0'
             && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $discountDisplay));
     $discountShow = $hasDiscount ? $discountDisplay : ($currencySym.' 0.00');
+    $advanceShow = ($hasAdvancePayment ? $totalPaid : ($currencySym.' 0.00'));
+    $statusDisplay = $paymentStatus;
+    if ($showDueFields && ! empty($receipt_details->pay_term_number) && ! empty($receipt_details->pay_term_type)) {
+        $statusDisplay = trim($receipt_details->pay_term_number.' '.$receipt_details->pay_term_type.(str_contains(strtolower((string) $receipt_details->pay_term_type), 'day') ? '' : ''));
+        if (is_numeric($receipt_details->pay_term_number) && strtolower((string) $receipt_details->pay_term_type) === 'days') {
+            $statusDisplay = ((int) $receipt_details->pay_term_number).' Days credit';
+        } elseif (is_numeric($receipt_details->pay_term_number) && strtolower((string) $receipt_details->pay_term_type) === 'months') {
+            $statusDisplay = ((int) $receipt_details->pay_term_number).' Months credit';
+        }
+    }
 @endphp
 <!DOCTYPE html>
 <html>
@@ -388,7 +398,7 @@
     min-height: {{ $itemRowMinHeight }};
     height: {{ $itemRowMinHeight }};
   }
-  /* Screenshot: # / Description / Qty = white; Rate / Discount / Total = grey */
+  /* Quotation: Rate / Discount / Total = grey. Invoice: Rate / Qty / Discount / Total = grey */
   .items td.num {
     text-align: center;
     width: 28px;
@@ -398,8 +408,16 @@
   .items td.desc { text-align: left; background: #fff !important; background-color: #fff !important; }
   .items td.qty {
     text-align: center;
+    @if($isQuotation)
     background: #fff !important;
     background-color: #fff !important;
+    @else
+    background-color: {{ $rowGrey }} !important;
+    background: {{ $rowGrey }} !important;
+    @if($embedFooter)
+    box-shadow: inset 0 0 0 1000px {{ $rowGrey }} !important;
+    @endif
+    @endif
   }
   .items td.money,
   .items td.disc,
@@ -726,7 +744,11 @@
             @endif
           </td>
           <td class="money" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $rate }}</td>
+          @if($isQuotation)
           <td class="qty" bgcolor="#ffffff" style="background-color:#ffffff !important;">{{ $qty }}</td>
+          @else
+          <td class="qty" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $qty }}</td>
+          @endif
           <td class="disc" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $disc }}</td>
           <td class="total" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $total }}</td>
         </tr>
@@ -737,55 +759,6 @@
       @endforelse
     </tbody>
   </table>
-
-  @if(! $isQuotation)
-  <div class="totals-wrap">
-    <table class="totals" cellspacing="0" cellpadding="0">
-      <tr>
-        <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Sub Total</td>
-        <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $receipt_details->subtotal ?? ($currencySym.' 0.00') }}</td>
-      </tr>
-      @if($hasDiscount)
-      <tr>
-        <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Total Discount</td>
-        <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $discountDisplay }}</td>
-      </tr>
-      @endif
-      @php
-        $shippingDisplay = $receipt_details->shipping_charges ?? null;
-        $hasShipping = ! empty($shippingDisplay)
-          && $shippingDisplay !== 0
-          && $shippingDisplay !== '0'
-          && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $shippingDisplay);
-        $shippingLabel = ! empty($receipt_details->shipping_charges_label)
-          ? rtrim((string) $receipt_details->shipping_charges_label, ':')
-          : 'Shipping Charge';
-      @endphp
-      @if($hasShipping)
-      <tr>
-        <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $shippingLabel }}</td>
-        <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $shippingDisplay }}</td>
-      </tr>
-      @endif
-      @if($hasAdvancePayment)
-      <tr>
-        <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Advance Payment</td>
-        <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $totalPaid }}</td>
-      </tr>
-      @endif
-      <tr class="grand">
-        <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Grand Total</td>
-        <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">{{ $receipt_details->total ?? ($currencySym.' 0.00') }}</td>
-      </tr>
-      @if($showTotalDueRow)
-      <tr>
-        <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Total Due</td>
-        <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $balanceDue }}</td>
-      </tr>
-      @endif
-    </table>
-  </div>
-  @endif
 
   <table class="bottom">
     <tr>
@@ -817,7 +790,7 @@
 
           <div class="sign-block">
             @if($embedFooter)
-              <div class="sys-note">System-generated {{ strtolower($docTitle) }}. No signature required.</div>
+              <div class="sys-note">System-generated invoice. No signature required.</div>
             @endif
             <div class="sign-line">Prepared by: {{ $preparedByName }}</div>
             <div class="sign-line">Items received in good condition.</div>
@@ -853,12 +826,28 @@
             @endif
           </div>
         @else
+          <table class="totals totals-inline" cellspacing="0" cellpadding="0">
+            <tr>
+              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Sub Total</td>
+              <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $receipt_details->subtotal ?? ($currencySym.' 0.00') }}</td>
+            </tr>
+            <tr>
+              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Total Discount</td>
+              <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $discountShow }}</td>
+            </tr>
+            <tr>
+              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Advance Payment</td>
+              <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $advanceShow }}</td>
+            </tr>
+            <tr class="grand">
+              <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Grand Total</td>
+              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">{{ $receipt_details->total ?? ($currencySym.' 0.00') }}</td>
+            </tr>
+          </table>
           <div class="due-meta">
             @if($showDueFields)
-              @if(! empty($receipt_details->due_date))
-                <div><span class="lbl">Due</span> : {{ $dueDate }}</div>
-              @endif
-              <div><span class="lbl">Status</span> : {{ $paymentStatus }}</div>
+              <div><span class="lbl">Due</span> : {{ $dueDate }}</div>
+              <div><span class="lbl">Status</span> : {{ $statusDisplay }}</div>
               @if($isPaid)
                 <div class="paid-stamp">PAID</div>
               @endif
