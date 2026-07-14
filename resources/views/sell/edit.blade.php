@@ -176,6 +176,27 @@
 						$status = $transaction->status;
 					}
 				@endphp
+				@if($status == 'final')
+					<div class="col-sm-3">
+						<div class="form-group">
+							{!! Form::label('quotation_ref_no', 'Quote No') !!}
+							{!! Form::text('quotation_ref_no', old('quotation_ref_no', $transaction->quotation_ref_no), [
+								'class' => 'form-control',
+								'placeholder' => 'e.g. QTN 0650',
+							]) !!}
+							<p class="help-block">Invoice PDF එකේ Quote No එකට යනවා.</p>
+						</div>
+					</div>
+					<div class="col-sm-3">
+						<div class="form-group">
+							{!! Form::label('source', 'Sales Channel') !!}
+							{!! Form::text('source', old('source', $transaction->source ?: 'Web'), [
+								'class' => 'form-control',
+								'placeholder' => 'e.g. Web',
+							]) !!}
+						</div>
+					</div>
+				@endif
 				@if($status == 'quotation')
 					@php
 						$validTillTop = !empty($transaction->quotation_valid_till)

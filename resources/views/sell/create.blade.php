@@ -240,6 +240,26 @@
 					</div>
 				@endif
 				@if($invoice_mode)
+					<div class="col-sm-3">
+						<div class="form-group">
+							{!! Form::label('quotation_ref_no', 'Quote No') !!}
+							{!! Form::text('quotation_ref_no', old('quotation_ref_no'), [
+								'class' => 'form-control',
+								'placeholder' => 'e.g. QTN 0650',
+							]) !!}
+							<p class="help-block">Invoice PDF එකේ Quote No එකට යනවා.</p>
+						</div>
+					</div>
+					<div class="col-sm-3">
+						<div class="form-group">
+							{!! Form::label('source', 'Sales Channel') !!}
+							{!! Form::text('source', old('source', 'Web'), [
+								'class' => 'form-control',
+								'placeholder' => 'e.g. Web',
+							]) !!}
+							<p class="help-block">Invoice PDF එකේ Sales Channel එකට යනවා.</p>
+						</div>
+					</div>
 					<input type="hidden" name="status" id="status" value="final">
 					<input type="hidden" name="is_credit_sale" id="is_credit_sale" value="1">
 					<input type="hidden" name="invoice_entry" value="1">

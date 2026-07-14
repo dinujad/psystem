@@ -2008,6 +2008,33 @@ class TransactionUtil extends Util
         );
         $output['sub_status'] = $transaction->sub_status ?? null;
         $output['quotation_no'] = $transaction->quotation_ref_no ?? null;
+        $output['quotation_ref_no'] = $transaction->quotation_ref_no ?? null;
+        $output['source'] = $transaction->source ?? null;
+        $output['pay_term_number'] = $transaction->pay_term_number ?? null;
+        $output['pay_term_type'] = $transaction->pay_term_type ?? null;
+
+        // Always expose due_date for Attract invoice PDF (even if layout setting hides it)
+        if (empty($output['due_date']) && ! empty($transaction->due_date)) {
+            try {
+                $due = $transaction->due_date;
+                if (blank($il->date_time_format)) {
+                    $output['due_date'] = $this->format_date($due->toDateTimeString(), true, $business_details);
+                } else {
+                    $output['due_date'] = \Carbon::createFromFormat('Y-m-d H:i:s', $due->toDateTimeString())->format($il->date_time_format);
+                }
+                $output['due_date_raw'] = $due->toDateTimeString();
+            } catch (\Throwable $e) {
+                $output['due_date'] = (string) $transaction->due_date;
+                $output['due_date_raw'] = (string) $transaction->due_date;
+            }
+        } elseif (! empty($transaction->due_date)) {
+            try {
+                $output['due_date_raw'] = $transaction->due_date->toDateTimeString();
+            } catch (\Throwable $e) {
+                $output['due_date_raw'] = (string) $transaction->due_date;
+            }
+        }
+
         $output['pdf_bank_details'] = ! empty($transaction->pdf_bank_details)
             ? $transaction->pdf_bank_details
             : ((! empty($transaction->is_quotation))

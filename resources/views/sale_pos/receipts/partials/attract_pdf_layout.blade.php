@@ -39,7 +39,12 @@
     $primaryNoLabel = $isProforma ? 'PI NO' : ($isQuotation ? 'QUOTE NO' : 'INVOICE NO');
     $quoteNo = $isQuotation
         ? $invNo
-        : (string) ($receipt_details->quotation_no ?? $receipt_details->parent_invoice_no ?? $receipt_details->quotation_ref_no ?? '');
+        : trim((string) (
+            $receipt_details->quotation_no
+            ?? $receipt_details->quotation_ref_no
+            ?? $receipt_details->parent_invoice_no
+            ?? ''
+        ));
 
     $customerName = trim((string) ($receipt_details->customer_name ?? 'Walk-In Customer'));
     $customerAddress = trim(strip_tags($receipt_details->customer_info_address ?? ''));
@@ -83,20 +88,31 @@
     $invoiceDateRaw = (string) ($receipt_details->invoice_date ?? '');
     $dateDisplay = $invoiceDateRaw;
     $dayName = '';
-    try {
-        $dt = \Carbon\Carbon::parse(strip_tags($invoiceDateRaw));
-        $dayName = strtoupper($dt->format('l'));
-        $dateDisplay = $dt->format('jS F, Y');
-    } catch (\Throwable $e) {
-        // keep original string
+    $parseCandidates = array_filter([
+        $receipt_details->transaction_date ?? null,
+        $receipt_details->due_date_raw ?? null,
+        strip_tags($invoiceDateRaw),
+    ]);
+    foreach ($parseCandidates as $candidate) {
+        try {
+            $dt = \Carbon\Carbon::parse($candidate);
+            $dayName = strtoupper($dt->format('l'));
+            $dateDisplay = $dt->format('jS F, Y');
+            break;
+        } catch (\Throwable $e) {
+            continue;
+        }
     }
 
     $salesChannel = trim((string) ($receipt_details->types_of_service ?? ''));
     if ($salesChannel === '') {
+        $salesChannel = trim((string) ($receipt_details->source ?? ''));
+    }
+    if ($salesChannel === '') {
         $salesChannel = trim((string) ($receipt_details->sales_person ?? ''));
     }
     if ($salesChannel === '') {
-        $salesChannel = $isQuotation ? 'Quotation' : ($isProforma ? 'Proforma' : 'POS');
+        $salesChannel = $isQuotation ? 'Quotation' : ($isProforma ? 'Proforma' : 'Web');
     }
 
     $currencySym = $receipt_details->currency['symbol'] ?? 'Rs.';
@@ -105,7 +121,20 @@
     $grandTotalDisplay = (string) ($receipt_details->total ?? '');
     $totalDueRaw = $receipt_details->total_due ?? null;
     $totalPaid = $receipt_details->total_paid ?? ($currencySym.' 0.00');
-    $dueDate = $receipt_details->due_date ?? $dateDisplay;
+    $dueDate = $dateDisplay;
+    if (! empty($receipt_details->due_date_raw)) {
+        try {
+            $dueDate = \Carbon\Carbon::parse($receipt_details->due_date_raw)->format('jS F, Y');
+        } catch (\Throwable $e) {
+            $dueDate = (string) ($receipt_details->due_date ?? $dateDisplay);
+        }
+    } elseif (! empty($receipt_details->due_date)) {
+        try {
+            $dueDate = \Carbon\Carbon::parse(strip_tags((string) $receipt_details->due_date))->format('jS F, Y');
+        } catch (\Throwable $e) {
+            $dueDate = strip_tags((string) $receipt_details->due_date);
+        }
+    }
     $paymentStatusRaw = strtolower(trim((string) ($receipt_details->payment_status ?? '')));
     $isPaid = $showDueFields && (
         $paymentStatusRaw === 'paid'

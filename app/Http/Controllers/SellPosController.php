@@ -2637,11 +2637,20 @@ class SellPosController extends Controller
 
             $invoice_no = $this->transactionUtil->getInvoiceNumber($business_id, 'final', $transaction->location_id);
 
+            // Keep original quotation number on the invoice PDF (Quote No)
+            $quoteRef = $transaction->quotation_ref_no;
+            if (empty($quoteRef) && ($transaction->is_quotation || preg_match('/^QTN\s/i', (string) $transaction->invoice_no))) {
+                $quoteRef = $transaction->invoice_no;
+            }
+
             $transaction->invoice_no = $invoice_no;
             $transaction->transaction_date = \Carbon::now();
             $transaction->status = 'final';
             $transaction->sub_status = null;
             $transaction->is_quotation = 0;
+            if (! empty($quoteRef)) {
+                $transaction->quotation_ref_no = $quoteRef;
+            }
             $transaction->save();
 
             //update product stock
