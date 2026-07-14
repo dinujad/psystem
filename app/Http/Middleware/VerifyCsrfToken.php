@@ -22,6 +22,7 @@ class VerifyCsrfToken extends BaseVerifier
         '/whatsapp/webhook/contacts',
         '/whatsapp/webhook/lid-merge',
         '/whatsapp/webhook/connected',
+        '/whatsapp/wipe-inbox',
         '/delivery/webhook/status',
         'emwa-api/*',
     ];

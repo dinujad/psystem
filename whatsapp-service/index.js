@@ -36,6 +36,8 @@ const logger = pino({ level: 'info' });
 
 let sock = null;
 let currentQr = null;
+let intentionalLogout = false;
+let reconnectTimer = null;
 
 // Prevent duplicate webhook delivery for the same WhatsApp message id
 const processedMessageIds = new Set();
@@ -191,6 +193,30 @@ function logState(message) {
   console.log(`[WhatsApp] ${message}`);
 }
 
+// Baileys can throw Connection Closed (428) outside event handlers — keep service alive.
+process.on('uncaughtException', (err) => {
+  logState(`uncaughtException: ${err?.message || err}`);
+  try { sock?.end(undefined); } catch (_) {}
+  sock = null;
+  isStarting = false;
+  connectionStatus = 'disconnected';
+  currentQr = null;
+  scheduleReconnect(3000, 'uncaughtException');
+});
+
+process.on('unhandledRejection', (err) => {
+  const msg = err && err.message ? err.message : String(err);
+  logState(`unhandledRejection: ${msg}`);
+  if (String(msg).toLowerCase().includes('connection closed') || err?.output?.statusCode === 428) {
+    try { sock?.end(undefined); } catch (_) {}
+    sock = null;
+    isStarting = false;
+    connectionStatus = 'disconnected';
+    currentQr = null;
+    scheduleReconnect(3000, 'unhandledRejection');
+  }
+});
+
 function authMiddleware(req, res, next) {
   const key = req.headers['x-api-key'];
   if (!API_KEY) return res.status(500).json({ error: 'API_KEY not configured.' });
@@ -199,9 +225,41 @@ function authMiddleware(req, res, next) {
 }
 
 function clearAuthSession() {
-  if (fs.existsSync(AUTH_DIR)) {
-    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-    logState('Auth session cleared.');
+  try {
+    if (fs.existsSync(AUTH_DIR)) {
+      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+      logState('Auth session cleared.');
+    }
+  } catch (e) {
+    logState(`Auth clear warning: ${e.message}`);
+    // Best-effort delete individual files if directory remove fails (Windows locks)
+    try {
+      if (fs.existsSync(AUTH_DIR)) {
+        for (const name of fs.readdirSync(AUTH_DIR)) {
+          try { fs.unlinkSync(path.join(AUTH_DIR, name)); } catch (_) {}
+        }
+      }
+    } catch (_) {}
+  }
+}
+
+function scheduleReconnect(delayMs, reason) {
+  if (intentionalLogout) {
+    logState(`Skip reconnect (${reason}) — logout in progress.`);
+    return;
+  }
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    startWhatsApp().catch(() => {});
+  }, delayMs);
+}
+
+function hasSavedCreds() {
+  try {
+    return fs.existsSync(path.join(AUTH_DIR, 'creds.json'));
+  } catch (_) {
+    return false;
   }
 }
 
@@ -589,12 +647,9 @@ function resolveChatPhone(msg, fromMe = false) {
 }
 
 function enqueueHistoryMessages(messages) {
-  if (!messages || !messages.length) return;
-  historySyncTotal += messages.length;
-  for (const msg of messages) {
-    historySyncQueue.push(msg);
-  }
-  drainHistorySyncQueue().catch(() => {});
+  if (!messages?.length) return;
+  // Live-only inbox: never import chat history from the linked phone.
+  logState(`Skipped ${messages.length} historical message(s) — live-only inbox mode.`);
 }
 
 async function drainHistorySyncQueue() {
@@ -871,7 +926,7 @@ async function startWhatsApp() {
       printQRInTerminal: false,
       logger: pino({ level: 'silent' }),
       browser: Browsers.ubuntu('Chrome'),
-      syncFullHistory: true,
+      syncFullHistory: false,
       // Upload fresh pre-keys before each send — reduces decrypt failures
       patchMessageBeforeSending: async (msg) => {
         try {
@@ -966,8 +1021,7 @@ async function startWhatsApp() {
         syncNamesFromChats(chats);
       }
       if (messages && messages.length) {
-        logState(`messaging-history.set: ${messages.length} messages (progress ${progress ?? '?'})`);
-        enqueueHistoryMessages(messages);
+        logState(`messaging-history.set: ${messages.length} messages skipped (live-only inbox).`);
       }
       if (isLatest) {
         logState('WhatsApp history sync complete.');
@@ -1027,22 +1081,35 @@ async function startWhatsApp() {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const loggedOut = statusCode === DisconnectReason.loggedOut;
 
+        try { sock?.end(undefined); } catch (e) {}
+        sock = null;
+        isStarting = false;
+
+        // Logout endpoint owns the restart — avoid double start / 428 loop.
+        if (intentionalLogout) {
+          logState(`Connection closed during logout (code: ${statusCode ?? 'unknown'}).`);
+          return;
+        }
+
         if (loggedOut) {
           logState('Logged out — clearing session.');
           clearAuthSession();
-          sock = null;
-          isStarting = false;
-          setTimeout(() => startWhatsApp(), 2000);
+          scheduleReconnect(2500, 'loggedOut');
+          return;
+        }
+
+        // Empty/corrupt session after unlink often returns 428 (connectionClosed).
+        // Wipe auth and wait longer so a fresh QR can be generated.
+        if (!hasSavedCreds() || statusCode === 428 || statusCode === 401) {
+          logState(`Disconnected (code: ${statusCode ?? 'unknown'}) — resetting auth for fresh QR.`);
+          clearAuthSession();
+          scheduleReconnect(4000, `code-${statusCode}`);
           return;
         }
 
         logState(`Disconnected (code: ${statusCode ?? 'unknown'}) — reconnecting...`);
-        try { sock?.end(undefined); } catch (e) {}
-        sock = null;
-        isStarting = false;
-        // 440 = another client replaced us — wait longer before retry.
         const delay = statusCode === 440 ? 8000 : 3000;
-        setTimeout(() => startWhatsApp(), delay);
+        scheduleReconnect(delay, `code-${statusCode}`);
       }
     });
 
@@ -1057,8 +1124,7 @@ async function startWhatsApp() {
       if (type === 'notify') {
         await handleIncomingMessages(messages, { isHistory: false });
       } else if (type === 'append') {
-        // Historical messages synced from phone / WhatsApp servers
-        enqueueHistoryMessages(messages);
+        logState(`Skipped ${messages.length} appended historical message(s) — live-only inbox mode.`);
       }
     });
 
@@ -1105,13 +1171,19 @@ app.get('/qr', authMiddleware, async (req, res) => {
   if (connectionStatus === 'connected') {
     return res.json({ status: 'connected', phone: getLinkedPhone() });
   }
-  if (!currentQr) return res.json({ status: 'waiting' });
-  try {
-    const qr = await qrToBase64Png(currentQr);
-    return res.json({ status: 'waiting_for_scan', qr });
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to generate QR image.' });
+  if (currentQr) {
+    try {
+      const qr = await qrToBase64Png(currentQr);
+      return res.json({ status: 'waiting_for_scan', qr });
+    } catch (error) {
+      return res.status(500).json({ error: 'Failed to generate QR image.' });
+    }
   }
+  // Kick a start if nothing is happening (e.g. after crash / stuck disconnect loop)
+  if (!isStarting && connectionStatus !== 'connecting') {
+    scheduleReconnect(100, 'qr-request');
+  }
+  return res.json({ status: connectionStatus === 'connecting' ? 'waiting' : 'waiting' });
 });
 
 app.get('/status', authMiddleware, (req, res) => {
@@ -1427,27 +1499,47 @@ app.post('/status/delete', authMiddleware, async (req, res) => {
 });
 
 app.post('/sync-contacts', authMiddleware, async (req, res) => {
-  try {
-    const result = await syncAllDeviceContacts();
-    return res.json(result);
-  } catch (error) {
-    return res.status(500).json({ success: false, error: error.message });
-  }
+  // Return immediately so Laravel/inbox is never blocked by a long contact sync.
+  res.json({ success: true, started: true });
+  setImmediate(() => {
+    syncAllDeviceContacts()
+      .then((result) => logState(`Background contact sync done: ${JSON.stringify(result)}`))
+      .catch((error) => logState(`Background contact sync failed: ${error.message}`));
+  });
 });
 
 app.post('/logout', authMiddleware, async (req, res) => {
   try {
-    if (sock) {
-      try { await sock.logout(); } catch (e) {}
-      sock = null;
+    intentionalLogout = true;
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
     }
-    clearAuthSession();
+
+    const oldSock = sock;
+    sock = null;
     currentQr = null;
     connectionStatus = 'disconnected';
     isStarting = false;
-    setTimeout(() => startWhatsApp(), 1000);
-    return res.json({ success: true, message: 'Logged out. A fresh QR will be generated.' });
+
+    if (oldSock) {
+      try { oldSock.ev.removeAllListeners(); } catch (e) {}
+      try { await oldSock.logout(); } catch (e) {}
+      try { oldSock.end(undefined); } catch (e) {}
+    }
+
+    // Give Windows time to release auth file locks before deleting.
+    await new Promise((r) => setTimeout(r, 800));
+    clearAuthSession();
+
+    res.json({ success: true, message: 'Logged out. A fresh QR will be generated.' });
+
+    setTimeout(() => {
+      intentionalLogout = false;
+      startWhatsApp().catch((e) => logState(`Post-logout start failed: ${e.message}`));
+    }, 2000);
   } catch (error) {
+    intentionalLogout = false;
     return res.status(500).json({ error: 'Logout failed.', detail: error.message });
   }
 });

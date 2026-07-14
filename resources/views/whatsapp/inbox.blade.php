@@ -3,6 +3,9 @@
 
 @section('css')
 <style>
+/* Hide global Pace spinner — inbox uses its own fetch polling */
+.pace, .pace-progress, .pace-activity { display: none !important; }
+
 /* ── reset ── */
 .content-wrapper { background: #ddd !important; padding: 0 !important; }
 
@@ -535,7 +538,7 @@
 <div class="wa-connect-gate" id="wa-connect-gate">
     <div class="wa-gate-icon">📵</div>
     <h2>WhatsApp is not connected</h2>
-    <p>Link your WhatsApp account with a QR code to use the inbox. Chat history from a previous number will not show until you connect again.</p>
+    <p>Link your WhatsApp account with a QR code to use the inbox. Only new messages after linking are saved — old phone chats are not imported.</p>
     <a href="{{ route('whatsapp.link') }}" class="btn-connect">
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v6M14 20h6"/></svg>
         Connect WhatsApp
@@ -863,7 +866,6 @@
     let phone       = null;
     let lastId      = 0;
     let pollTimer   = null;
-    let historySyncTimer = null;
     let selFile     = null;
     let knownPhones = new Set();
     const COLORS    = ['green','teal','purple'];
@@ -935,21 +937,29 @@
 
     document.querySelectorAll('.wa-thread').forEach(el => knownPhones.add(el.dataset.phone));
     sortThreadList(document.getElementById('wa-thread-list'));
-    refreshStatus();   setInterval(refreshStatus, 8000);
-    refreshThreads();  setInterval(refreshThreads, 5000);
+    // Stop AdminLTE Pace from spinning forever on background AJAX
+    if (window.jQuery) {
+        jQuery(document).off('ajaxStart');
+        if (window.Pace && typeof Pace.stop === 'function') Pace.stop();
+    }
+    refreshStatus();   setInterval(refreshStatus, 15000);
+    refreshThreads();  setInterval(refreshThreads, 3000);
     loadAllLabels();
     loadAllAgents();
-    syncDeviceContacts();
+    // Contact sync in background after first paint — never block opening chats
+    setTimeout(() => syncDeviceContacts(), 2500);
 
     async function syncDeviceContacts(){
         try {
+            const ctrl = new AbortController();
+            const t = setTimeout(() => ctrl.abort(), 4000);
             await fetch('/whatsapp/sync-contacts', {
                 method: 'POST',
                 headers: { Accept: 'application/json', 'X-CSRF-TOKEN': CSRF },
+                signal: ctrl.signal,
             });
-            // Names/avatars arrive via webhook — refresh thread list shortly after
-            setTimeout(() => refreshThreads(), 3000);
-            setTimeout(() => refreshThreads(), 10000);
+            clearTimeout(t);
+            setTimeout(() => refreshThreads(), 2000);
         } catch(e){}
     }
 
@@ -962,9 +972,7 @@
             const on = d.status === 'connected';
             document.getElementById('wa-dot').className = 'wa-status-dot ' + (on ? 'on' : 'off');
             document.getElementById('wa-status-lbl').textContent = on ? 'Connected' : 'Disconnected';
-            if(phone){
-                document.getElementById('ch-status').textContent = on ? 'online' : 'reconnecting...';
-            }
+            // Do not overwrite chat subtitle while messages are loading / counted
         } catch(e){
             // Network error — don't update status dot to avoid false "disconnected"
         }
@@ -1172,9 +1180,9 @@
         box.innerHTML = '<div class="wa-loading-msg">Loading messages...</div>';
 
         await loadAll(p);
-        startHistorySyncWatch(p);
         document.getElementById('wa-txt').focus();
-        pollTimer = setInterval(()=>pollNew(), 4000);
+        if(pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(()=>pollNew(), 1500);
     };
 
     function updateChatHeaderName(p){
@@ -1600,49 +1608,19 @@
     };
 
     /* ── Load ALL messages ── */
-    async function checkHistorySync(){
-        try {
-            const r = await fetch('/whatsapp/sync-status', { headers: { Accept: 'application/json' } });
-            const d = await r.json();
-            const banner = document.getElementById('wa-sync-banner');
-            const syncing = !!(d.history_sync_running || (d.history_sync_queue && d.history_sync_queue > 0));
-            if (syncing) {
-                const done = d.history_sync_processed || 0;
-                const total = d.history_sync_total || 0;
-                banner.style.display = 'block';
-                banner.textContent = total > 0
-                    ? `Syncing chat history from WhatsApp… (${done}/${total})`
-                    : 'Syncing chat history from WhatsApp…';
-                return true;
-            }
-            banner.style.display = 'none';
-            return false;
-        } catch (e) {
-            return false;
-        }
-    }
-
-    function startHistorySyncWatch(p){
-        if (historySyncTimer) clearInterval(historySyncTimer);
-        checkHistorySync();
-        historySyncTimer = setInterval(async ()=>{
-            const syncing = await checkHistorySync();
-            if (syncing && phone === p) {
-                await loadAll(p);
-                await refreshThreads();
-            } else if (!syncing && historySyncTimer) {
-                clearInterval(historySyncTimer);
-                historySyncTimer = null;
-                if (phone === p) await loadAll(p);
-            }
-        }, 5000);
-    }
-
     async function loadAll(p){
+        const box = document.getElementById('wa-msgs');
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 8000);
         try {
-            const r = await fetch(`/whatsapp/inbox/${p}/poll?after=0`,{headers:{Accept:'application/json'}});
+            const r = await fetch(`/whatsapp/inbox/${encodeURIComponent(p)}/poll?after=0`,{
+                headers:{Accept:'application/json'},
+                signal: ctrl.signal,
+            });
+            clearTimeout(timeout);
+            if (phone !== p) return;
+            if (!r.ok) throw new Error('HTTP ' + r.status);
             const d = await r.json();
-            const box = document.getElementById('wa-msgs');
             box.innerHTML = '';
 
             if(!d.messages || !d.messages.length){
@@ -1669,7 +1647,10 @@
             scrollDown(box);
             document.getElementById('ch-status').textContent = d.messages.length + ' message' + (d.messages.length !== 1 ? 's' : '');
         } catch(e){
-            document.getElementById('wa-msgs').innerHTML = '<div class="wa-loading-msg" style="color:#ef4444;">Failed to load messages.</div>';
+            clearTimeout(timeout);
+            if (phone !== p) return;
+            box.innerHTML = '<div class="wa-loading-msg" style="color:#ef4444;">Failed to load messages. Tap chat again.</div>';
+            document.getElementById('ch-status').textContent = 'load failed';
         }
     }
 
@@ -1677,7 +1658,13 @@
     async function pollNew(){
         if(!phone) return;
         try {
-            const r = await fetch(`/whatsapp/inbox/${phone}/poll?after=${lastId}`,{headers:{Accept:'application/json'}});
+            const ctrl = new AbortController();
+            const timeout = setTimeout(() => ctrl.abort(), 5000);
+            const r = await fetch(`/whatsapp/inbox/${encodeURIComponent(phone)}/poll?after=${lastId}`,{
+                headers:{Accept:'application/json'},
+                signal: ctrl.signal,
+            });
+            clearTimeout(timeout);
             const d = await r.json();
             if(!d.messages || !d.messages.length) return;
 
@@ -1706,6 +1693,10 @@
             });
             scrollDown(box);
             markRead(phone);
+            const count = box.querySelectorAll('.wa-row').length;
+            if (count > 0) {
+                document.getElementById('ch-status').textContent = count + ' message' + (count !== 1 ? 's' : '');
+            }
         } catch(e){}
     }
 

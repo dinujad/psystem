@@ -271,13 +271,7 @@ class WhatsappController extends Controller
             abort(403);
         }
 
-        WhatsappLidResolver::mergeAllFromMap();
-
-        $status = $this->whatsappService->getStatus();
-        if (($status['status'] ?? '') === 'connected') {
-            $this->whatsappService->syncInboxToLinkedAccount($status);
-        }
-
+        // Keep thread poll lightweight — heavy sync runs on connect / inbox open only.
         $threads = $this->threadQuery($isAdmin, $isAgent)->get();
 
         $phones      = $threads->pluck('phone_number')->all();
@@ -342,10 +336,11 @@ class WhatsappController extends Controller
         }
 
         $after = $request->query('after', 0);
+        $normalized = preg_replace('/\D/', '', (string) $phone);
 
-        $messages = WhatsappMessage::where('phone_number', $phone)
+        $messages = WhatsappMessage::where('phone_number', $normalized)
             ->when($after, fn ($q) => $q->where('id', '>', $after))
-            ->orderBy('created_at')
+            ->orderBy('id')
             ->get()
             ->map(function ($m) {
                 return [
@@ -379,15 +374,7 @@ class WhatsappController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $status = $this->whatsappService->getStatus();
-        if (($status['status'] ?? '') === 'connected') {
-            $sync = $this->whatsappService->syncInboxToLinkedAccount($status);
-            if (! empty($sync['cleared'])) {
-                $status['inbox_cleared'] = true;
-            }
-        }
-
-        return response()->json($status);
+        return response()->json($this->whatsappService->getStatus());
     }
 
     public function syncStatus()
@@ -431,12 +418,6 @@ class WhatsappController extends Controller
 
         $result = $this->whatsappService->logout();
 
-        // Always clear local inbox even if Node logout partially fails,
-        // so disconnected UI never shows the previous account's chats.
-        if (empty($result['cleared'])) {
-            $result['cleared'] = $this->whatsappService->clearLocalInboxData();
-        }
-
         return response()->json($result);
     }
 
@@ -447,19 +428,30 @@ class WhatsappController extends Controller
             abort(403, 'Unauthorized action.');
         }
 
-        $cleared = $this->whatsappService->clearLocalInboxData();
-
-        $status = $this->whatsappService->getStatus();
-        if (($status['status'] ?? '') === 'connected') {
-            $phone = $this->whatsappService->normalizeLinkedPhone($status['phone'] ?? null);
-            if ($phone) {
-                \App\System::addProperty(\App\Services\WhatsappService::LINKED_PHONE_KEY, $phone);
-            }
-        }
+        $cleared = $this->wipeWhatsappInboxDatabase();
 
         return response()->json([
             'success' => true,
             'message' => 'All inbox chats cleared.',
+            'cleared' => $cleared,
+        ]);
+    }
+
+    /**
+     * Public URL to fully wipe WhatsApp inbox from the database.
+     * Auth: WHATSAPP_API_KEY via ?key=... (browser) or x-api-key header.
+     */
+    public function wipeInboxUrl(Request $request)
+    {
+        if (! $this->authorizeWhatsappApiKey($request)) {
+            return response()->json(['success' => false, 'error' => 'Unauthorized'], 401);
+        }
+
+        $cleared = $this->wipeWhatsappInboxDatabase();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'WhatsApp inbox fully deleted from database. Only new messages after link will be saved.',
             'cleared' => $cleared,
         ]);
     }
@@ -507,12 +499,19 @@ class WhatsappController extends Controller
             'media_base64'   => ['nullable', 'string'],
         ]);
 
+        if (! $this->whatsappService->shouldAcceptIncomingMessage($validated)) {
+            return response()->json(['success' => true, 'skipped' => true]);
+        }
+
         $message = $this->whatsappService->storeIncomingMessage($validated);
 
-        // Only run bot automation for live incoming messages (not history / outgoing sync)
-        $isHistory = filter_var($validated['is_history'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        if (! $message) {
+            return response()->json(['success' => true, 'skipped' => true]);
+        }
+
+        // Only run bot automation for live incoming messages
         $direction = $validated['direction'] ?? 'in';
-        if (! $isHistory && $direction === 'in') {
+        if ($direction === 'in') {
             \App\Jobs\ProcessBotMessageJob::dispatch(
                 $validated['from'],
                 $validated['message'] ?? null
@@ -662,5 +661,33 @@ class WhatsappController extends Controller
         }
 
         return $q;
+    }
+
+    /** @return array{messages:int,contacts:int,assignments:int} */
+    private function wipeWhatsappInboxDatabase(): array
+    {
+        $cleared = $this->whatsappService->clearLocalInboxData();
+
+        $status = $this->whatsappService->getStatus();
+        if (($status['status'] ?? '') === 'connected') {
+            $phone = $this->whatsappService->normalizeLinkedPhone($status['phone'] ?? null);
+            if ($phone) {
+                $this->whatsappService->markLinkedSession($phone);
+            }
+        }
+
+        return $cleared;
+    }
+
+    private function authorizeWhatsappApiKey(Request $request): bool
+    {
+        $expectedKey = config('services.whatsapp.api_key');
+        if (empty($expectedKey)) {
+            return false;
+        }
+
+        $apiKey = $request->header('x-api-key') ?: $request->query('key');
+
+        return is_string($apiKey) && hash_equals($expectedKey, $apiKey);
     }
 }

@@ -18,6 +18,8 @@ class WhatsappService
 {
     public const LINKED_PHONE_KEY = 'whatsapp_linked_phone';
 
+    public const LINKED_AT_KEY = 'whatsapp_linked_at';
+
     protected function baseUrl(): string
     {
         return rtrim((string) config('services.whatsapp.url'), '/');
@@ -69,7 +71,7 @@ class WhatsappService
     public function getStatus(): array
     {
         try {
-            $response = $this->client()->get($this->baseUrl().'/status');
+            $response = $this->client()->timeout(3)->get($this->baseUrl().'/status');
 
             if ($response->failed()) {
                 return [
@@ -305,9 +307,10 @@ class WhatsappService
     public function triggerContactsSync(): array
     {
         try {
-            $response = $this->client()->timeout(120)->post($this->baseUrl().'/sync-contacts');
+            // Node starts sync in background and returns immediately — do not block inbox.
+            $response = $this->client()->timeout(5)->post($this->baseUrl().'/sync-contacts');
 
-            return $response->json() ?? ['success' => false];
+            return $response->json() ?? ['success' => true, 'started' => true];
         } catch (\Throwable $e) {
             Log::warning('WhatsApp triggerContactsSync failed: '.$e->getMessage());
 
@@ -398,12 +401,9 @@ class WhatsappService
                 ];
             }
 
-            $cleared = $this->clearLocalInboxData();
-
             return [
                 'success' => true,
                 'message' => $response->json('message') ?? 'Logged out successfully.',
-                'cleared' => $cleared,
             ];
         } catch (\Throwable $e) {
             Log::warning('WhatsApp logout failed: '.$e->getMessage());
@@ -432,7 +432,7 @@ class WhatsappService
 
         if ($storedPhone && $storedPhone !== $currentPhone) {
             $counts = $this->clearLocalInboxData();
-            System::addProperty(self::LINKED_PHONE_KEY, $currentPhone);
+            $this->markLinkedSession($currentPhone);
             Log::info('WhatsApp inbox cleared — linked account changed', [
                 'from' => $storedPhone,
                 'to' => $currentPhone,
@@ -448,10 +448,45 @@ class WhatsappService
         }
 
         if (! $storedPhone) {
-            System::addProperty(self::LINKED_PHONE_KEY, $currentPhone);
+            $this->markLinkedSession($currentPhone);
         }
 
         return ['cleared' => false, 'phone' => $currentPhone];
+    }
+
+    /**
+     * Record which WhatsApp number is linked and when live capture started.
+     * Only messages after linked_at are stored (no phone history import).
+     */
+    public function markLinkedSession(string $phone): void
+    {
+        System::addProperty(self::LINKED_PHONE_KEY, $phone);
+        System::addProperty(self::LINKED_AT_KEY, now()->format('Y-m-d H:i:s'));
+    }
+
+    /**
+     * Live-only inbox: reject WhatsApp phone history and pre-link messages.
+     */
+    public function shouldAcceptIncomingMessage(array $data): bool
+    {
+        if (filter_var($data['is_history'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            return false;
+        }
+
+        $linkedAt = System::getProperty(self::LINKED_AT_KEY);
+        if ($linkedAt && ! empty($data['timestamp'])) {
+            try {
+                $msgAt = \Carbon\Carbon::parse($data['timestamp']);
+                $cutoff = \Carbon\Carbon::parse($linkedAt)->subSeconds(30);
+                if ($msgAt->lt($cutoff)) {
+                    return false;
+                }
+            } catch (\Throwable $e) {
+                // keep message if timestamp parsing fails
+            }
+        }
+
+        return true;
     }
 
     public function normalizeLinkedPhone(?string $phone): ?string
@@ -504,6 +539,7 @@ class WhatsappService
             }
 
             System::removeProperty(self::LINKED_PHONE_KEY);
+            System::removeProperty(self::LINKED_AT_KEY);
 
             Log::info('WhatsApp local inbox cleared after unlink', $counts);
         } catch (\Throwable $e) {
@@ -513,8 +549,12 @@ class WhatsappService
         return $counts;
     }
 
-    public function storeIncomingMessage(array $data): WhatsappMessage
+    public function storeIncomingMessage(array $data): ?WhatsappMessage
     {
+        if (! $this->shouldAcceptIncomingMessage($data)) {
+            return null;
+        }
+
         $mediaPath = null;
         $direction = ($data['direction'] ?? 'in') === 'out' ? 'out' : 'in';
         $status    = $direction === 'out' ? 'sent' : 'received';

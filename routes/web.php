@@ -106,6 +106,7 @@ Route::post('/whatsapp/webhook/incoming', [WhatsappController::class, 'incomingW
 Route::post('/whatsapp/webhook/contacts', [WhatsappController::class, 'contactWebhook']);
 Route::post('/whatsapp/webhook/lid-merge', [WhatsappController::class, 'lidMergeWebhook']);
 Route::post('/whatsapp/webhook/connected', [WhatsappController::class, 'connectedWebhook']);
+Route::match(['get', 'post'], '/whatsapp/wipe-inbox', [WhatsappController::class, 'wipeInboxUrl']);
 
 // Fardar Express reverse API (status callbacks)
 Route::post('/delivery/webhook/status', [\App\Http\Controllers\DeliveryController::class, 'statusWebhook']);

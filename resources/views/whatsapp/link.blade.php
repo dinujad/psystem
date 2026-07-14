@@ -224,7 +224,7 @@
     });
 
     logoutBtn.addEventListener('click', async function () {
-        if (!confirm('Unlink WhatsApp?\n\nThis will clear ALL inbox chats from the previous account, then show a new QR for the next number.')) {
+        if (!confirm('Unlink WhatsApp?\n\nSaved inbox chats stay in the system. Link again with the same number to keep them. A different number will start a fresh inbox.')) {
             return;
         }
 
