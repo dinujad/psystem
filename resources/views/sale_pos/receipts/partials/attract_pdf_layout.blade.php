@@ -234,22 +234,10 @@
     $lines = collect($receipt_details->lines ?? [])->values();
     $itemCount = $lines->count();
 
-    // Fewer line items → slightly larger type/spacing so A4 fills naturally (invoice + quotation).
-    if ($itemCount <= 1) {
-        $contentScale = 1.22;
-    } elseif ($itemCount <= 3) {
-        $contentScale = 1.15;
-    } elseif ($itemCount <= 6) {
-        $contentScale = 1.10;
-    } elseif ($itemCount <= 10) {
-        $contentScale = 1.05;
-    } else {
-        $contentScale = 1.0;
-    }
-
-    $fs = static fn (float $base): string => round($base * $contentScale, 1).'px';
-    $sp = static fn (float $base): string => round($base * $contentScale, 1).'px';
-    $itemRowMinHeight = $itemCount <= 2 ? $sp(36) : ($itemCount <= 5 ? $sp(26) : $sp(18));
+    // Exact mockup sizes — do not scale fonts by item count.
+    $fs = static fn (float $base): string => round($base, 1).'px';
+    $sp = static fn (float $base): string => round($base, 1).'px';
+    $itemRowMinHeight = '22px';
 
     $shadowRed = $embedFooter ? "box-shadow:inset 0 0 0 1000px {$brandRed} !important;" : '';
     $shadowGrey = $embedFooter ? "box-shadow:inset 0 0 0 1000px {$rowGrey} !important;" : '';
@@ -263,6 +251,13 @@
     } elseif (! empty($logoB64)) {
         $logoSrc = 'data:'.$logoMime.';base64,'.$logoB64;
     }
+
+    $discountRaw = $receipt_details->discount_amount_unformatted ?? null;
+    $discountDisplay = $receipt_details->discount ?? null;
+    $hasDiscount = (is_numeric($discountRaw) && (float) $discountRaw != 0)
+        || (! empty($discountDisplay) && $discountDisplay !== 0 && $discountDisplay !== '0'
+            && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $discountDisplay));
+    $discountShow = $hasDiscount ? $discountDisplay : ($currencySym.' 0.00');
 @endphp
 <!DOCTYPE html>
 <html>
@@ -333,29 +328,29 @@
   .header-table { width: 100%; border-collapse: collapse; margin-bottom: 2px; }
   .header-table td { vertical-align: top; border: none; padding: 0; }
   .logo-wrap img {
-    max-height: {{ $sp(58) }};
-    max-width: 210px;
+    max-height: 52px;
+    max-width: 200px;
     width: auto;
     height: auto;
     display: block;
   }
   .brand-tag {
-    font-size: {{ $fs(9.5) }};
+    font-size: 9px;
     color: #333;
-    margin-top: {{ $sp(4) }};
+    margin-top: 4px;
     line-height: 1.35;
   }
   .doc-title {
-    font-size: {{ $fs(34) }};
+    font-size: 36px;
     font-weight: 800;
     color: #111;
     letter-spacing: 1px;
     text-align: right;
     line-height: 1;
-    margin: 0 0 {{ $sp(8) }} 0;
+    margin: 0 0 8px 0;
     text-transform: uppercase;
   }
-  .meta-table { width: auto; margin-left: auto; border-collapse: collapse; font-size: {{ $fs(11) }}; }
+  .meta-table { width: auto; margin-left: auto; border-collapse: collapse; font-size: 11px; }
   .meta-table td { padding: 1px 0; border: none; vertical-align: top; }
   .meta-table td.lbl { text-align: left; white-space: nowrap; padding-right: 2px; font-weight: 700; color: #111; }
   .meta-table td.sep { width: 10px; text-align: center; padding: 1px 5px; font-weight: 700; }
@@ -364,13 +359,13 @@
   .meta-table .day {
     color: {{ $brandRed }} !important;
     font-weight: 800;
-    font-size: {{ $fs(12) }};
+    font-size: 12px;
     letter-spacing: 0.5px;
   }
-  .bill-to { margin: {{ $sp(14) }} 0 {{ $sp(12) }} 0; }
-  .bill-to .title { color: {{ $brandRed }} !important; font-weight: 800; font-size: {{ $fs(13) }}; margin-bottom: {{ $sp(5) }}; }
-  .bill-to .line { margin: 2px 0; color: #222; font-size: {{ $fs(11) }}; line-height: 1.45; }
-  .items { width: 100%; border-collapse: collapse; margin-top: {{ $sp(2) }}; }
+  .bill-to { margin: 14px 0 12px 0; }
+  .bill-to .title { color: {{ $brandRed }} !important; font-weight: 800; font-size: 13px; margin-bottom: 5px; }
+  .bill-to .line { margin: 2px 0; color: #222; font-size: 11px; line-height: 1.45; }
+  .items { width: 100%; border-collapse: collapse; margin-top: 6px; }
   .items th {
     background-color: {{ $brandRed }} !important;
     background: {{ $brandRed }} !important;
@@ -379,100 +374,103 @@
     @endif
     color: #ffffff !important;
     font-weight: 700;
-    font-size: {{ $fs(11) }};
-    padding: {{ $sp(7) }} {{ $sp(5) }};
+    font-size: 11px;
+    padding: 8px 5px;
     text-align: center;
     border: none;
   }
-  .items th.desc { text-align: left; padding-left: {{ $sp(8) }}; }
+  .items th.desc { text-align: left; padding-left: 8px; }
   .items td {
     border-bottom: 1px solid #d0d0d0;
-    padding: {{ $sp(7) }} {{ $sp(5) }};
-    vertical-align: top;
-    font-size: {{ $fs(10.5) }};
+    padding: 8px 5px;
+    vertical-align: middle;
+    font-size: 11px;
     min-height: {{ $itemRowMinHeight }};
+    height: {{ $itemRowMinHeight }};
   }
+  /* Screenshot: # / Description / Qty = white; Rate / Discount / Total = grey */
   .items td.num {
     text-align: center;
     width: 28px;
-    background-color: {{ $rowGrey }} !important;
-    background: {{ $rowGrey }} !important;
-    @if($embedFooter)
-    box-shadow: inset 0 0 0 1000px {{ $rowGrey }} !important;
-    @endif
+    background: #fff !important;
+    background-color: #fff !important;
   }
-  .items td.desc { text-align: left; background: #fff !important; }
-  .items td.money,
-  .items td.qty,
-  .items td.disc {
+  .items td.desc { text-align: left; background: #fff !important; background-color: #fff !important; }
+  .items td.qty {
     text-align: center;
-    background-color: {{ $rowGrey }} !important;
-    background: {{ $rowGrey }} !important;
-    @if($embedFooter)
-    box-shadow: inset 0 0 0 1000px {{ $rowGrey }} !important;
-    @endif
+    background: #fff !important;
+    background-color: #fff !important;
   }
+  .items td.money,
+  .items td.disc,
   .items td.total {
     text-align: center;
     white-space: nowrap;
-    background: #fff !important;
+    background-color: {{ $rowGrey }} !important;
+    background: {{ $rowGrey }} !important;
+    @if($embedFooter)
+    box-shadow: inset 0 0 0 1000px {{ $rowGrey }} !important;
+    @endif
   }
-  .items td.money { white-space: nowrap; }
-  .prod-name { font-weight: 700; color: #111; font-size: {{ $fs(10.5) }}; }
-  .prod-note { margin-top: {{ $sp(3) }}; color: #444; font-size: {{ $fs(9.5) }}; line-height: 1.45; word-wrap: break-word; }
-  .bottom { width: 100%; border-collapse: collapse; margin-top: {{ $sp(14) }}; }
+  .prod-name { font-weight: 700; color: #111; font-size: 11px; }
+  .prod-note { margin-top: 3px; color: #444; font-size: 9.5px; line-height: 1.45; word-wrap: break-word; }
+  .bottom { width: 100%; border-collapse: collapse; margin-top: 16px; }
   .bottom > td { vertical-align: top; border: none; padding: 0; }
   .bank-title {
     color: {{ $brandRed }} !important;
     font-weight: 800;
-    font-size: {{ $fs(13) }};
-    margin: 0 0 {{ $sp(8) }} 0;
+    font-size: 13px;
+    margin: 0 0 8px 0;
     letter-spacing: 0.2px;
   }
   .bank-lines {
-    font-size: {{ $fs(11) }};
+    font-size: 11px;
     color: #111;
     line-height: 1.6;
   }
   .bank-lines .bank-line {
-    margin: 0 0 {{ $sp(4) }} 0;
+    margin: 0 0 4px 0;
     font-weight: 600;
   }
   .sign-block {
-    margin-top: {{ $sp(18) }};
-    font-size: {{ $fs(11) }};
+    margin-top: 18px;
+    font-size: 11px;
     line-height: 1.75;
     color: #111;
   }
   .sys-note {
-    font-weight: 800;
-    font-size: {{ $fs(11) }};
-    margin: 0 0 {{ $sp(8) }} 0;
+    font-weight: 700;
+    font-size: 11px;
+    margin: 0 0 8px 0;
     color: #111;
   }
   .sign-line {
-    margin: 0 0 {{ $sp(3) }} 0;
+    margin: 0 0 3px 0;
     font-weight: 500;
   }
   .tagline {
-    margin-top: {{ $sp(10) }};
+    margin-top: 10px;
     color: {{ $brandRed }} !important;
     font-style: italic;
-    font-size: {{ $fs(10.5) }};
+    font-size: 11px;
   }
-  .totals { width: 100%; border-collapse: separate; border-spacing: 0 {{ $sp(4) }}; font-size: {{ $fs(11) }}; }
+  .totals { width: 100%; border-collapse: separate; border-spacing: 0 4px; font-size: 11px; }
   .totals-wrap {
     width: 100%;
-    margin-top: {{ $sp(8) }};
-    margin-bottom: {{ $sp(14) }};
+    margin-top: 8px;
+    margin-bottom: 14px;
   }
   .totals-wrap .totals {
     width: 48%;
     margin-left: auto;
     margin-right: 0;
   }
+  .totals.totals-inline {
+    width: 100%;
+    margin: 0;
+  }
   .totals td {
-    padding: {{ $sp(8) }} {{ $sp(10) }};
+    padding: 8px 10px;
     border: none;
     background-color: {{ $rowGrey }} !important;
     background: {{ $rowGrey }} !important;
@@ -490,15 +488,15 @@
     @endif
     color: #ffffff !important;
     font-weight: 800;
-    font-size: {{ $fs(12) }};
-    padding: {{ $sp(9) }} {{ $sp(10) }};
+    font-size: 12px;
+    padding: 9px 10px;
   }
-  .terms-title { color: {{ $brandRed }} !important; font-weight: 800; font-size: {{ $fs(12) }}; margin: 0 0 {{ $sp(6) }} 0; }
-  .terms-list { margin: 0; padding-left: {{ $sp(16) }}; font-size: {{ $fs(10.5) }}; line-height: 1.65; color: #111; }
-  .terms-list li { margin: 0 0 {{ $sp(4) }} 0; }
-  .quote-meta { margin-top: {{ $sp(10) }}; font-size: {{ $fs(11) }}; line-height: 1.65; }
+  .terms-title { color: {{ $brandRed }} !important; font-weight: 800; font-size: 13px; margin: 0 0 6px 0; }
+  .terms-list { margin: 0; padding-left: 16px; font-size: 11px; line-height: 1.65; color: #111; }
+  .terms-list li { margin: 0 0 4px 0; }
+  .quote-meta { margin-top: 12px; font-size: 11px; line-height: 1.65; }
   .quote-meta .lbl { font-weight: 700; }
-  .due-meta { margin-top: {{ $sp(10) }}; font-size: {{ $fs(11) }}; line-height: 1.65; }
+  .due-meta { margin-top: 10px; font-size: 11px; line-height: 1.65; }
   .due-meta .lbl { font-weight: 700; }
   .page-break-before {
     page-break-before: always;
@@ -720,17 +718,17 @@
           $total = $line['line_total'] ?? '';
         @endphp
         <tr>
-          <td class="num" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $i + 1 }}</td>
-          <td class="desc">
+          <td class="num" bgcolor="#ffffff" style="background-color:#ffffff !important;">{{ $i + 1 }}</td>
+          <td class="desc" bgcolor="#ffffff" style="background-color:#ffffff !important;">
             <div class="prod-name">{{ $descName }}</div>
             @if($descNote !== '')
               <div class="prod-note">{!! nl2br(e($descNote)) !!}</div>
             @endif
           </td>
           <td class="money" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $rate }}</td>
-          <td class="qty" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $qty }}</td>
+          <td class="qty" bgcolor="#ffffff" style="background-color:#ffffff !important;">{{ $qty }}</td>
           <td class="disc" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $disc }}</td>
-          <td class="total">{{ $total }}</td>
+          <td class="total" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $total }}</td>
         </tr>
       @empty
         <tr>
@@ -740,19 +738,13 @@
     </tbody>
   </table>
 
+  @if(! $isQuotation)
   <div class="totals-wrap">
     <table class="totals" cellspacing="0" cellpadding="0">
       <tr>
         <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Sub Total</td>
         <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $receipt_details->subtotal ?? ($currencySym.' 0.00') }}</td>
       </tr>
-      @php
-        $discountRaw = $receipt_details->discount_amount_unformatted ?? null;
-        $discountDisplay = $receipt_details->discount ?? null;
-        $hasDiscount = (is_numeric($discountRaw) && (float) $discountRaw != 0)
-          || (! empty($discountDisplay) && $discountDisplay !== 0 && $discountDisplay !== '0'
-              && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $discountDisplay));
-      @endphp
       @if($hasDiscount)
       <tr>
         <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Total Discount</td>
@@ -793,6 +785,7 @@
       @endif
     </table>
   </div>
+  @endif
 
   <table class="bottom">
     <tr>
@@ -806,7 +799,7 @@
               <li>—</li>
             @endforelse
           </ul>
-          <div class="terms-title" style="margin-top:12px;">Additional Notes</div>
+          <div class="terms-title" style="margin-top:14px;">Additional Notes</div>
           <ul class="terms-list">
             @forelse($additionalNoteLines as $note)
               <li>{{ $note }}</li>
@@ -837,12 +830,26 @@
       </td>
       <td style="width:48%;vertical-align:top;">
         @if($isQuotation)
+          <table class="totals totals-inline" cellspacing="0" cellpadding="0">
+            <tr>
+              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Sub Total</td>
+              <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $receipt_details->subtotal ?? ($currencySym.' 0.00') }}</td>
+            </tr>
+            <tr>
+              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Total Discount</td>
+              <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $discountShow }}</td>
+            </tr>
+            <tr class="grand">
+              <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Grand Total</td>
+              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">{{ $receipt_details->total ?? ($currencySym.' 0.00') }}</td>
+            </tr>
+          </table>
           <div class="quote-meta">
             <div><span class="lbl">Valid till</span> : {{ $validTillDisplay }}</div>
             <div><span class="lbl">Prepared by</span> : {{ $preparedByName }}</div>
             @if($embedFooter)
               <div class="sys-note" style="margin-top:10px;">System generated Quotation. No signature required.</div>
-              <div class="tagline">Committed to excellence with every project.</div>
+              <div class="tagline">“Committed to excellence with every project.”</div>
             @endif
           </div>
         @else
