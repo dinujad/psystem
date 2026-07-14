@@ -234,7 +234,7 @@ class HomeController extends Controller
 
             $jobsQuery = ProductionJob::with('creator')
                 ->whereIn('current_stage', $activeStages)
-                ->orderByRaw("FIELD(current_stage,'design','production','quality','dispatch')")
+                ->orderByRaw("FIELD(current_stage,'design','printing','production','quality','dispatch')")
                 ->orderByDesc('updated_at');
 
             if (! auth()->user()->can('send_notifications') && ! auth()->user()->can('production.access')) {

@@ -27,7 +27,8 @@ class ProductionJob extends Model
     {
         return [
             'design'     => 'Design Team',
-            'production' => 'Production',
+            'printing'   => 'Printing',
+            'production' => 'Workshop', // DB key stays production
             'quality'    => 'Quality & Packing',
             'dispatch'   => 'Dispatch',
             'completed'  => 'Completed',
@@ -52,7 +53,8 @@ class ProductionJob extends Model
     {
         $map = [
             'design'     => '#7c5cfc',
-            'production' => '#3b82f6',
+            'printing'   => '#0ea5e9',
+            'production' => '#3b82f6', // Workshop
             'quality'    => '#f59e0b',
             'dispatch'   => '#10b981',
             'completed'  => '#6b7280',
@@ -161,6 +163,18 @@ class ProductionJob extends Model
     public function isConverted(): bool
     {
         return ! empty($this->product_id) && ! empty($this->converted_at);
+    }
+
+    public function stageApprovals()
+    {
+        return $this->hasMany(ProductionStageApproval::class, 'job_id');
+    }
+
+    public function pendingStageApproval()
+    {
+        return $this->hasOne(ProductionStageApproval::class, 'job_id')
+            ->where('status', 'pending')
+            ->latest('id');
     }
 
     protected function serializeDate(\DateTimeInterface $date): string

@@ -199,18 +199,35 @@ class AdminSidebarMenu
                   </svg>';
             $productionActive = request()->segment(1) == 'production';
 
-            if ($is_admin || auth()->user()->can('production.access')) {
+            $canProductionManager = auth()->user()->can('production.manager');
+            $pendingMoveCount = $canProductionManager
+                ? \App\ProductionStageApproval::pending()->count()
+                : 0;
+            $pendingMaterialCount = $canProductionManager
+                ? \App\ProductionMaterialRequest::pending()->count()
+                : 0;
+            $pendingPmTotal = $pendingMoveCount + $pendingMaterialCount;
+            $pmDashLabel = 'Production Manager Dashboard'.($pendingPmTotal > 0 ? ' ('.$pendingPmTotal.')' : '');
+
+            if ($is_admin || auth()->user()->can('production.access') || $canProductionManager) {
                 $workableStages = \App\ProductionStageEmployee::workableStages();
                 $stageLabels = \App\ProductionJob::allStages();
-                $menu->dropdown('Production', function ($sub) use ($is_admin, $workableStages, $stageLabels) {
-                    $sub->url(route('production.index'), 'Production Board', ['icon' => '', 'active' => request()->segment(1) == 'production' && ! in_array(request()->segment(2), ['team', 'jobs', 'section', 'create', 'start-job'])]);
+                $menu->dropdown('Production', function ($sub) use ($is_admin, $workableStages, $stageLabels, $canProductionManager, $pmDashLabel) {
+                    if ($canProductionManager) {
+                        $sub->url(route('production.manager'), $pmDashLabel, ['icon' => '', 'active' => request()->segment(1) == 'production' && request()->segment(2) == 'manager']);
+                    }
+                    if ($is_admin || auth()->user()->can('production.access')) {
+                        $sub->url(route('production.index'), 'Production Board', ['icon' => '', 'active' => request()->segment(1) == 'production' && ! in_array(request()->segment(2), ['team', 'jobs', 'section', 'create', 'start-job', 'manager', 'approvals'])]);
+                    }
                     if ($is_admin) {
                         $sub->url(route('production.start-job'), 'Start Job', ['icon' => '', 'active' => request()->segment(1) == 'production' && request()->segment(2) == 'start-job']);
                     }
-                    foreach ($workableStages as $sk) {
-                        $sub->url(route('production.section', $sk), ($stageLabels[$sk] ?? ucfirst($sk)) . ' Dashboard', ['icon' => '', 'active' => request()->segment(1) == 'production' && request()->segment(2) == 'section' && request()->segment(3) == $sk]);
+                    if ($is_admin || auth()->user()->can('production.access')) {
+                        foreach ($workableStages as $sk) {
+                            $sub->url(route('production.section', $sk), ($stageLabels[$sk] ?? ucfirst($sk)) . ' Dashboard', ['icon' => '', 'active' => request()->segment(1) == 'production' && request()->segment(2) == 'section' && request()->segment(3) == $sk]);
+                        }
+                        $sub->url(route('production.jobs'), 'All Jobs', ['icon' => '', 'active' => request()->segment(1) == 'production' && request()->segment(2) == 'jobs']);
                     }
-                    $sub->url(route('production.jobs'), 'All Jobs', ['icon' => '', 'active' => request()->segment(1) == 'production' && request()->segment(2) == 'jobs']);
                     if ($is_admin) {
                         $sub->url(route('production.team'), 'Team & Sections', ['icon' => '', 'active' => request()->segment(1) == 'production' && request()->segment(2) == 'team']);
                     }
@@ -222,13 +239,16 @@ class AdminSidebarMenu
             } elseif (\App\ProductionStageEmployee::where('user_id', auth()->id())->exists()) {
                 $myStages = \App\ProductionStageEmployee::stagesForUser(auth()->id());
                 $stageLabels = \App\ProductionJob::allStages();
-                if (count($myStages) === 1) {
+                if (count($myStages) === 1 && ! $canProductionManager) {
                     $menu->url(route('production.section', $myStages[0]), $stageLabels[$myStages[0]] ?? 'Production', [
                         'icon' => $productionIcon,
                         'active' => $productionActive,
                     ])->order(17);
                 } else {
-                    $menu->dropdown('Production', function ($sub) use ($myStages, $stageLabels) {
+                    $menu->dropdown('Production', function ($sub) use ($myStages, $stageLabels, $canProductionManager, $pmDashLabel) {
+                        if ($canProductionManager) {
+                            $sub->url(route('production.manager'), $pmDashLabel, ['icon' => '', 'active' => request()->segment(1) == 'production' && request()->segment(2) == 'manager']);
+                        }
                         foreach ($myStages as $sk) {
                             $sub->url(route('production.section', $sk), ($stageLabels[$sk] ?? ucfirst($sk)) . ' Dashboard', ['icon' => '', 'active' => request()->segment(1) == 'production' && request()->segment(2) == 'section' && request()->segment(3) == $sk]);
                         }
@@ -244,7 +264,9 @@ class AdminSidebarMenu
                     <path d="M12 12l8 -4.5M12 12v9M12 12l-8 -4.5"/>
                   </svg>';
                 $menu->dropdown('Raw Materials', function ($sub) use ($is_admin) {
-                    $sub->url(route('inventory.index'), 'All Materials', ['icon' => '', 'active' => request()->segment(1) == 'inventory' && ! in_array(request()->segment(2), ['categories', 'units'])]);
+                    $sub->url(route('inventory.index'), 'All Materials', ['icon' => '', 'active' => request()->segment(1) == 'inventory' && request()->segment(2) == null]);
+                    $sub->url(route('inventory.purchases.index'), 'Material Purchases', ['icon' => '', 'active' => request()->segment(1) == 'inventory' && request()->segment(2) == 'purchases']);
+                    $sub->url(route('inventory.purchases.create'), 'Purchase Raw Materials', ['icon' => '', 'active' => request()->segment(1) == 'inventory' && request()->segment(2) == 'purchases' && request()->segment(3) == 'create']);
                     if ($is_admin) {
                         $sub->url(route('inventory.categories'), 'Categories', ['icon' => '', 'active' => request()->segment(1) == 'inventory' && request()->segment(2) == 'categories']);
                         $sub->url(route('inventory.units'), 'Units', ['icon' => '', 'active' => request()->segment(1) == 'inventory' && request()->segment(2) == 'units']);
@@ -423,8 +445,18 @@ class AdminSidebarMenu
                         }
                         if (auth()->user()->can('purchase.create')) {
                             $sub->url(
+                                route('inventory.purchases.create'),
+                                'Purchase Raw Materials',
+                                ['icon' => '', 'active' => request()->segment(1) == 'inventory' && request()->segment(2) == 'purchases' && request()->segment(3) == 'create']
+                            );
+                            $sub->url(
+                                route('inventory.purchases.index'),
+                                'Raw Material Purchases',
+                                ['icon' => '', 'active' => request()->segment(1) == 'inventory' && request()->segment(2) == 'purchases' && request()->segment(3) == null]
+                            );
+                            $sub->url(
                                 action([\App\Http\Controllers\PurchaseController::class, 'create']),
-                                __('purchase.add_purchase'),
+                                __('purchase.add_purchase').' (Products)',
                                 ['icon' => '', 'active' => request()->segment(1) == 'purchases' && request()->segment(2) == 'create']
                             );
                         }

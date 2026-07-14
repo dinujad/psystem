@@ -16,6 +16,13 @@
 <!-- Main content -->
 <section class="content">
 
+	<div class="alert alert-info" style="border-radius:10px;">
+		<strong>Raw materials?</strong>
+		Sheets, ink, media and other production materials must be purchased from
+		<a href="{{ route('inventory.purchases.create') }}" style="font-weight:700;text-decoration:underline;">Purchase Raw Materials</a>
+		so stock goes to <strong>Raw Materials</strong> (not Products). This screen is only for buyable products.
+	</div>
+
 	<!-- Page level currency setting -->
 	<input type="hidden" id="p_code" value="{{$currency_details->code}}">
 	<input type="hidden" id="p_symbol" value="{{$currency_details->symbol}}">

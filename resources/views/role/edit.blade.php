@@ -1790,6 +1790,13 @@
                 </label>
                 @show_tooltip('Grants full access to the Production board, all sections, all jobs, job creation/editing and the Inventory module. Section employees added under Production &rarr; Team &amp; Sections get access to their own section automatically without this permission.')
               </div>
+              <div class="checkbox">
+                <label>
+                  {!! Form::checkbox('permissions[]', 'production.manager', in_array('production.manager', $role_permissions), ['class' => 'input-icheck']); !!}
+                  Production Manager Dashboard (Approve Stage Moves)
+                </label>
+                @show_tooltip('Allows access to Production Manager Dashboard to approve or reject section move requests. Sections cannot move a job to the next stage until a Production Manager approves.')
+              </div>
             </div>
           </div>
         </div>

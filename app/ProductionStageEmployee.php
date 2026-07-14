@@ -16,7 +16,7 @@ class ProductionStageEmployee extends Model
 
     public static function workableStages(): array
     {
-        return ['design', 'production', 'quality', 'dispatch'];
+        return ['design', 'printing', 'production', 'quality', 'dispatch'];
     }
 
     public function user()

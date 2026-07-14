@@ -253,10 +253,22 @@ body.theme-admin-pro #advanceModal .adv-field select {
 
         {{-- Action buttons --}}
         <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap;">
-            @if($canAdvance && $nextStage)
+            @if(!empty($pendingApproval))
+            <div style="width:100%;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;color:#92400e;">
+                ⏳ Move request pending Production Manager approval
+                (to {{ $stages[$pendingApproval->to_stage] ?? $pendingApproval->to_stage }})
+                @if(!empty($isProductionManager))
+                — <a href="{{ route('production.manager') }}" style="color:#1d4ed8;font-weight:800;">Open dashboard</a>
+                @endif
+            </div>
+            @elseif($canAdvance && $nextStage)
             <button class="pjob-btn pjob-btn-adv" onclick="openAdvanceModal()">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                @if(!empty($isProductionManager))
                 Move to {{ $stages[$nextStage] }}
+                @else
+                Request Move to {{ $stages[$nextStage] }}
+                @endif
             </button>
             @endif
             {{-- Task start / end (for assigned team member) --}}
@@ -541,11 +553,35 @@ body.theme-admin-pro #advanceModal .adv-field select {
                         @endforelse
                     </div>
 
-                    {{-- Issue raw materials (production stage — supervisor or assigned team) --}}
-                    @if($canIssueMaterials)
+                    @if(!empty($pendingMaterialRequests) && $pendingMaterialRequests->count())
+                    <div style="margin-top:10px;background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;">
+                        <div style="font-size:11px;font-weight:800;color:#92400e;margin-bottom:6px;">⏳ Pending Material Requests</div>
+                        @foreach($pendingMaterialRequests as $pmr)
+                        <div style="font-size:12px;color:#78350f;margin-bottom:4px;">
+                            {{ $pmr->material->name ?? 'Material' }} —
+                            {{ rtrim(rtrim(number_format((float)$pmr->quantity, 4, '.', ''), '0'), '.') }}
+                            {{ $pmr->material?->unit?->abbreviation ?? '' }}
+                        </div>
+                        @endforeach
+                        @if(!empty($isProductionManager))
+                        <a href="{{ route('production.manager', ['tab' => 'materials']) }}" style="font-size:12px;font-weight:800;color:#1d4ed8;">Open Production Manager Dashboard →</a>
+                        @endif
+                    </div>
+                    @endif
+
+                    {{-- Workshop: request materials / Manager: issue directly --}}
+                    @if(!empty($canRequestMaterials))
                     <div style="margin-top:12px;border-top:1px dashed #e5e7eb;padding-top:12px;">
-                        <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">Issue Raw Material</div>
-                        <p style="font-size:11px;color:#9ca3af;margin:0 0 8px;">Search inventory and issue materials to this job. Stock will be deducted.</p>
+                        <div style="font-size:11px;font-weight:700;color:#374151;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;">
+                            {{ !empty($canIssueMaterials) ? 'Issue Raw Material' : 'Request Raw Material' }}
+                        </div>
+                        <p style="font-size:11px;color:#9ca3af;margin:0 0 8px;">
+                            @if(!empty($canIssueMaterials))
+                            Production Manager can issue now — stock will be deducted.
+                            @else
+                            Send a request to Production Manager. Stock is deducted only after approval.
+                            @endif
+                        </p>
                         <div style="position:relative;">
                             <input type="text" class="pjob-mat-search" id="matSearch" placeholder="Search material name…" autocomplete="off">
                             <div class="pjob-mat-results" id="matResults"></div>
@@ -560,7 +596,9 @@ body.theme-admin-pro #advanceModal .adv-field select {
                             </div>
                             <div class="pjob-mat-add-row">
                                 <input type="number" id="matQty" class="pjob-mat-qty-input" placeholder="Qty" min="0.001" step="0.001">
-                                <button class="pjob-mat-add-btn" onclick="addMaterial()">Issue</button>
+                                <button class="pjob-mat-add-btn" onclick="addMaterial()">
+                                    {{ !empty($canIssueMaterials) ? 'Issue' : 'Request' }}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -774,8 +812,20 @@ body.theme-admin-pro #advanceModal .adv-field select {
 {{-- Advance stage modal --}}
 <div id="advanceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000;align-items:center;justify-content:center;">
     <div style="background:#fff;border-radius:18px;padding:28px;width:480px;max-width:95vw;box-shadow:0 20px 60px rgba(0,0,0,.2);max-height:90vh;overflow-y:auto;">
-        <h3 style="font-size:17px;font-weight:800;color:#111827;margin:0 0 4px;">Move to {{ $nextStage ? $stages[$nextStage] : '' }}</h3>
-        <p style="font-size:13px;color:#6b7280;margin:0 0 18px;">Add handover details before advancing to the next stage.</p>
+        <h3 style="font-size:17px;font-weight:800;color:#111827;margin:0 0 4px;">
+            @if(!empty($isProductionManager))
+            Move to {{ $nextStage ? $stages[$nextStage] : '' }}
+            @else
+            Request Move to {{ $nextStage ? $stages[$nextStage] : '' }}
+            @endif
+        </h3>
+        <p style="font-size:13px;color:#6b7280;margin:0 0 18px;">
+            @if(!empty($isProductionManager))
+            Add handover details before advancing to the next stage.
+            @else
+            Send a move request. Production Manager must approve before the job leaves this section.
+            @endif
+        </p>
 
         <div class="adv-field">
             <label>Handover Notes</label>
@@ -795,7 +845,7 @@ body.theme-admin-pro #advanceModal .adv-field select {
         {{-- QC stage: also rate the production work --}}
         @if($job->current_stage === 'quality')
         <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:10px;padding:14px;margin-bottom:14px;">
-            <div style="font-size:13px;font-weight:800;color:#92400e;margin-bottom:10px;">⭐ Rate Production Team's Work</div>
+            <div style="font-size:13px;font-weight:800;color:#92400e;margin-bottom:10px;">⭐ Rate Workshop Team's Work</div>
             <div class="adv-field" style="margin-bottom:10px;">
                 <label>Quality Rating (1–5 stars)</label>
                 <div class="qc-stars" id="advStars">
@@ -815,7 +865,9 @@ body.theme-admin-pro #advanceModal .adv-field select {
         @endif
 
         <div style="display:flex;gap:8px;margin-top:4px;">
-            <button onclick="doAdvance()" style="flex:1;background:#10b981;color:#fff;border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;">Confirm Move</button>
+            <button onclick="doAdvance()" style="flex:1;background:#10b981;color:#fff;border:none;border-radius:10px;padding:11px;font-size:14px;font-weight:700;cursor:pointer;">
+                {{ !empty($isProductionManager) ? 'Confirm Move' : 'Send Approval Request' }}
+            </button>
             <button onclick="document.getElementById('advanceModal').style.display='none'" style="background:#f3f4f6;color:#374151;border:none;border-radius:10px;padding:11px 18px;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
         </div>
     </div>
@@ -902,8 +954,12 @@ function doAdvance() {
     })
     .then(r => r.json())
     .then(d => {
-        if (d.success) { showToast('Moved to ' + d.stage_label + '!'); setTimeout(() => location.reload(), 900); }
-        else showToast(d.message || 'Error', true);
+        if (d.success) {
+            showToast(d.pending
+                ? (d.message || 'Request sent to Production Manager')
+                : ('Moved to ' + d.stage_label + '!'));
+            setTimeout(() => location.reload(), 900);
+        } else showToast(d.message || 'Error', true);
     })
     .catch(() => showToast('Request failed.', true));
     document.getElementById('advanceModal').style.display = 'none';
@@ -1028,6 +1084,12 @@ async function addMaterial() {
         body: JSON.stringify({ material_id: selectedMaterial.id, quantity: qty }),
     });
     const d = await r.json();
+    if (d.success && d.pending) {
+        showToast(d.message || 'Request sent to Production Manager');
+        clearSelectedMat();
+        setTimeout(() => location.reload(), 800);
+        return;
+    }
     if (d.success) {
         const u = d.usage;
         const emptyEl = document.getElementById('matEmpty');

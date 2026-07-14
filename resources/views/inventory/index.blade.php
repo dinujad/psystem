@@ -108,9 +108,11 @@
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7c5cfc" stroke-width="2"><path d="M12 3l8 4.5v9l-8 4.5l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12l-8-4.5"/></svg>
                 Raw Materials
             </div>
-            <div class="inv-subtitle">Production inventory — cost price, units &amp; stock for job issuing</div>
+            <div class="inv-subtitle">Production inventory — purchase cost &amp; stock for job issuing (not for direct sale)</div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <a href="{{ route('inventory.purchases.index') }}" class="inv-btn outline">Material Purchases</a>
+            <a href="{{ route('inventory.purchases.create') }}" class="inv-btn outline">+ Purchase Stock</a>
             @if($isAdmin)
             <a href="{{ route('inventory.units') }}" class="inv-btn outline">Units</a>
             <a href="{{ route('inventory.categories') }}" class="inv-btn outline">Categories</a>

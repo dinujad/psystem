@@ -13,6 +13,8 @@ use App\ProductionJobAssignment;
 use App\ProductionJobSectionPlan;
 use App\ProductionJobStage;
 use App\ProductionJobTask;
+use App\ProductionMaterialRequest;
+use App\ProductionStageApproval;
 use App\ProductionStageEmployee;
 use App\PurchaseLine;
 use App\Services\ProductionCostService;
@@ -33,7 +35,7 @@ class ProductionController extends Controller
 {
     private function checkAccess()
     {
-        if ($this->isAdmin() || auth()->user()->can('production.access')) {
+        if ($this->isAdmin() || auth()->user()->can('production.access') || auth()->user()->can('production.manager')) {
             return;
         }
 
@@ -42,6 +44,18 @@ class ProductionController extends Controller
         }
 
         abort(403, 'Unauthorized.');
+    }
+
+    private function isProductionManager(): bool
+    {
+        return auth()->user()->can('production.manager');
+    }
+
+    private function checkManagerAccess()
+    {
+        if (! $this->isProductionManager()) {
+            abort(403, 'Production Manager access required.');
+        }
     }
 
     private function checkTeamAdmin()
@@ -59,7 +73,9 @@ class ProductionController extends Controller
 
     private function hasFullProductionAccess(): bool
     {
-        return $this->isAdmin() || auth()->user()->can('production.access');
+        return $this->isAdmin()
+            || auth()->user()->can('production.access')
+            || auth()->user()->can('production.manager');
     }
 
     private function assignedStages(): array
@@ -120,8 +136,8 @@ class ProductionController extends Controller
             ->exists();
     }
 
-    /** Issue raw materials during the production stage (supervisor, admin, or assigned team). */
-    private function canIssueMaterials(ProductionJob $job): bool
+    /** Workshop team can request materials; Production Manager issues after approve. */
+    private function canRequestMaterials(ProductionJob $job): bool
     {
         if ($job->current_stage !== 'production') {
             return false;
@@ -136,6 +152,12 @@ class ProductionController extends Controller
         }
 
         return $this->canAccessJob($job);
+    }
+
+    /** Direct issue / approve material requests (Production Manager). */
+    private function canIssueMaterials(ProductionJob $job): bool
+    {
+        return $this->canRequestMaterials($job) && $this->isProductionManager();
     }
 
     private function businessUsers()
@@ -173,7 +195,7 @@ class ProductionController extends Controller
         $search      = $request->get('q');
 
         $query = ProductionJob::with(['files', 'latestStage.movedBy', 'creator', 'materials', 'stageHistory', 'inquiry'])
-            ->orderByRaw("FIELD(current_stage,'design','production','quality','dispatch','completed')")
+            ->orderByRaw("FIELD(current_stage,'design','printing','production','quality','dispatch','completed')")
             ->orderByDesc('id');
 
         if ($stageFilter && $stageFilter !== 'all') {
@@ -284,6 +306,12 @@ class ProductionController extends Controller
 
         $jobs = $query->get();
 
+        $pendingApprovals = ProductionStageApproval::pending()
+            ->whereIn('job_id', $jobs->pluck('id'))
+            ->where('from_stage', $stage)
+            ->get()
+            ->keyBy('job_id');
+
         $openStages = ProductionJobStage::whereIn('job_id', $jobs->pluck('id'))
             ->where('stage', $stage)
             ->whereNull('completed_at')
@@ -339,11 +367,13 @@ class ProductionController extends Controller
             })->values()
             : collect();
 
+        $isProductionManager = $this->isProductionManager();
+
         return view('production.section', compact(
             'stage', 'stageLabel', 'stageColor', 'jobs', 'openStages', 'stats',
             'search', 'filter', 'nextStage', 'nextStageLabel', 'isAdmin',
             'myStages', 'stages', 'sectionHead', 'prevStage', 'prevStageLabel',
-            'prevStageEmployees'
+            'prevStageEmployees', 'pendingApprovals', 'isProductionManager'
         ));
     }
 
@@ -780,7 +810,19 @@ class ProductionController extends Controller
         $isAdmin   = $this->hasFullProductionAccess();
         $canDoTask = $this->canAccessStage($job->current_stage);
         $canAdvance = $isAdmin || ($canDoTask && $nextStage);
+        $canRequestMaterials = $this->canRequestMaterials($job);
         $canIssueMaterials = $this->canIssueMaterials($job);
+        $isProductionManager = $this->isProductionManager();
+        $pendingApproval = ProductionStageApproval::pending()
+            ->where('job_id', $job->id)
+            ->where('from_stage', $job->current_stage)
+            ->latest('id')
+            ->first();
+        $pendingMaterialRequests = ProductionMaterialRequest::with('material.unit', 'requester')
+            ->where('job_id', $job->id)
+            ->pending()
+            ->orderByDesc('id')
+            ->get();
 
         $currentStageRecord = ProductionJobStage::where('job_id', $job->id)
             ->where('stage', $job->current_stage)
@@ -808,8 +850,9 @@ class ProductionController extends Controller
 
         return view('production.show', compact(
             'job', 'stages', 'nextStage', 'canAdvance', 'isAdmin',
-            'currentStageRecord', 'canDoTask', 'canIssueMaterials', 'productionStageRecord', 'sectionDashboardUrl',
-            'employeeRatings', 'materialCost', 'stageCost', 'totalCost', 'jobRevenue', 'jobProfit', 'stageCosts'
+            'currentStageRecord', 'canDoTask', 'canIssueMaterials', 'canRequestMaterials', 'productionStageRecord', 'sectionDashboardUrl',
+            'employeeRatings', 'materialCost', 'stageCost', 'totalCost', 'jobRevenue', 'jobProfit', 'stageCosts',
+            'isProductionManager', 'pendingApproval', 'pendingMaterialRequests'
         ));
     }
 
@@ -861,28 +904,297 @@ class ProductionController extends Controller
             'quality_comment' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $nextStage = ProductionJob::nextStage($job->current_stage);
+        $fromStage = $job->current_stage;
+        $nextStage = ProductionJob::nextStage($fromStage);
         if (! $nextStage) {
             return response()->json(['success' => false, 'message' => 'Already at final stage.']);
         }
 
-        // Close current stage + set rate
+        $existing = ProductionStageApproval::pending()
+            ->where('job_id', $job->id)
+            ->where('from_stage', $fromStage)
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'success' => false,
+                'pending' => true,
+                'message' => 'A move request is already waiting for Production Manager approval.',
+            ]);
+        }
+
+        // Production Manager / Admin can move immediately; sections must request approval.
+        if ($this->isProductionManager()) {
+            return response()->json($this->executeStageAdvance($job, $data, auth()->id()));
+        }
+
+        ProductionStageApproval::create([
+            'job_id'       => $job->id,
+            'from_stage'   => $fromStage,
+            'to_stage'     => $nextStage,
+            'status'       => 'pending',
+            'requested_by' => auth()->id(),
+            'notes'        => $data['notes'] ?? null,
+            'payload'      => [
+                'notes'            => $data['notes'] ?? null,
+                'stage_rate'       => $data['stage_rate'] ?? null,
+                'stage_rate_notes' => $data['stage_rate_notes'] ?? null,
+                'quality_rating'   => $data['quality_rating'] ?? null,
+                'quality_comment'  => $data['quality_comment'] ?? null,
+            ],
+        ]);
+
+        $stages = ProductionJob::allStages();
+
+        return response()->json([
+            'success'     => true,
+            'pending'     => true,
+            'message'     => 'Move request sent to Production Manager for approval.',
+            'next_stage'  => $nextStage,
+            'stage_label' => $stages[$nextStage] ?? $nextStage,
+            'redirect'    => route('production.show', $job),
+        ]);
+    }
+
+    public function managerDashboard(Request $request)
+    {
+        $this->checkManagerAccess();
+
+        $tab = $request->get('tab', 'moves');
+        if (! in_array($tab, ['moves', 'materials'], true)) {
+            $tab = 'moves';
+        }
+
+        $filter = $request->get('filter', 'pending');
+        if (! in_array($filter, ['pending', 'approved', 'rejected', 'all'], true)) {
+            $filter = 'pending';
+        }
+
+        $moveCounts = [
+            'pending'  => ProductionStageApproval::pending()->count(),
+            'approved' => ProductionStageApproval::where('status', 'approved')->count(),
+            'rejected' => ProductionStageApproval::where('status', 'rejected')->count(),
+            'all'      => ProductionStageApproval::count(),
+        ];
+
+        $materialCounts = [
+            'pending'  => ProductionMaterialRequest::pending()->count(),
+            'approved' => ProductionMaterialRequest::where('status', 'approved')->count(),
+            'rejected' => ProductionMaterialRequest::where('status', 'rejected')->count(),
+            'all'      => ProductionMaterialRequest::count(),
+        ];
+
+        $counts = $tab === 'materials' ? $materialCounts : $moveCounts;
+        $stages = ProductionJob::allStages();
+
+        if ($tab === 'materials') {
+            $query = ProductionMaterialRequest::with([
+                'job', 'material.unit', 'requester', 'reviewer',
+            ])->orderByDesc('id');
+
+            if ($filter !== 'all') {
+                $query->where('status', $filter);
+            }
+
+            $materialRequests = $query->paginate(30)->appends(['tab' => $tab, 'filter' => $filter]);
+            $requests = collect();
+
+            return view('production.manager', compact(
+                'tab', 'filter', 'counts', 'moveCounts', 'materialCounts', 'stages', 'requests', 'materialRequests'
+            ));
+        }
+
+        $query = ProductionStageApproval::with([
+            'job', 'requester', 'reviewer',
+        ])->orderByDesc('id');
+
+        if ($filter !== 'all') {
+            $query->where('status', $filter);
+        }
+
+        $requests = $query->paginate(30)->appends(['tab' => $tab, 'filter' => $filter]);
+        $materialRequests = collect();
+
+        return view('production.manager', compact(
+            'tab', 'filter', 'counts', 'moveCounts', 'materialCounts', 'stages', 'requests', 'materialRequests'
+        ));
+    }
+
+    public function approveMaterialRequest(Request $request, ProductionMaterialRequest $materialRequest)
+    {
+        $this->checkManagerAccess();
+
+        if (! $materialRequest->isPending()) {
+            return response()->json(['success' => false, 'message' => 'This request was already reviewed.'], 422);
+        }
+
+        $data = $request->validate([
+            'review_notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $job = ProductionJob::findOrFail($materialRequest->job_id);
+
+        if ($job->current_stage !== 'production') {
+            $materialRequest->update([
+                'status' => 'rejected',
+                'reviewed_by' => auth()->id(),
+                'reviewed_at' => now(),
+                'review_notes' => 'Auto-rejected: job is not in Workshop.',
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Job is not in Workshop anymore. Request closed.',
+            ], 422);
+        }
+
+        try {
+            $usage = $this->issueMaterialToJob(
+                $job,
+                (int) $materialRequest->material_id,
+                (float) $materialRequest->quantity,
+                'production'
+            );
+        } catch (\RuntimeException $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
+        }
+
+        $materialRequest->update([
+            'status' => 'approved',
+            'reviewed_by' => auth()->id(),
+            'reviewed_at' => now(),
+            'review_notes' => $data['review_notes'] ?? null,
+            'issued_usage_id' => $usage->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Approved — raw material issued to Workshop job.',
+        ]);
+    }
+
+    public function rejectMaterialRequest(Request $request, ProductionMaterialRequest $materialRequest)
+    {
+        $this->checkManagerAccess();
+
+        if (! $materialRequest->isPending()) {
+            return response()->json(['success' => false, 'message' => 'This request was already reviewed.'], 422);
+        }
+
+        $data = $request->validate([
+            'review_notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $materialRequest->update([
+            'status' => 'rejected',
+            'reviewed_by' => auth()->id(),
+            'reviewed_at' => now(),
+            'review_notes' => $data['review_notes'] ?? 'Rejected by Production Manager.',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Material request rejected.',
+        ]);
+    }
+
+    public function approveStageMove(Request $request, ProductionStageApproval $approval)
+    {
+        $this->checkManagerAccess();
+
+        if (! $approval->isPending()) {
+            return response()->json(['success' => false, 'message' => 'This request was already reviewed.'], 422);
+        }
+
+        $data = $request->validate([
+            'review_notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $job = ProductionJob::findOrFail($approval->job_id);
+
+        if ($job->current_stage !== $approval->from_stage) {
+            $approval->update([
+                'status'       => 'rejected',
+                'reviewed_by'  => auth()->id(),
+                'reviewed_at'  => now(),
+                'review_notes' => 'Auto-rejected: job is no longer in '.$approval->from_stage.'.',
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Job has already moved from that section. Request closed.',
+            ], 422);
+        }
+
+        $payload = array_merge($approval->payload ?? [], [
+            'notes' => $approval->notes ?? ($approval->payload['notes'] ?? null),
+        ]);
+
+        $result = $this->executeStageAdvance($job, $payload, auth()->id());
+
+        $approval->update([
+            'status'       => 'approved',
+            'reviewed_by'  => auth()->id(),
+            'reviewed_at'  => now(),
+            'review_notes' => $data['review_notes'] ?? null,
+        ]);
+
+        return response()->json(array_merge($result, [
+            'message' => 'Approved — job moved to '.($result['stage_label'] ?? 'next section').'.',
+        ]));
+    }
+
+    public function rejectStageMove(Request $request, ProductionStageApproval $approval)
+    {
+        $this->checkManagerAccess();
+
+        if (! $approval->isPending()) {
+            return response()->json(['success' => false, 'message' => 'This request was already reviewed.'], 422);
+        }
+
+        $data = $request->validate([
+            'review_notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        $approval->update([
+            'status'       => 'rejected',
+            'reviewed_by'  => auth()->id(),
+            'reviewed_at'  => now(),
+            'review_notes' => $data['review_notes'] ?? 'Rejected by Production Manager.',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Request rejected. Job stays in the current section.',
+        ]);
+    }
+
+    /**
+     * Apply a stage advance (used by managers approving, or managers moving directly).
+     */
+    private function executeStageAdvance(ProductionJob $job, array $data, int $movedBy): array
+    {
+        $fromStage = $job->current_stage;
+        $nextStage = ProductionJob::nextStage($fromStage);
+        if (! $nextStage) {
+            return ['success' => false, 'message' => 'Already at final stage.'];
+        }
+
         $openStage = ProductionJobStage::where('job_id', $job->id)
-            ->where('stage', $job->current_stage)
+            ->where('stage', $fromStage)
             ->whereNull('completed_at')
             ->latest('started_at')
             ->first();
 
         if ($openStage) {
             $openStage->update([
-                'completed_at'    => now(),
-                'stage_rate'      => $data['stage_rate'] ?? null,
-                'stage_rate_notes'=> $data['stage_rate_notes'] ?? null,
+                'completed_at'     => now(),
+                'stage_rate'       => $data['stage_rate'] ?? null,
+                'stage_rate_notes' => $data['stage_rate_notes'] ?? null,
             ]);
         }
 
-        // QC stage advancing → store quality rating on the Production stage record
-        if ($job->current_stage === 'quality' && ! empty($data['quality_rating'])) {
+        if ($fromStage === 'quality' && ! empty($data['quality_rating'])) {
             $productionStage = ProductionJobStage::where('job_id', $job->id)
                 ->where('stage', 'production')
                 ->latest('started_at')
@@ -901,7 +1213,7 @@ class ProductionController extends Controller
             'job_id'     => $job->id,
             'stage'      => $nextStage,
             'notes'      => $data['notes'] ?? null,
-            'moved_by'   => auth()->id(),
+            'moved_by'   => $movedBy,
             'started_at' => now(),
         ]);
 
@@ -911,13 +1223,14 @@ class ProductionController extends Controller
             app(ProductionNotifier::class)->notifyStageTeam($nextStage, $job->fresh());
         }
 
-        return response()->json([
-            'success'      => true,
-            'next_stage'   => $nextStage,
-            'stage_label'  => $stageLabel,
-            'stage_color'  => ProductionJob::stageColor($nextStage),
-            'redirect'     => route('production.show', $job),
-        ]);
+        return [
+            'success'     => true,
+            'pending'     => false,
+            'next_stage'  => $nextStage,
+            'stage_label' => $stageLabel,
+            'stage_color' => ProductionJob::stageColor($nextStage),
+            'redirect'    => route('production.show', $job),
+        ];
     }
 
     // ── Task Start / End ──────────────────────────────────────────────────────
@@ -1031,7 +1344,7 @@ class ProductionController extends Controller
     public function searchJobMaterials(Request $request, ProductionJob $job)
     {
         $this->checkAccess();
-        if (! $this->canIssueMaterials($job)) {
+        if (! $this->canRequestMaterials($job)) {
             return response()->json([], 403);
         }
 
@@ -1072,33 +1385,81 @@ class ProductionController extends Controller
     public function addMaterial(Request $request, ProductionJob $job)
     {
         $this->checkAccess();
-        if (! $this->canIssueMaterials($job)) {
-            return response()->json(['success' => false, 'message' => 'You cannot issue materials for this job.'], 403);
+        if (! $this->canRequestMaterials($job)) {
+            return response()->json(['success' => false, 'message' => 'You cannot request materials for this job.'], 403);
         }
 
         $data = $request->validate([
             'material_id' => ['required', 'integer', 'exists:inventory_materials,id'],
             'quantity'    => ['required', 'numeric', 'min:0.001'],
+            'notes'       => ['nullable', 'string', 'max:500'],
         ]);
 
-        try {
-            $usage = $this->issueMaterialToJob($job, (int) $data['material_id'], (float) $data['quantity'], 'production');
-        } catch (\RuntimeException $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()]);
+        $material = InventoryMaterial::with('unit')->findOrFail($data['material_id']);
+        $qty = (float) $data['quantity'];
+
+        if (! $material->hasEnoughStock($qty)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Insufficient stock for {$material->name}. Available: {$material->current_stock} ".($material->unit?->abbreviation ?? ''),
+            ]);
         }
 
-        $material = InventoryMaterial::with('unit')->findOrFail($data['material_id']);
+        // Production Manager can issue immediately; Workshop team must request approval.
+        if ($this->isProductionManager()) {
+            try {
+                $usage = $this->issueMaterialToJob($job, (int) $data['material_id'], $qty, 'production');
+            } catch (\RuntimeException $e) {
+                return response()->json(['success' => false, 'message' => $e->getMessage()]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'pending' => false,
+                'usage'   => [
+                    'id'         => $usage->id,
+                    'name'       => $material->name,
+                    'quantity'   => $usage->quantity,
+                    'unit'       => $material->unit?->abbreviation ?? '',
+                    'unit_price' => $usage->unit_price,
+                    'subtotal'   => round($usage->quantity * $usage->unit_price, 2),
+                    'stock_left' => $material->fresh()->current_stock,
+                ],
+            ]);
+        }
+
+        $existing = ProductionMaterialRequest::pending()
+            ->where('job_id', $job->id)
+            ->where('material_id', $data['material_id'])
+            ->where('quantity', $qty)
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'success' => false,
+                'pending' => true,
+                'message' => 'Same material request is already waiting for Production Manager approval.',
+            ]);
+        }
+
+        ProductionMaterialRequest::create([
+            'job_id' => $job->id,
+            'material_id' => (int) $data['material_id'],
+            'quantity' => $qty,
+            'status' => 'pending',
+            'requested_by' => auth()->id(),
+            'notes' => $data['notes'] ?? null,
+        ]);
 
         return response()->json([
             'success' => true,
-            'usage'   => [
-                'id'         => $usage->id,
-                'name'       => $material->name,
-                'quantity'   => $usage->quantity,
-                'unit'       => $material->unit?->abbreviation ?? '',
-                'unit_price' => $usage->unit_price,
-                'subtotal'   => round($usage->quantity * $usage->unit_price, 2),
-                'stock_left' => $material->fresh()->current_stock,
+            'pending' => true,
+            'message' => 'Material request sent to Production Manager for approval.',
+            'request' => [
+                'name' => $material->name,
+                'quantity' => $qty,
+                'unit' => $material->unit?->abbreviation ?? '',
+                'stock' => $material->current_stock,
             ],
         ]);
     }
@@ -1240,7 +1601,7 @@ class ProductionController extends Controller
         $this->checkTeamAdmin();
 
         $data = $request->validate([
-            'stage'            => ['required', 'in:design,production,quality,dispatch'],
+            'stage'            => ['required', 'in:'.implode(',', ProductionStageEmployee::workableStages())],
             'user_id'          => ['required', 'integer', 'exists:users,id'],
             'whatsapp_number'  => ['required', 'string', 'min:9', 'max:20'],
         ]);

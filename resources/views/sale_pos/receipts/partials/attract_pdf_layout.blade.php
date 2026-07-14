@@ -364,11 +364,18 @@
     letter-spacing: 1px;
     text-transform: uppercase;
   }
-  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 2px; }
-  .header-table td { vertical-align: top; border: none; padding: 0; }
+  .doc-header {
+    width: 100%;
+    border-top: 1.5px solid #111;
+    border-bottom: 1.5px solid #111;
+    padding: 10px 0 9px 0;
+    margin: 0 0 12px 0;
+  }
+  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+  .header-table td { vertical-align: middle; border: none; padding: 0; }
   .logo-wrap img {
-    max-height: 52px;
-    max-width: 200px;
+    max-height: 78px;
+    max-width: 280px;
     width: auto;
     height: auto;
     display: block;
@@ -380,13 +387,13 @@
     line-height: 1.35;
   }
   .doc-title {
-    font-size: 36px;
+    font-size: 20px;
     font-weight: 800;
     color: #111;
-    letter-spacing: 1px;
+    letter-spacing: 0.5px;
     text-align: right;
-    line-height: 1;
-    margin: 0 0 8px 0;
+    line-height: 1.1;
+    margin: 0 0 6px 0;
     text-transform: uppercase;
   }
   .meta-table { width: auto; margin-left: auto; border-collapse: collapse; font-size: 11px; }
@@ -401,7 +408,7 @@
     font-size: 12px;
     letter-spacing: 0.5px;
   }
-  .bill-to { margin: 14px 0 12px 0; }
+  .bill-to { margin: 0 0 12px 0; }
   .bill-to .title { color: {{ $brandRed }} !important; font-weight: 800; font-size: 13px; margin-bottom: 5px; }
   .bill-to .line { margin: 2px 0; color: #222; font-size: 11px; line-height: 1.45; }
   .items { width: 100%; border-collapse: collapse; margin-top: 6px; }
@@ -674,70 +681,72 @@
     <div class="paid-watermark">PAID</div>
   @endif
 
-  <table class="header-table">
-    <tr>
-      <td style="width:48%;">
-        <div class="logo-wrap">
-          @if($logoSrc)
-            <img src="{{ $logoSrc }}" alt="printworks.lk">
-          @else
-            <div style="font-size:24px;font-weight:800;color:#111;">printworks<span style="color:{{ $brandRed }};">.lk</span></div>
-            <div style="font-size:10px;color:#666;">promotional &amp; branding solutions</div>
-          @endif
-        </div>
-        <div class="brand-tag">A trademark of Attract Wear &amp; Printing Solutions</div>
+  <div class="doc-header">
+    <table class="header-table">
+      <tr>
+        <td style="width:52%;">
+          <div class="logo-wrap">
+            @if($logoSrc)
+              <img src="{{ $logoSrc }}" alt="printworks.lk">
+            @else
+              <div style="font-size:28px;font-weight:800;color:#111;">printworks<span style="color:{{ $brandRed }};">.lk</span></div>
+              <div style="font-size:10px;color:#666;">promotional &amp; branding solutions</div>
+            @endif
+          </div>
+          <div class="brand-tag">A trademark of Attract Wear &amp; Printing Solutions</div>
+        </td>
+        <td style="width:48%;text-align:right;">
+          <div class="doc-title">{{ $docTitle }}</div>
+          <table class="meta-table" align="right">
+            <tr>
+              <td class="lbl">{{ $primaryNoLabel }}</td>
+              <td class="sep">:</td>
+              <td class="val">{{ $invNo !== '' ? $invNo : '—' }}</td>
+            </tr>
+            <tr>
+              <td class="lbl" colspan="3" style="padding-top:4px;">
+                @if($dayName !== '')
+                  <span class="day">{{ $dayName }}</span>
+                @else
+                  Date
+                @endif
+              </td>
+            </tr>
+            <tr>
+              <td class="val" colspan="3" style="padding-bottom:3px;">{{ $dateDisplay !== '' ? $dateDisplay : '—' }}</td>
+            </tr>
+            @if(! $isQuotation)
+            <tr>
+              <td class="lbl">Quote No</td>
+              <td class="sep">:</td>
+              <td class="val accent">{{ $quoteNo !== '' ? $quoteNo : '—' }}</td>
+            </tr>
+            @endif
+            <tr>
+              <td class="lbl">Sales Channel</td>
+              <td class="sep">:</td>
+              <td class="val accent">{{ $salesChannel }}</td>
+            </tr>
+            @if($showBalanceDueHeader)
+            <tr>
+              <td class="lbl">Balance Due</td>
+              <td class="sep">:</td>
+              <td class="val accent">{{ $balanceDue }}</td>
+            </tr>
+            @endif
+          </table>
+        </td>
+      </tr>
+    </table>
+  </div>
 
-        <div class="bill-to">
-          <div class="title">{{ $isQuotation ? 'Quotation To' : 'Bill To' }}</div>
-          <div class="line">{{ $customerName !== '' ? $customerName : 'Client Name Here' }}</div>
-          <div class="line">Address : {{ $customerAddress !== '' ? $customerAddress : '—' }}</div>
-          <div class="line">Email : {{ $customerEmail !== '' ? $customerEmail : '—' }}</div>
-          <div class="line">Phone number : {{ $customerPhone !== '' ? $customerPhone : '—' }}</div>
-        </div>
-      </td>
-      <td style="width:52%;text-align:right;">
-        <div class="doc-title">{{ $docTitle }}</div>
-        <table class="meta-table" align="right">
-          <tr>
-            <td class="lbl">{{ $primaryNoLabel }}</td>
-            <td class="sep">:</td>
-            <td class="val">{{ $invNo !== '' ? $invNo : '—' }}</td>
-          </tr>
-          <tr>
-            <td class="lbl" colspan="3" style="padding-top:4px;">
-              @if($dayName !== '')
-                <span class="day">{{ $dayName }}</span>
-              @else
-                Date
-              @endif
-            </td>
-          </tr>
-          <tr>
-            <td class="val" colspan="3" style="padding-bottom:3px;">{{ $dateDisplay !== '' ? $dateDisplay : '—' }}</td>
-          </tr>
-          @if(! $isQuotation)
-          <tr>
-            <td class="lbl">Quote No</td>
-            <td class="sep">:</td>
-            <td class="val accent">{{ $quoteNo !== '' ? $quoteNo : '—' }}</td>
-          </tr>
-          @endif
-          <tr>
-            <td class="lbl">Sales Channel</td>
-            <td class="sep">:</td>
-            <td class="val accent">{{ $salesChannel }}</td>
-          </tr>
-          @if($showBalanceDueHeader)
-          <tr>
-            <td class="lbl">Balance Due</td>
-            <td class="sep">:</td>
-            <td class="val accent">{{ $balanceDue }}</td>
-          </tr>
-          @endif
-        </table>
-      </td>
-    </tr>
-  </table>
+  <div class="bill-to">
+    <div class="title">{{ $isQuotation ? 'Quotation To' : 'Bill To' }}</div>
+    <div class="line">{{ $customerName !== '' ? $customerName : 'Client Name Here' }}</div>
+    <div class="line">Address : {{ $customerAddress !== '' ? $customerAddress : '—' }}</div>
+    <div class="line">Email : {{ $customerEmail !== '' ? $customerEmail : '—' }}</div>
+    <div class="line">Phone number : {{ $customerPhone !== '' ? $customerPhone : '—' }}</div>
+  </div>
 
   <table class="items" cellpadding="0" cellspacing="0">
     <thead>

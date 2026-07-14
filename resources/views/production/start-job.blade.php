@@ -82,7 +82,7 @@
 
 @section('content')
 @php
-    $stageColors = ['design'=>'#7c5cfc','production'=>'#3b82f6','quality'=>'#f59e0b','dispatch'=>'#10b981'];
+    $stageColors = ['design'=>'#7c5cfc','printing'=>'#0ea5e9','production'=>'#3b82f6','quality'=>'#f59e0b','dispatch'=>'#10b981'];
     $defaultTitle = $inquiry ? (($inquiry->inquiry_category ?? 'Print Job') . ' — ' . ($inquiry->customer_name ?? $inquiry->phone_number)) : '';
 @endphp
 <div class="sj-page">

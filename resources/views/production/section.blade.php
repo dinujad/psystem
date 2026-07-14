@@ -331,12 +331,17 @@ body.theme-admin-pro #scrollable-container .sec-head-info * {
             <div class="sec-job-foot">
                 <a href="{{ route('production.show', $job) }}" class="sec-action sec-action-view">Open Job →</a>
 
-                @if($status === 'new')
+                @php $jobPending = isset($pendingApprovals) ? $pendingApprovals->get($job->id) : null; @endphp
+                @if($jobPending)
+                <span class="sec-action" style="background:#fef3c7;color:#92400e;cursor:default;">⏳ Awaiting Manager Approval</span>
+                @elseif($status === 'new')
                 <button type="button" class="sec-action sec-action-start" onclick="beginStart({{ $job->id }}, this)">▶ Start Task</button>
                 @elseif($status === 'progress')
                 <button type="button" class="sec-action sec-action-end" onclick="endTask({{ $job->id }}, this)">⏹ End Task</button>
                 @elseif($nextStage)
-                <button type="button" class="sec-action sec-action-move" onclick="moveJob({{ $job->id }}, this)">→ Move to {{ $nextStageLabel }}</button>
+                <button type="button" class="sec-action sec-action-move" onclick="moveJob({{ $job->id }}, this)">
+                    → {{ !empty($isProductionManager) ? 'Move to' : 'Request Move to' }} {{ $nextStageLabel }}
+                </button>
                 @endif
             </div>
         </div>
@@ -425,7 +430,8 @@ function updateJobRow(jobId, newStatus) {
     } else if (newStatus === 'progress') {
         foot.insertAdjacentHTML('beforeend', `<button type="button" class="sec-action sec-action-end" onclick="endTask(${jobId}, this)">⏹ End Task</button>`);
     } else if (@json((bool) $nextStage)) {
-        foot.insertAdjacentHTML('beforeend', `<button type="button" class="sec-action sec-action-move" onclick="moveJob(${jobId}, this)">→ Move to ${NEXT_STAGE}</button>`);
+        const moveLabel = {{ !empty($isProductionManager) ? 'true' : 'false' }} ? 'Move to' : 'Request Move to';
+        foot.insertAdjacentHTML('beforeend', `<button type="button" class="sec-action sec-action-move" onclick="moveJob(${jobId}, this)">→ ${moveLabel} ${NEXT_STAGE}</button>`);
     }
 }
 
@@ -545,7 +551,11 @@ function endTask(jobId, btn) {
 }
 
 function moveJob(jobId, btn) {
-    if (!confirm('Move this job to ' + NEXT_STAGE + '?')) return;
+    const isManager = {{ !empty($isProductionManager) ? 'true' : 'false' }};
+    const msg = isManager
+        ? ('Move this job to ' + NEXT_STAGE + '?')
+        : ('Send move request to Production Manager for ' + NEXT_STAGE + '?');
+    if (!confirm(msg)) return;
     btn.disabled = true;
     fetch(`${TASK_START}/${jobId}/advance`, {
         method: 'POST',
@@ -555,6 +565,11 @@ function moveJob(jobId, btn) {
     .then(r => r.json())
     .then(d => {
         if (!d.success) { toast(d.message || 'Failed.', true); btn.disabled = false; return; }
+        if (d.pending) {
+            toast(d.message || 'Request sent to Production Manager');
+            setTimeout(() => location.reload(), 800);
+            return;
+        }
         toast('Job moved to ' + (d.stage_label || 'next section') + '!');
         document.querySelector(`.sec-job[data-job-id="${jobId}"]`)?.remove();
         const list = document.querySelector('.sec-list');

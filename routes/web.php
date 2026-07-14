@@ -638,6 +638,13 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::post('/units', [\App\Http\Controllers\InventoryController::class, 'storeUnit'])->name('units.store');
         Route::put('/units/{unit}', [\App\Http\Controllers\InventoryController::class, 'updateUnit'])->name('units.update');
         Route::delete('/units/{unit}', [\App\Http\Controllers\InventoryController::class, 'destroyUnit'])->name('units.destroy');
+
+        // Raw material purchases (stock → inventory_materials, not products)
+        Route::get('/purchases', [\App\Http\Controllers\InventoryPurchaseController::class, 'index'])->name('purchases.index');
+        Route::get('/purchases/create', [\App\Http\Controllers\InventoryPurchaseController::class, 'create'])->name('purchases.create');
+        Route::post('/purchases', [\App\Http\Controllers\InventoryPurchaseController::class, 'store'])->name('purchases.store');
+        Route::get('/purchases/{purchase}', [\App\Http\Controllers\InventoryPurchaseController::class, 'show'])->name('purchases.show');
+        Route::post('/purchases/{purchase}/receive', [\App\Http\Controllers\InventoryPurchaseController::class, 'markReceived'])->name('purchases.receive');
     });
 
     // ── Delivery (Fardar Express) ────────────────────────────────────────────
@@ -658,6 +665,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     // ── Production Module ────────────────────────────────────────────────────
     Route::prefix('production')->name('production.')->group(function () {
         Route::get('/', [\App\Http\Controllers\ProductionController::class, 'index'])->name('index');
+        Route::get('/manager', [\App\Http\Controllers\ProductionController::class, 'managerDashboard'])->name('manager');
+        Route::post('/approvals/{approval}/approve', [\App\Http\Controllers\ProductionController::class, 'approveStageMove'])->name('approvals.approve');
+        Route::post('/approvals/{approval}/reject', [\App\Http\Controllers\ProductionController::class, 'rejectStageMove'])->name('approvals.reject');
+        Route::post('/material-requests/{materialRequest}/approve', [\App\Http\Controllers\ProductionController::class, 'approveMaterialRequest'])->name('material-requests.approve');
+        Route::post('/material-requests/{materialRequest}/reject', [\App\Http\Controllers\ProductionController::class, 'rejectMaterialRequest'])->name('material-requests.reject');
         Route::get('/jobs', [\App\Http\Controllers\ProductionController::class, 'allJobs'])->name('jobs');
         Route::get('/team', [\App\Http\Controllers\ProductionController::class, 'team'])->name('team');
         Route::post('/team/assign', [\App\Http\Controllers\ProductionController::class, 'assignTeamMember'])->name('team.assign');

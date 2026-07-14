@@ -45,6 +45,21 @@ class BusinessUtil extends Util
         ]);
         $cashier_role->syncPermissions(['sell.view', 'sell.create', 'sell.update', 'sell.delete', 'access_all_locations', 'view_cash_register', 'close_cash_register']);
 
+        // Production Manager — stage-move approvals dashboard
+        \Spatie\Permission\Models\Permission::firstOrCreate(
+            ['name' => 'production.manager', 'guard_name' => 'web']
+        );
+        \Spatie\Permission\Models\Permission::firstOrCreate(
+            ['name' => 'production.access', 'guard_name' => 'web']
+        );
+        $pmRole = Role::create([
+            'name' => 'Production Manager#'.$business_id,
+            'business_id' => $business_id,
+            'guard_name' => 'web',
+            'is_default' => 0,
+        ]);
+        $pmRole->syncPermissions(['production.manager', 'production.access']);
+
         $business = Business::findOrFail($business_id);
 
         //Update reference count
