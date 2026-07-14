@@ -40,7 +40,11 @@ class AttractDocumentPdf
 
             $mpdf = $this->makeMpdf($document_title);
             $this->applyPaidWatermark($mpdf, $receipt_details);
-            $filename = $document_title.'-'.($receipt_details->invoice_no ?? $transactionId).'.pdf';
+            $filename = $this->buildFilename(
+                $document_title,
+                $receipt_details->invoice_no ?? null,
+                $transactionId
+            );
             $mpdf->SetTitle($filename);
             $mpdf->WriteHTML($body);
 
@@ -57,6 +61,23 @@ class AttractDocumentPdf
 
             return null;
         }
+    }
+
+    /**
+     * TYPE_DOCNO_DDMMYYYY.pdf — same naming as browser PDF download.
+     */
+    private function buildFilename(string $documentTitle, $docNo, $fallbackId = null): string
+    {
+        $type = strtoupper(preg_replace('/[^A-Za-z0-9]+/', '_', trim($documentTitle)) ?: 'DOCUMENT');
+        $type = trim($type, '_');
+
+        $no = preg_replace('/[^A-Za-z0-9]+/', '_', trim((string) ($docNo ?? '')));
+        $no = trim((string) $no, '_');
+        if ($no === '') {
+            $no = (string) ($fallbackId ?: 'DOC');
+        }
+
+        return $type.'_'.$no.'_'.now()->format('dmY').'.pdf';
     }
 
     public function makeMpdf(string $document_title): \Mpdf\Mpdf

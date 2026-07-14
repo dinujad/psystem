@@ -2949,6 +2949,39 @@ class SellPosController extends Controller
     }
 
     /**
+     * PDF download name: TYPE_DOCNO_DDMMYYYY.pdf
+     * Example: INVOICE_0003_14072026.pdf
+     */
+    private function buildAttractPdfFilename(string $documentTitle, $docNo, $fallbackId = null): string
+    {
+        $type = strtoupper(preg_replace('/[^A-Za-z0-9]+/', '_', trim($documentTitle)) ?: 'DOCUMENT');
+        $type = trim($type, '_');
+
+        $no = preg_replace('/[^A-Za-z0-9]+/', '_', trim((string) ($docNo ?? '')));
+        $no = trim((string) $no, '_');
+        if ($no === '') {
+            $no = (string) ($fallbackId ?: 'DOC');
+        }
+
+        $date = now()->format('dmY'); // today in numbers DDMMYYYY
+
+        return $type.'_'.$no.'_'.$date.'.pdf';
+    }
+
+    private function pdfDownloadResponse(string $binary, string $filename)
+    {
+        $safe = str_replace('"', '', $filename);
+
+        return response($binary, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$safe.'"',
+            'Content-Length' => strlen($binary),
+            'Cache-Control' => 'private, max-age=0, must-revalidate',
+            'Pragma' => 'public',
+        ]);
+    }
+
+    /**
      * download pdf for given transaction
      */
     public function downloadPdf($id)
@@ -3001,16 +3034,15 @@ class SellPosController extends Controller
                 $this->applyPaidWatermark($mpdf, $receipt_details);
             }
 
-            $filename = $document_title.'-'.($receipt_details->invoice_no ?? $id).'.pdf';
+            $filename = $this->buildAttractPdfFilename(
+                $document_title,
+                $receipt_details->invoice_no ?? null,
+                $id
+            );
             $mpdf->SetTitle($filename);
             $mpdf->WriteHTML($body);
 
-            return response($mpdf->Output($filename, 'S'), 200, [
-                'Content-Type' => 'application/pdf',
-                'Content-Disposition' => 'inline; filename="'.$filename.'"',
-                'Cache-Control' => 'private, max-age=0, must-revalidate',
-                'Pragma' => 'public',
-            ]);
+            return $this->pdfDownloadResponse($mpdf->Output($filename, 'S'), $filename);
         } catch (\Throwable $e) {
             \Log::error('Invoice PDF failed: '.$e->getMessage(), [
                 'transaction_id' => $id,
@@ -3047,17 +3079,15 @@ class SellPosController extends Controller
             ->render();
         $mpdf = $this->createAttractMpdf($document_title);
 
-        $mpdf->SetTitle($document_title.'-'.($receipt_details->invoice_no ?? $id).'.pdf');
+        $filename = $this->buildAttractPdfFilename(
+            $document_title,
+            $receipt_details->invoice_no ?? null,
+            $id
+        );
+        $mpdf->SetTitle($filename);
         $mpdf->WriteHTML($body);
 
-        $filename = $document_title.'-'.($receipt_details->invoice_no ?? $id).'.pdf';
-
-        return response($mpdf->Output($filename, 'S'), 200, [
-            'Content-Type' => 'application/pdf',
-            'Content-Disposition' => 'inline; filename="'.$filename.'"',
-            'Cache-Control' => 'private, max-age=0, must-revalidate',
-            'Pragma' => 'public',
-        ]);
+        return $this->pdfDownloadResponse($mpdf->Output($filename, 'S'), $filename);
     }
 
     /**
