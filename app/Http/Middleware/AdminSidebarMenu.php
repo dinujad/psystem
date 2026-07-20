@@ -165,7 +165,8 @@ class AdminSidebarMenu
             }
 
             // ── WhatsApp (below Contacts) ────────────────────────────────
-            if (auth()->user()->can('send_notifications')) {
+            // Full menu: whatsapp.access (role tick) or legacy send_notifications / Admin#
+            if (auth()->user()->can('whatsapp.access') || auth()->user()->can('send_notifications')) {
                 $menu->dropdown('WhatsApp', function ($sub) {
                     $sub->url(action([\App\Http\Controllers\WhatsappController::class, 'inbox']), 'Inbox', ['icon' => '', 'active' => request()->segment(1) == 'whatsapp' && request()->segment(2) == 'inbox']);
                     $sub->url(action([\App\Http\Controllers\WhatsappController::class, 'showQr']), 'Link Device (QR)', ['icon' => '', 'active' => request()->segment(1) == 'whatsapp' && request()->segment(2) == 'link']);

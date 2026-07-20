@@ -121,7 +121,7 @@
     <h1>WhatsApp Inquiry Reports <small>Track inquiry status &amp; payments</small></h1>
     <ol class="breadcrumb">
         <li><a href="{{ route('home') }}">Home</a></li>
-        <li><a href="{{ auth()->user()->can('send_notifications') ? route('admin.whatsapp.agents.index') : action([\App\Http\Controllers\WhatsappController::class, 'inbox']) }}">WhatsApp</a></li>
+        <li><a href="{{ (auth()->user()->can('whatsapp.access') || auth()->user()->can('send_notifications')) ? route('admin.whatsapp.agents.index') : action([\App\Http\Controllers\WhatsappController::class, 'inbox']) }}">WhatsApp</a></li>
         <li class="active">Inquiry Reports</li>
     </ol>
 </div>
@@ -180,7 +180,7 @@
                 @endforeach
             </select>
         </div>
-        @if(auth()->user()->can('send_notifications'))
+        @if(auth()->user()->can('whatsapp.access') || auth()->user()->can('send_notifications'))
         <div>
             <label>Agent</label>
             <select name="agent_id">

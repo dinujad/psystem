@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\WhatsappAccess;
 use App\User;
 use App\WhatsappChatAssignment;
 use App\WhatsappContact;
@@ -14,26 +15,26 @@ use Spatie\Permission\Models\Permission;
 /**
  * Manages WhatsApp chat assignments between admin and agent users.
  *
- * Admin (send_notifications): full access — can assign, transfer, close any chat.
- * Agent (whatsapp.agent):     can claim unassigned chats, view own assigned chats.
+ * Admin (whatsapp.access): full access — can assign, transfer, close any chat.
+ * Agent (whatsapp.agent):  can claim unassigned chats, view own assigned chats.
  */
 class WhatsappAgentController extends Controller
 {
+    use WhatsappAccess;
+
     private function isAdmin(): bool
     {
-        return auth()->user()->can('send_notifications');
+        return $this->isWhatsappAdmin();
     }
 
     private function isAgent(): bool
     {
-        return auth()->user()->can('whatsapp.agent');
+        return $this->isWhatsappAgent();
     }
 
     private function checkAccess()
     {
-        if (! $this->isAdmin() && ! $this->isAgent()) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAccess();
     }
 
     // ── Inquiry workflow statuses ────────────────────────────────────────────
@@ -412,6 +413,7 @@ class WhatsappAgentController extends Controller
 
         // Ensure agent permission exists (avoids Spatie PermissionDoesNotExist → 500)
         try {
+            Permission::findOrCreate('whatsapp.access', 'web');
             Permission::findOrCreate('whatsapp.agent', 'web');
         } catch (\Throwable $e) {
             \Log::warning('WhatsApp reports: could not ensure permission: '.$e->getMessage());
@@ -501,7 +503,7 @@ class WhatsappAgentController extends Controller
         $this->checkAccess();
 
         $agents = User::permission('whatsapp.agent')
-            ->orWhereHas('permissions', fn ($q) => $q->where('name', 'send_notifications'))
+            ->orWhereHas('permissions', fn ($q) => $q->whereIn('name', ['whatsapp.access', 'send_notifications']))
             ->get()
             ->map(fn ($u) => [
                 'id'   => $u->id,

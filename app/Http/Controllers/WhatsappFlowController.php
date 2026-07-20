@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\WhatsappAccess;
 use App\WhatsappFlow;
 use App\WhatsappFlowStep;
 use Illuminate\Http\Request;
 
 class WhatsappFlowController extends Controller
 {
+    use WhatsappAccess;
+
     protected function authorizeAccess(): void
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
     }
 
     // ── Flows CRUD ──────────────────────────────────────────────────────

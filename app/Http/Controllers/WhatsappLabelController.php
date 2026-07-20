@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\WhatsappAccess;
 use App\WhatsappContact;
 use App\WhatsappLabel;
 use Illuminate\Http\Request;
 
 class WhatsappLabelController extends Controller
 {
+    use WhatsappAccess;
+
     private function checkAccess()
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
     }
 
     /** List all labels (admin management page). */

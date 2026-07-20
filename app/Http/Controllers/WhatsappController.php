@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\WhatsappAccess;
 use App\Http\Controllers\WhatsappAgentController;
 use App\Services\WhatsappService;
 use App\Services\WhatsappLidResolver;
@@ -12,6 +13,8 @@ use Illuminate\Http\Request;
 
 class WhatsappController extends Controller
 {
+    use WhatsappAccess;
+
     protected WhatsappService $whatsappService;
 
     public function __construct(WhatsappService $whatsappService)
@@ -21,22 +24,18 @@ class WhatsappController extends Controller
 
     public function showQr()
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         return view('whatsapp.link');
     }
 
     public function inbox(Request $request)
     {
-        $user    = auth()->user();
-        $isAdmin = $user->can('send_notifications');
-        $isAgent = $user->can('whatsapp.agent');
+        $this->requireWhatsappAccess();
 
-        if (! $isAdmin && ! $isAgent) {
-            abort(403, 'Unauthorized action.');
-        }
+        $user    = auth()->user();
+        $isAdmin = $this->isWhatsappAdmin();
+        $isAgent = $this->isWhatsappAgent();
 
         try {
             // Merge any LID → real phone mappings discovered by WhatsApp service
@@ -111,9 +110,7 @@ class WhatsappController extends Controller
 
     public function conversation(Request $request, $phone)
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         $messages = WhatsappMessage::where('phone_number', $phone)
             ->orderBy('created_at')
@@ -135,9 +132,7 @@ class WhatsappController extends Controller
 
     public function sendFromInbox(Request $request)
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         $request->validate([
             'phone_number' => ['required', 'string'],
@@ -191,9 +186,7 @@ class WhatsappController extends Controller
 
     public function fixLid(\Illuminate\Http\Request $request)
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         $validated = $request->validate([
             'lid_phone'  => ['required', 'string'],
@@ -260,16 +253,10 @@ class WhatsappController extends Controller
     public function pollThreads(Request $request)
     {
         $user = auth()->user();
-        if (! $user->can('send_notifications') && ! $user->can('whatsapp.agent')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAccess();
 
-        $isAdmin = $user->can('send_notifications');
-        $isAgent = $user->can('whatsapp.agent');
-
-        if (! $isAdmin && ! $isAgent) {
-            abort(403);
-        }
+        $isAdmin = $this->isWhatsappAdmin();
+        $isAgent = $this->isWhatsappAgent();
 
         // Keep thread poll lightweight — heavy sync runs on connect / inbox open only.
         $threads = $this->threadQuery($isAdmin, $isAgent)->get();
@@ -314,9 +301,7 @@ class WhatsappController extends Controller
     public function markRead(Request $request, $phone)
     {
         $user = auth()->user();
-        if (! $user->can('send_notifications') && ! $user->can('whatsapp.agent')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAccess();
 
         $normalized = preg_replace('/\D/', '', $phone);
 
@@ -331,9 +316,7 @@ class WhatsappController extends Controller
     public function pollMessages(Request $request, $phone)
     {
         $user = auth()->user();
-        if (! $user->can('send_notifications') && ! $user->can('whatsapp.agent')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAccess();
 
         $after = $request->query('after', 0);
         $normalized = preg_replace('/\D/', '', (string) $phone);
@@ -361,18 +344,14 @@ class WhatsappController extends Controller
 
     public function qr()
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         return response()->json($this->whatsappService->getQrCode());
     }
 
     public function status()
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         return response()->json($this->whatsappService->getStatus());
     }
@@ -380,18 +359,14 @@ class WhatsappController extends Controller
     public function syncStatus()
     {
         $user = auth()->user();
-        if (! $user->can('send_notifications') && ! $user->can('whatsapp.agent')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAccess();
 
         return response()->json($this->whatsappService->getHealth());
     }
 
     public function send(Request $request)
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         $validated = $request->validate([
             'number' => ['required', 'string', 'regex:/^\d{8,15}$/'],
@@ -412,9 +387,7 @@ class WhatsappController extends Controller
 
     public function logout()
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         $result = $this->whatsappService->logout();
 
@@ -424,9 +397,7 @@ class WhatsappController extends Controller
     /** Clear all local inbox chats (admin). Keeps current linked phone if still connected. */
     public function clearInbox()
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         $cleared = $this->wipeWhatsappInboxDatabase();
 
@@ -545,9 +516,7 @@ class WhatsappController extends Controller
     public function syncContacts()
     {
         $user = auth()->user();
-        if (! $user->can('send_notifications') && ! $user->can('whatsapp.agent')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAccess();
 
         return response()->json($this->whatsappService->triggerContactsSync());
     }
@@ -555,9 +524,7 @@ class WhatsappController extends Controller
     public function serveAvatar(string $phone)
     {
         $user = auth()->user();
-        if (! $user->can('send_notifications') && ! $user->can('whatsapp.agent')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAccess();
 
         $normalized = preg_replace('/\D/', '', $phone);
         $contact = WhatsappContact::where('phone_number', $normalized)->first();
@@ -579,9 +546,7 @@ class WhatsappController extends Controller
     /** Save or update the display name for a contact. */
     public function saveContact(Request $request, string $phone)
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         $data = $request->validate([
             'name'  => ['required', 'string', 'max:120'],
@@ -600,9 +565,7 @@ class WhatsappController extends Controller
     public function getContact(string $phone)
     {
         $user = auth()->user();
-        if (! $user->can('send_notifications') && ! $user->can('whatsapp.agent')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAccess();
 
         $contact = WhatsappContact::where('phone_number', $phone)
             ->with('labels')
@@ -624,9 +587,7 @@ class WhatsappController extends Controller
     /** Delete all messages for a phone number (delete the whole chat). */
     public function deleteChat(string $phone)
     {
-        if (! auth()->user()->can('send_notifications')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->requireWhatsappAdmin();
 
         WhatsappMessage::where('phone_number', $phone)->delete();
 
