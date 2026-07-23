@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\BusinessLocation;
+use App\Events\UserCreatedOrModified;
+use App\Services\UserCredentialsNotifier;
 use App\User;
 use App\Utils\ModuleUtil;
 use DB;
@@ -12,7 +14,6 @@ use Illuminate\Support\Facades\Hash;
 use Spatie\Activitylog\Models\Activity;
 use Spatie\Permission\Models\Role;
 use Yajra\DataTables\Facades\DataTables;
-use App\Events\UserCreatedOrModified;
 
 class ManageUserController extends Controller
 {
@@ -62,6 +63,8 @@ class ManageUserController extends Controller
                     'action',
                     '@can("user.update")
                         <a href="{{action(\'App\Http\Controllers\ManageUserController@edit\', [$id])}}" class="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-primary"><i class="glyphicon glyphicon-edit"></i> @lang("messages.edit")</a>
+                        &nbsp;
+                        <button type="button" data-href="{{action(\'App\Http\Controllers\ManageUserController@sendCredentials\', [$id])}}" class="tw-dw-btn tw-dw-btn-xs tw-dw-btn-outline tw-dw-btn-accent send_credentials_button"><i class="fa fa-key"></i> @lang("user.send_credentials")</button>
                         &nbsp;
                     @endcan
                     @can("user.view")
@@ -455,6 +458,47 @@ class ManageUserController extends Controller
         }
 
         return $roles;
+    }
+
+    /**
+     * Reset user password, save hashed password to DB, and send login details via SMS + WhatsApp.
+     */
+    public function sendCredentials(UserCredentialsNotifier $notifier, $id)
+    {
+        $notAllowed = $this->moduleUtil->notAllowedInDemo();
+        if (! empty($notAllowed)) {
+            return $notAllowed;
+        }
+
+        if (! auth()->user()->can('user.update')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        try {
+            $business_id = (int) request()->session()->get('user.business_id');
+            $user = User::where('business_id', $business_id)->findOrFail($id);
+
+            $result = $notifier->resetAndSend($user, $business_id);
+
+            $this->moduleUtil->activityLog($user, 'credentials_sent', null, [
+                'name' => $user->user_full_name,
+                'id' => $user->id,
+                'whatsapp' => ! empty($result['whatsapp']),
+                'sms' => ! empty($result['sms']),
+            ]);
+
+            return [
+                'success' => ! empty($result['success']),
+                'msg' => $result['message'] ?? __('messages.something_went_wrong'),
+            ];
+        } catch (\Exception $e) {
+            \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
+
+            return [
+                'success' => false,
+                'msg' => __('messages.something_went_wrong'),
+            ];
+        }
     }
 
     /**

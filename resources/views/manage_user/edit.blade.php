@@ -7,6 +7,11 @@
 <!-- Content Header (Page header) -->
 <section class="content-header">
     <h1 class="tw-text-xl md:tw-text-3xl tw-font-bold tw-text-black">@lang( 'user.edit_user' )</h1>
+    @can('user.update')
+        <button type="button" id="send_credentials_btn" data-href="{{ action([\App\Http\Controllers\ManageUserController::class, 'sendCredentials'], [$user->id]) }}" class="tw-dw-btn tw-dw-btn-sm tw-dw-btn-outline tw-dw-btn-accent" style="margin-top:8px;">
+            <i class="fa fa-key"></i> @lang('user.send_credentials')
+        </button>
+    @endcan
 </section>
 
 <!-- Main content -->
@@ -380,5 +385,36 @@
                     }
                 }
             });
+
+  $('#send_credentials_btn').on('click', function () {
+      var href = $(this).data('href');
+      swal({
+          title: LANG.sure,
+          text: @json(__('user.confirm_send_credentials')),
+          icon: "warning",
+          buttons: true,
+          dangerMode: true,
+      }).then(function (willSend) {
+          if (!willSend) {
+              return;
+          }
+          $.ajax({
+              method: "POST",
+              url: href,
+              dataType: "json",
+              data: { _token: '{{ csrf_token() }}' },
+              success: function (result) {
+                  if (result.success == true) {
+                      toastr.success(result.msg);
+                  } else {
+                      toastr.error(result.msg);
+                  }
+              },
+              error: function () {
+                  toastr.error(@json(__('messages.something_went_wrong')));
+              }
+          });
+      });
+  });
 </script>
 @endsection

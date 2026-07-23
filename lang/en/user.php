@@ -39,4 +39,11 @@ return [
     'leave_password_blank' => "Leave password field blank if you don't want to update password",
     'user_update_success' => 'User updated successfully',
     'user_delete_success' => 'User deleted successfully',
+    'send_credentials' => 'Send credentials',
+    'confirm_send_credentials' => 'This will reset the password, save it to the database, and send the new login details via SMS and WhatsApp to the user\'s phone number. Continue?',
+    'credentials_sent_success' => 'Password reset and login details sent via :channels.',
+    'credentials_no_phone' => 'Password was reset, but this user has no contact / WhatsApp number. Add a phone number first.',
+    'credentials_send_failed' => 'Password was reset, but sending SMS / WhatsApp failed. Check SMS settings and WhatsApp link.',
+    'credentials_whatsapp_failed' => 'WhatsApp send failed.',
+    'credentials_sms_failed' => 'SMS send failed.',
 ];

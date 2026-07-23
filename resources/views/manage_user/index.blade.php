@@ -100,6 +100,37 @@
                 }
              });
         });
+
+        $(document).on('click', 'button.send_credentials_button', function(){
+            var href = $(this).data('href');
+            swal({
+              title: LANG.sure,
+              text: @json(__('user.confirm_send_credentials')),
+              icon: "warning",
+              buttons: true,
+              dangerMode: true,
+            }).then((willSend) => {
+                if (willSend) {
+                    $.ajax({
+                        method: "POST",
+                        url: href,
+                        dataType: "json",
+                        data: { _token: '{{ csrf_token() }}' },
+                        success: function(result){
+                            if(result.success == true){
+                                toastr.success(result.msg);
+                                users_table.ajax.reload();
+                            } else {
+                                toastr.error(result.msg);
+                            }
+                        },
+                        error: function(){
+                            toastr.error(@json(__('messages.something_went_wrong')));
+                        }
+                    });
+                }
+             });
+        });
         
     });
     
