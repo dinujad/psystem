@@ -2766,7 +2766,8 @@ class SellPosController extends Controller
     }
 
     /**
-     * Converts drafts and quotations to invoice
+     * Converts drafts and quotations to proforma invoice.
+     * Multi-option quotations: pass option_group to keep only that option's lines.
      */
     public function convertToProforma($id)
     {
@@ -2777,11 +2778,57 @@ class SellPosController extends Controller
         try {
             $business_id = request()->session()->get('user.business_id');
 
-            $transaction = Transaction::where('business_id', $business_id)
+            $transaction = Transaction::with(['sell_lines'])
+                ->where('business_id', $business_id)
                 ->where('status', 'draft')
                 ->findOrFail($id);
 
+            $optionGroups = $this->buildQuotationOptionGroups($transaction);
+
+            // Multiple options and none chosen yet → ask the UI to pick one
+            $selectedOption = request()->input('option_group');
+            if (count($optionGroups) > 1 && ($selectedOption === null || $selectedOption === '')) {
+                $optionsPayload = [];
+                foreach ($optionGroups as $og => $meta) {
+                    $optionsPayload[] = [
+                        'option' => (int) $og,
+                        'label' => 'OPTION '.str_pad((string) $og, 2, '0', STR_PAD_LEFT),
+                        'total' => $this->transactionUtil->num_f($meta['total'], true),
+                        'items' => $meta['items'],
+                    ];
+                }
+
+                return [
+                    'success' => 1,
+                    'need_option' => true,
+                    'msg' => __('lang_v1.select_quotation_option_for_proforma'),
+                    'options' => $optionsPayload,
+                ];
+            }
+
+            if (count($optionGroups) === 1) {
+                $selectedOption = array_key_first($optionGroups);
+            }
+            $selectedOption = max(1, (int) $selectedOption);
+
+            if (count($optionGroups) > 1 && ! isset($optionGroups[$selectedOption])) {
+                return [
+                    'success' => 0,
+                    'msg' => __('lang_v1.invalid_quotation_option'),
+                ];
+            }
+
+            DB::beginTransaction();
+
             $transaction_before = $transaction->replicate();
+
+            // Keep only the selected option's products (and their modifiers)
+            if (count($optionGroups) > 1) {
+                $this->keepOnlyQuotationOption($transaction, $selectedOption);
+                $transaction->refresh();
+                $transaction->load('sell_lines');
+                $this->recalculateTransactionTotalsFromSellLines($transaction);
+            }
 
             $quoteRef = null;
             if ($transaction->is_quotation || preg_match('/^QTN\s/i', (string) $transaction->invoice_no)) {
@@ -2796,6 +2843,8 @@ class SellPosController extends Controller
             $transaction->invoice_no = $this->transactionUtil->generateProformaNumber($business_id);
             $transaction->save();
 
+            DB::commit();
+
             $this->transactionUtil->activityLog($transaction, 'edited', $transaction_before);
 
             try {
@@ -2809,6 +2858,10 @@ class SellPosController extends Controller
 
             $output = ['success' => 1, 'msg' => __('lang_v1.converted_to_proforma_successfully')];
         } catch (Exception $e) {
+            try {
+                DB::rollBack();
+            } catch (\Throwable $ignored) {
+            }
             \Log::emergency('File:' . $e->getFile() . 'Line:' . $e->getLine() . 'Message:' . $e->getMessage());
 
             $output = ['success' => 0,
@@ -2817,6 +2870,99 @@ class SellPosController extends Controller
         }
 
         return $output;
+    }
+
+    /**
+     * Group quotation sell lines by option_group with line totals.
+     */
+    private function buildQuotationOptionGroups(Transaction $transaction): array
+    {
+        $optionGroups = [];
+        foreach ($transaction->sell_lines as $line) {
+            if (! empty($line->parent_sell_line_id)) {
+                continue;
+            }
+            $og = max(1, (int) ($line->option_group ?? 1));
+            if (! isset($optionGroups[$og])) {
+                $optionGroups[$og] = ['total' => 0.0, 'items' => 0];
+            }
+            $optionGroups[$og]['total'] += ((float) $line->quantity) * ((float) $line->unit_price_inc_tax);
+            $optionGroups[$og]['items']++;
+        }
+        ksort($optionGroups);
+
+        return $optionGroups;
+    }
+
+    /**
+     * Delete sell lines that do not belong to the selected quotation option.
+     */
+    private function keepOnlyQuotationOption(Transaction $transaction, int $selectedOption): void
+    {
+        $deleteIds = [];
+
+        foreach ($transaction->sell_lines as $line) {
+            if (! empty($line->parent_sell_line_id)) {
+                continue;
+            }
+            $og = max(1, (int) ($line->option_group ?? 1));
+            if ($og === $selectedOption) {
+                continue;
+            }
+            $deleteIds[] = $line->id;
+            foreach ($transaction->sell_lines as $child) {
+                if ((int) ($child->parent_sell_line_id ?? 0) === (int) $line->id) {
+                    $deleteIds[] = $child->id;
+                }
+            }
+        }
+
+        $deleteIds = array_values(array_unique(array_filter($deleteIds)));
+        if (! empty($deleteIds)) {
+            // Draft / quotation — stock was never decreased
+            $this->transactionUtil->deleteSellLines($deleteIds, $transaction->location_id, false);
+        }
+
+        // Proforma is a single list — normalize remaining lines to option 1
+        TransactionSellLine::where('transaction_id', $transaction->id)
+            ->update(['option_group' => 1]);
+    }
+
+    /**
+     * Recalculate order totals after keeping a single quotation option.
+     */
+    private function recalculateTransactionTotalsFromSellLines(Transaction $transaction): void
+    {
+        $totalBeforeTax = 0.0;
+        foreach ($transaction->sell_lines as $line) {
+            $totalBeforeTax += ((float) $line->quantity) * ((float) $line->unit_price_inc_tax);
+        }
+
+        $discountAmount = (float) ($transaction->discount_amount ?? 0);
+        if (($transaction->discount_type ?? '') === 'percentage') {
+            $discount = ($discountAmount / 100) * $totalBeforeTax;
+        } else {
+            $discount = $discountAmount;
+        }
+
+        $tax = 0.0;
+        if (! empty($transaction->tax_id)) {
+            $taxDetails = TaxRate::find($transaction->tax_id);
+            if (! empty($taxDetails)) {
+                $tax = ((float) $taxDetails->amount / 100) * ($totalBeforeTax - $discount);
+            }
+        }
+
+        $shipping = (float) ($transaction->shipping_charges ?? 0);
+        $packing = (float) ($transaction->packing_charge ?? 0);
+        if (($transaction->packing_charge_type ?? '') === 'percent') {
+            $packing = ($packing / 100) * ($totalBeforeTax - $discount);
+        }
+        $roundOff = (float) ($transaction->round_off_amount ?? 0);
+
+        $transaction->total_before_tax = $totalBeforeTax;
+        $transaction->tax_amount = $tax;
+        $transaction->final_total = $totalBeforeTax + $tax - $discount + $shipping + $packing + $roundOff;
     }
 
     /**
@@ -2875,15 +3021,18 @@ class SellPosController extends Controller
     /**
      * download pdf for given transaction
      */
-    private function createAttractMpdf(string $document_title = 'INVOICE'): \Mpdf\Mpdf
+    private function createAttractMpdf(string $document_title = 'INVOICE', string $document_brand = 'printworks'): \Mpdf\Mpdf
     {
+        $document_brand = in_array($document_brand, ['printworks', 'safetysign'], true) ? $document_brand : 'printworks';
+        $isSafetySign = $document_brand === 'safetysign';
+
         $footerPath = public_path('images/footer.png');
         if (! file_exists($footerPath)) {
             $footerPath = public_path('images/footer (1).png');
         }
 
-        $footerImgHmm = 30;
-        if (file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
+        $footerImgHmm = $isSafetySign ? 12 : 30;
+        if (! $isSafetySign && file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
             $footerImgHmm = round(210 * $fi[1] / $fi[0], 2); // full A4 width
             $footerImgHmm = min(38, max(24, $footerImgHmm));
         }
@@ -2915,6 +3064,7 @@ class SellPosController extends Controller
 
         $footerHtml = view('sale_pos.receipts.partials.attract_pdf_footer', [
             'document_title' => $document_title,
+            'document_brand' => $document_brand,
         ])->render();
         $mpdf->SetHTMLFooter($footerHtml);
 
@@ -3030,7 +3180,10 @@ class SellPosController extends Controller
                 $mpdf->SetWatermarkText($receipt_details->business_name, 0.1);
                 $mpdf->showWatermarkText = true;
             } else {
-                $mpdf = $this->createAttractMpdf($document_title);
+                $mpdf = $this->createAttractMpdf(
+                    $document_title,
+                    (string) ($receipt_details->document_brand ?? 'printworks')
+                );
                 $this->applyPaidWatermark($mpdf, $receipt_details);
             }
 
@@ -3077,7 +3230,10 @@ class SellPosController extends Controller
         $body = view('sale_pos.receipts.'.$blade)
             ->with(compact('receipt_details', 'location_details', 'sub_status'))
             ->render();
-        $mpdf = $this->createAttractMpdf($document_title);
+        $mpdf = $this->createAttractMpdf(
+            $document_title,
+            (string) ($receipt_details->document_brand ?? 'printworks')
+        );
 
         $filename = $this->buildAttractPdfFilename(
             $document_title,

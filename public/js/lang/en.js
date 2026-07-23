@@ -169,4 +169,8 @@ LANG = {
     'name_length_exceeded': 'The total length of Prefix, First, Middle & Last Name cannot exceed 127 characters.',
     'error': 'Error',
     'ok': 'OK',
+    'quotation_option': 'Quotation Option',
+    'convert_to_proforma': 'Convert to Proforma Invoice',
+    'select_quotation_option_for_proforma': 'Select which quotation option to use for the Proforma Invoice',
+    'invalid_quotation_option': 'Invalid quotation option selected',
 };

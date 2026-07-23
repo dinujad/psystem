@@ -70,6 +70,8 @@
 			@component('components.widget', ['class' => 'box-solid'])
 				{!! Form::hidden('location_id', !empty($default_location) ? $default_location->id : null , ['id' => 'location_id', 'data-receipt_printer_type' => !empty($default_location->receipt_printer_type) ? $default_location->receipt_printer_type : 'browser', 'data-default_payment_accounts' => !empty($default_location) ? $default_location->default_payment_accounts : '']); !!}
 
+				@include('sell.partials.document_brand_selector')
+
 				@if(!empty($price_groups))
 					@if(count($price_groups) > 1)
 						<div class="col-sm-4">
@@ -417,6 +419,7 @@
 						}
 					@endphp
 					<div class="table-responsive">
+					@include('sell.partials.quotation_options_toolbar')
 					<table class="table table-condensed table-bordered table-striped table-responsive" id="pos_table">
 						<thead>
 							<tr>
@@ -959,6 +962,10 @@
 				</div>
 			</div>
 		@endcomponent
+		@include('sell.partials.document_terms_fields', [
+			'defaultQuotationTerms' => config('constants.default_quotation_terms'),
+			'saleNoteValue' => old('sale_note'),
+		])
 	@elseif(!empty($status) && $status == 'quotation')
 		@include('sell.partials.quotation_pdf_fields', [
 			'defaultQuotationTerms' => config('constants.default_quotation_terms'),
@@ -990,6 +997,10 @@
 				</div>
 			</div>
 		@endcomponent
+		@include('sell.partials.document_terms_fields', [
+			'defaultQuotationTerms' => config('constants.default_quotation_terms'),
+			'saleNoteValue' => old('sale_note'),
+		])
 	@endif
 
 	@if($invoice_mode)
@@ -1123,4 +1134,5 @@
 
     	});
     </script>
+	@include('sell.partials.quotation_options_script')
 @endsection

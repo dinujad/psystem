@@ -1893,6 +1893,15 @@ function pos_product_row(variation_id = null, purchase_line_id = null, weighing_
                     !modifiers_exist &&
                     !is_added
                 ) {
+                    // Quotation options: only bump qty within the active option group
+                    if ($('#quote_active_option').length) {
+                        var row_option = $(this).find('.row_option_group').val() || $(this).attr('data-option-group') || '1';
+                        var active_option = $('#quote_active_option').val() || '1';
+                        if (String(row_option) !== String(active_option)) {
+                            return;
+                        }
+                    }
+
                     add_via_ajax = false;
                     is_added = true;
 

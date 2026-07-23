@@ -1,10 +1,24 @@
 @php
-    $logoCandidates = [
-        public_path('images/printworks_logo.png'),
-        public_path('images/logo.png'),
-        public_path('images/logo.jpeg'),
-        public_path('images/attract_letterhead_HQ.png'),
-    ];
+    $documentBrand = strtolower(trim((string) ($receipt_details->document_brand ?? 'printworks')));
+    if (! in_array($documentBrand, ['printworks', 'safetysign'], true)) {
+        $documentBrand = 'printworks';
+    }
+    $isSafetySign = $documentBrand === 'safetysign';
+
+    if ($isSafetySign) {
+        $logoCandidates = [
+            public_path('images/safetysignlogo.jpeg'),
+            public_path('images/safetysignlogo.jpg'),
+            public_path('images/safetysignlogo.png'),
+        ];
+    } else {
+        $logoCandidates = [
+            public_path('images/printworks_logo.png'),
+            public_path('images/logo.png'),
+            public_path('images/logo.jpeg'),
+            public_path('images/attract_letterhead_HQ.png'),
+        ];
+    }
     $logoPath = null;
     foreach ($logoCandidates as $candidate) {
         if (file_exists($candidate)) {
@@ -16,10 +30,14 @@
     if (! file_exists($footerPath)) {
         $footerPath = public_path('images/footer (1).png');
     }
+    // Safety Sign: no Printworks red footer banner
+    if ($isSafetySign) {
+        $footerPath = null;
+    }
 
     $logoMime = $logoPath ? (mime_content_type($logoPath) ?: 'image/png') : 'image/png';
     $logoB64 = $logoPath ? base64_encode(file_get_contents($logoPath)) : null;
-    $footerB64 = file_exists($footerPath) ? base64_encode(file_get_contents($footerPath)) : null;
+    $footerB64 = ($footerPath && file_exists($footerPath)) ? base64_encode(file_get_contents($footerPath)) : null;
 
     $embedFooter = $embed_footer ?? true;
 
@@ -141,8 +159,7 @@
         || (is_numeric($totalDueRaw) && (float) $totalDueRaw == 0)
         || (is_string($totalDueRaw) && preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalDueRaw))
     );
-    $hasAdvancePayment = $showDueFields
-        && ! empty($totalPaid)
+    $hasAdvancePayment = ! empty($totalPaid)
         && $totalPaid !== 0
         && $totalPaid !== '0'
         && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalPaid);
@@ -229,7 +246,8 @@
     $bankDisplayLines[] = 'Payment mode : '.$paymentModeLine;
 
     $quotationTermsText = trim((string) ($receipt_details->quotation_terms ?? ''));
-    if ($quotationTermsText === '' && $isQuotation) {
+    if ($quotationTermsText === '') {
+        // Same default terms for Quotation / Proforma / Invoice (Printworks + Safety Sign)
         $quotationTermsText = (string) config('constants.default_quotation_terms');
     }
     $quotationTermLines = array_values(array_filter(array_map('trim', preg_split("/\r\n|\n|\r/", $quotationTermsText))));
@@ -258,10 +276,43 @@
         $preparedByName = 'Name';
     }
 
-    $brandRed = '#E31E24';
+    $brandRed = $isSafetySign ? '#111111' : '#E31E24';
     $rowGrey = '#E8E8E8';
+    $brandTagline = $isSafetySign
+        ? 'Signage & Advertising Solutions'
+        : 'A trademark of Attract Wear & Printing Solutions';
+    $brandFallbackName = $isSafetySign ? 'safetysign' : 'printworks';
+    $brandFallbackAccent = $isSafetySign ? '.lk' : '.lk';
+    $brandFallbackSub = $isSafetySign
+        ? 'signage & advertising solutions'
+        : 'promotional & branding solutions';
+    $footerCompany = $isSafetySign
+        ? 'Safety Sign.lk — Signage & Advertising Solutions'
+        : 'Attract Wear & Printing Solutions';
+    $footerContact = $isSafetySign
+        ? 'Web: www.safetysign.lk'
+        : 'Voice: 070 666 8885 &nbsp;|&nbsp; Email: sales@printworks.lk &nbsp;|&nbsp; Web: www.printworks.lk';
+    $quoteTagline = $isSafetySign
+        ? '“Clear signs. Strong brands. Safer spaces.”'
+        : '“Committed to excellence with every project.”';
+    $invoiceTagline = $isSafetySign
+        ? '“Thank you for choosing Safety Sign.”'
+        : '“Every print tells a story. Thank you for making us part of yours.”';
     $lines = collect($receipt_details->lines ?? [])->values();
     $itemCount = $lines->count();
+
+    // Quotation multi-option grouping (OPTION 01, OPTION 02, …)
+    $optionGroups = [];
+    if ($isQuotation) {
+        foreach ($lines as $line) {
+            $og = max(1, (int) ($line['option_group'] ?? 1));
+            $optionGroups[$og][] = $line;
+        }
+        ksort($optionGroups);
+        if ($optionGroups === []) {
+            $optionGroups = [1 => []];
+        }
+    }
 
     // Exact mockup sizes — do not scale fonts by item count.
     $fs = static fn (float $base): string => round($base, 1).'px';
@@ -468,8 +519,22 @@
   }
   .prod-name { font-weight: 700; color: #111; font-size: 11px; }
   .prod-note { margin-top: 3px; color: #444; font-size: 9.5px; line-height: 1.45; word-wrap: break-word; }
-  .bottom { width: 100%; border-collapse: collapse; margin-top: 16px; }
+  .bottom { width: 100%; border-collapse: collapse; margin-top: 14px; }
   .bottom > td { vertical-align: top; border: none; padding: 0; }
+  .terms-follow {
+    width: 100%;
+    max-width: 58%;
+    margin: 10px 0 0 0;
+    padding: 0;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    page-break-before: avoid;
+    break-before: avoid;
+  }
+  .terms-follow .terms-title { margin-top: 0; }
+  .terms-follow .terms-title + .terms-list + .terms-title {
+    margin-top: 12px;
+  }
   .bank-title {
     color: {{ $brandRed }} !important;
     font-weight: 800;
@@ -548,8 +613,39 @@
   .terms-title { color: {{ $brandRed }} !important; font-weight: 800; font-size: 13px; margin: 0 0 6px 0; }
   .terms-list { margin: 0; padding-left: 16px; font-size: 11px; line-height: 1.65; color: #111; }
   .terms-list li { margin: 0 0 4px 0; }
-  .quote-meta { margin-top: 12px; font-size: 11px; line-height: 1.65; }
+  .quote-meta { margin-top: 8px; font-size: 11px; line-height: 1.65; }
   .quote-meta .lbl { font-weight: 700; }
+  .meta-under-total {
+    width: 42%;
+    margin-left: auto;
+    margin-right: 0;
+    margin-top: 8px;
+    text-align: left;
+  }
+  .meta-under-total .quote-meta,
+  .meta-under-total .due-meta {
+    margin-top: 0;
+  }
+  .option-block { margin: 0 0 18px 0; }
+  .option-title {
+    color: {{ $brandRed }} !important;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    margin: 4px 0 8px 0;
+    text-transform: uppercase;
+    line-height: 1.1;
+  }
+  .option-totals-wrap {
+    width: 100%;
+    margin-top: 6px;
+    margin-bottom: 4px;
+  }
+  .option-totals-wrap .totals {
+    width: 42%;
+    margin-left: auto;
+    margin-right: 0;
+  }
   .due-meta { margin-top: 10px; font-size: 11px; line-height: 1.65; }
   .due-meta .lbl { font-weight: 700; }
   .page-break-before {
@@ -687,13 +783,13 @@
         <td style="width:52%;">
           <div class="logo-wrap">
             @if($logoSrc)
-              <img src="{{ $logoSrc }}" alt="printworks.lk">
+              <img src="{{ $logoSrc }}" alt="{{ $isSafetySign ? 'safetysign.lk' : 'printworks.lk' }}">
             @else
-              <div style="font-size:28px;font-weight:800;color:#111;">printworks<span style="color:{{ $brandRed }};">.lk</span></div>
-              <div style="font-size:10px;color:#666;">promotional &amp; branding solutions</div>
+              <div style="font-size:28px;font-weight:800;color:#111;">{{ $brandFallbackName }}<span style="color:{{ $brandRed }};">{{ $brandFallbackAccent }}</span></div>
+              <div style="font-size:10px;color:#666;">{{ $brandFallbackSub }}</div>
             @endif
           </div>
-          <div class="brand-tag">A trademark of Attract Wear &amp; Printing Solutions</div>
+          <div class="brand-tag">{{ $brandTagline }}</div>
         </td>
         <td style="width:48%;text-align:right;">
           <div class="doc-title">{{ $docTitle }}</div>
@@ -748,6 +844,94 @@
     <div class="line">Phone number : {{ $customerPhone !== '' ? $customerPhone : '—' }}</div>
   </div>
 
+  @if($isQuotation)
+    @foreach($optionGroups as $optNum => $optLines)
+      @php
+        $optSubUf = 0.0;
+        foreach ($optLines as $ol) {
+            $optSubUf += (float) ($ol['line_total_uf'] ?? 0);
+        }
+        $optSubFormatted = $currencySym.' '.number_format($optSubUf, 2);
+        $optLabel = 'OPTION '.str_pad((string) $optNum, 2, '0', STR_PAD_LEFT);
+      @endphp
+      <div class="option-block">
+        <div class="option-title">{{ $optLabel }}</div>
+        <table class="items" cellpadding="0" cellspacing="0">
+          <thead>
+            <tr>
+              <th bgcolor="{{ $brandRed }}" style="width:5%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">#</th>
+              <th class="desc" bgcolor="{{ $brandRed }}" style="width:42%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;text-align:left;padding-left:8px;">Description</th>
+              <th bgcolor="{{ $brandRed }}" style="width:13%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Rate</th>
+              <th bgcolor="{{ $brandRed }}" style="width:11%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Qty.</th>
+              <th bgcolor="{{ $brandRed }}" style="width:14%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Discount</th>
+              <th bgcolor="{{ $brandRed }}" style="width:15%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            @forelse($optLines as $i => $line)
+              @php
+                $descName = trim(($line['name'] ?? '').(! empty($line['variation']) ? ' - '.$line['variation'] : ''));
+                $descNote = trim(html_entity_decode(strip_tags($line['sell_line_note'] ?? ''), ENT_QUOTES, 'UTF-8'));
+                if ($descNote === '' && ! empty($line['product_description'])) {
+                    $descNote = trim(html_entity_decode(strip_tags($line['product_description']), ENT_QUOTES, 'UTF-8'));
+                }
+                $rate = $line['unit_price_before_discount'] ?? $line['unit_price_inc_tax'] ?? $line['unit_price'] ?? '';
+                $qty = ($line['quantity'] ?? '').(! empty($line['units']) ? ' '.$line['units'] : '');
+                $discVal = $line['total_line_discount'] ?? $line['line_discount'] ?? '';
+                $disc = ($discVal !== '' && $discVal !== '0' && $discVal !== '0.00') ? $discVal : '—';
+                $total = $line['line_total'] ?? '';
+              @endphp
+              <tr>
+                <td class="num" bgcolor="#ffffff" style="background-color:#ffffff !important;">{{ $i + 1 }}</td>
+                <td class="desc" bgcolor="#ffffff" style="background-color:#ffffff !important;">
+                  <div class="prod-name">{{ $descName }}</div>
+                  @if($descNote !== '')
+                    <div class="prod-note">{!! nl2br(e($descNote)) !!}</div>
+                  @endif
+                </td>
+                <td class="money" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $rate }}</td>
+                <td class="qty" bgcolor="#ffffff" style="background-color:#ffffff !important;">{{ $qty }}</td>
+                <td class="disc" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $disc }}</td>
+                <td class="total" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $total }}</td>
+              </tr>
+            @empty
+              <tr>
+                <td colspan="6" style="padding:10px;text-align:center;color:#888;">No items</td>
+              </tr>
+            @endforelse
+          </tbody>
+        </table>
+        <div class="option-totals-wrap">
+          <table class="totals" cellspacing="0" cellpadding="0">
+            <tr>
+              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Sub Total</td>
+              <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $optSubFormatted }}</td>
+            </tr>
+            <tr class="grand">
+              <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Grand Total</td>
+              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">{{ $optSubFormatted }}</td>
+            </tr>
+          </table>
+          @if($loop->last)
+          <table class="totals" cellspacing="0" cellpadding="0" style="border-spacing:0;margin-top:6px;">
+            <tr>
+              <td colspan="2" style="background:transparent !important;background-color:transparent !important;box-shadow:none !important;padding:6px 2px 0 2px;border:none;font-weight:400;">
+                <div class="quote-meta" style="margin-top:0;">
+                  <div><span class="lbl">Valid till</span> : {{ $validTillDisplay }}</div>
+                  <div><span class="lbl">Prepared by</span> : {{ $preparedByName }}</div>
+                  @if($embedFooter)
+                    <div class="sys-note" style="margin-top:8px;">System generated Quotation. No signature required.</div>
+                    <div class="tagline">{{ $quoteTagline }}</div>
+                  @endif
+                </div>
+              </td>
+            </tr>
+          </table>
+          @endif
+        </div>
+      </div>
+    @endforeach
+  @else
   <table class="items" cellpadding="0" cellspacing="0">
     <thead>
       <tr>
@@ -782,11 +966,7 @@
             @endif
           </td>
           <td class="money" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $rate }}</td>
-          @if($isQuotation)
-          <td class="qty" bgcolor="#ffffff" style="background-color:#ffffff !important;">{{ $qty }}</td>
-          @else
           <td class="qty" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $qty }}</td>
-          @endif
           <td class="disc" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $disc }}</td>
           <td class="total" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $total }}</td>
         </tr>
@@ -797,28 +977,17 @@
       @endforelse
     </tbody>
   </table>
+  @endif
 
+  @if($isQuotation)
+  @include('sale_pos.receipts.partials.attract_terms_block', [
+      'quotationTermLines' => $quotationTermLines,
+      'additionalNoteLines' => $additionalNoteLines,
+  ])
+  @else
   <table class="bottom">
     <tr>
       <td style="width:52%;padding-right:16px;">
-        @if($isQuotation)
-          <div class="terms-title">Terms &amp; Conditions</div>
-          <ul class="terms-list">
-            @forelse($quotationTermLines as $term)
-              <li>{{ $term }}</li>
-            @empty
-              <li>—</li>
-            @endforelse
-          </ul>
-          <div class="terms-title" style="margin-top:14px;">Additional Notes</div>
-          <ul class="terms-list">
-            @forelse($additionalNoteLines as $note)
-              <li>{{ $note }}</li>
-            @empty
-              <li>—</li>
-            @endforelse
-          </ul>
-        @else
           <div class="bank-title">Bank details</div>
           <div class="bank-lines">
             @foreach($bankDisplayLines as $bankLine)
@@ -826,77 +995,64 @@
             @endforeach
           </div>
 
+          @if(! $isProforma)
           <div class="sign-block">
-            @if($embedFooter)
-              <div class="sys-note">System-generated invoice. No signature required.</div>
-            @endif
-            <div class="sign-line">Prepared by: {{ $preparedByName }}</div>
             <div class="sign-line">Items received in good condition.</div>
             <div class="sign-line">Received by: Date .............................. Signature ..............................</div>
-            @if($embedFooter)
-              <div class="tagline">“Every print tells a story. Thank you for making us part of yours.”</div>
-            @endif
           </div>
-        @endif
+          @endif
       </td>
       <td style="width:48%;vertical-align:top;">
-        @if($isQuotation)
           <table class="totals totals-inline" cellspacing="0" cellpadding="0">
             <tr>
               <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Sub Total</td>
               <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $receipt_details->subtotal ?? ($currencySym.' 0.00') }}</td>
             </tr>
+            @if($hasDiscount)
             <tr>
               <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Total Discount</td>
               <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $discountShow }}</td>
             </tr>
-            <tr class="grand">
-              <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Grand Total</td>
-              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">{{ $receipt_details->total ?? ($currencySym.' 0.00') }}</td>
-            </tr>
-          </table>
-          <div class="quote-meta">
-            <div><span class="lbl">Valid till</span> : {{ $validTillDisplay }}</div>
-            <div><span class="lbl">Prepared by</span> : {{ $preparedByName }}</div>
-            @if($embedFooter)
-              <div class="sys-note" style="margin-top:10px;">System generated Quotation. No signature required.</div>
-              <div class="tagline">“Committed to excellence with every project.”</div>
             @endif
-          </div>
-        @else
-          <table class="totals totals-inline" cellspacing="0" cellpadding="0">
-            <tr>
-              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Sub Total</td>
-              <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $receipt_details->subtotal ?? ($currencySym.' 0.00') }}</td>
-            </tr>
-            <tr>
-              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Total Discount</td>
-              <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $discountShow }}</td>
-            </tr>
+            @if($hasAdvancePayment)
             <tr>
               <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Advance Payment</td>
               <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $advanceShow }}</td>
             </tr>
+            @endif
             <tr class="grand">
               <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Grand Total</td>
               <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">{{ $receipt_details->total ?? ($currencySym.' 0.00') }}</td>
             </tr>
           </table>
-          <div class="due-meta">
+          <div class="due-meta" style="margin-top:8px;">
             @if($showDueFields)
               <div><span class="lbl">Due</span> : {{ $dueDate }}</div>
               <div><span class="lbl">Status</span> : {{ $statusDisplay }}</div>
               @if($isPaid)
                 <div class="paid-stamp">PAID</div>
               @endif
-            @elseif($isProforma)
-              <div><span class="lbl">Prepared by</span> : {{ $preparedByName }}</div>
+            @endif
+            <div><span class="lbl">Prepared by</span> : {{ $preparedByName }}</div>
+            @if($embedFooter)
+              <div class="sys-note" style="margin-top:8px;">
+                @if($isProforma)
+                  System generated Proforma Invoice. No signature required.
+                @else
+                  System-generated invoice. No signature required.
+                @endif
+              </div>
+              <div class="tagline">{{ $invoiceTagline }}</div>
             @endif
           </div>
-        @endif
       </td>
     </tr>
   </table>
+  @include('sale_pos.receipts.partials.attract_terms_block', [
+      'quotationTermLines' => $quotationTermLines,
+      'additionalNoteLines' => $additionalNoteLines,
+  ])
+  @endif
 
   @if($embedFooter && ! empty($footerB64))
     <div class="page-footer">
@@ -904,9 +1060,11 @@
     </div>
   @elseif($embedFooter)
     <div class="footer-bar">
-      Attract Wear &amp; Printing Solutions<br>
+      {!! $footerCompany !!}<br>
+      @if(! $isSafetySign)
       1st Floor, No. 210/15, New Kandy Road, Biyagama, Sri Lanka<br>
-      Voice: 070 666 8885 &nbsp;|&nbsp; Email: sales@printworks.lk &nbsp;|&nbsp; Web: www.printworks.lk
+      @endif
+      {!! $footerContact !!}
     </div>
   @endif
 
@@ -940,9 +1098,11 @@
     </div>
   @elseif($embedFooter)
     <div class="footer-bar">
-      Attract Wear &amp; Printing Solutions<br>
+      {!! $footerCompany !!}<br>
+      @if(! $isSafetySign)
       1st Floor, No. 210/15, New Kandy Road, Biyagama, Sri Lanka<br>
-      Voice: 070 666 8885 &nbsp;|&nbsp; Email: sales@printworks.lk &nbsp;|&nbsp; Web: www.printworks.lk
+      @endif
+      {!! $footerContact !!}
     </div>
   @endif
 </div>

@@ -38,7 +38,7 @@ class AttractDocumentPdf
                 ->with(compact('receipt_details', 'location_details'))
                 ->render();
 
-            $mpdf = $this->makeMpdf($document_title);
+            $mpdf = $this->makeMpdf($document_title, (string) ($receipt_details->document_brand ?? 'printworks'));
             $this->applyPaidWatermark($mpdf, $receipt_details);
             $filename = $this->buildFilename(
                 $document_title,
@@ -80,15 +80,18 @@ class AttractDocumentPdf
         return $type.'_'.$no.'_'.now()->format('dmY').'.pdf';
     }
 
-    public function makeMpdf(string $document_title): \Mpdf\Mpdf
+    public function makeMpdf(string $document_title, string $document_brand = 'printworks'): \Mpdf\Mpdf
     {
+        $document_brand = in_array($document_brand, ['printworks', 'safetysign'], true) ? $document_brand : 'printworks';
+        $isSafetySign = $document_brand === 'safetysign';
+
         $footerPath = public_path('images/footer.png');
         if (! file_exists($footerPath)) {
             $footerPath = public_path('images/footer (1).png');
         }
 
-        $footerImgHmm = 30;
-        if (file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
+        $footerImgHmm = $isSafetySign ? 12 : 30;
+        if (! $isSafetySign && file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
             $footerImgHmm = round(210 * $fi[1] / $fi[0], 2);
             $footerImgHmm = min(38, max(24, $footerImgHmm));
         }
@@ -116,6 +119,7 @@ class AttractDocumentPdf
 
         $footerHtml = view('sale_pos.receipts.partials.attract_pdf_footer', [
             'document_title' => $document_title,
+            'document_brand' => $document_brand,
         ])->render();
         $mpdf->SetHTMLFooter($footerHtml);
 

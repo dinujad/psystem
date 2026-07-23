@@ -90,6 +90,7 @@ class TransactionUtil extends Util
             'is_direct_sale' => ! empty($input['is_direct_sale']) ? $input['is_direct_sale'] : 0,
             'commission_agent' => $input['commission_agent'] ?? null,
             'is_quotation' => isset($input['is_quotation']) ? $input['is_quotation'] : 0,
+            'document_brand' => $this->resolveDocumentBrand($input),
             'shipping_details' => isset($input['shipping_details']) ? $input['shipping_details'] : null,
             'shipping_address' => isset($input['shipping_address']) ? $input['shipping_address'] : null,
             'shipping_status' => isset($input['shipping_status']) ? $input['shipping_status'] : null,
@@ -143,9 +144,7 @@ class TransactionUtil extends Util
                     : config('constants.default_pdf_bank_details')),
             'quotation_terms' => array_key_exists('quotation_terms', $input)
                 ? (! empty($input['quotation_terms']) ? $input['quotation_terms'] : config('constants.default_quotation_terms'))
-                : ((! empty($input['is_quotation']) || ($input['status'] ?? '') === 'quotation')
-                    ? config('constants.default_quotation_terms')
-                    : null),
+                : config('constants.default_quotation_terms'),
             'quotation_additional_terms' => $this->resolveQuotationAdditionalTerms($input, null, ! empty($input['is_quotation']) || ($input['status'] ?? '') === 'quotation'),
             'quotation_valid_till' => $this->resolveQuotationValidTill($input),
             'is_export' => ! empty($input['is_export']) ? 1 : 0,
@@ -187,6 +186,16 @@ class TransactionUtil extends Util
         }
 
         return null;
+    }
+
+    /**
+     * Normalize document brand for Attract PDF theme (printworks | safetysign).
+     */
+    private function resolveDocumentBrand(array $input): string
+    {
+        $brand = strtolower(trim((string) ($input['document_brand'] ?? 'printworks')));
+
+        return in_array($brand, ['printworks', 'safetysign'], true) ? $brand : 'printworks';
     }
 
     /**
@@ -267,6 +276,9 @@ class TransactionUtil extends Util
             'custom_field_4' => ! empty($input['custom_field_4']) ? $input['custom_field_4'] : null,
             'commission_agent' => $input['commission_agent'],
             'is_quotation' => isset($input['is_quotation']) ? $input['is_quotation'] : 0,
+            'document_brand' => array_key_exists('document_brand', $input)
+                ? $this->resolveDocumentBrand($input)
+                : ($transaction->document_brand ?? 'printworks'),
             'sub_status' => ! empty($input['sub_status']) ? $input['sub_status'] : null,
             'shipping_details' => isset($input['shipping_details']) ? $input['shipping_details'] : null,
             'shipping_charges' => isset($input['shipping_charges']) ? $uf_data ? $this->num_uf($input['shipping_charges']) : $input['shipping_charges'] : 0,
@@ -318,7 +330,7 @@ class TransactionUtil extends Util
                 : $transaction->pdf_bank_details,
             'quotation_terms' => array_key_exists('quotation_terms', $input)
                 ? (! empty($input['quotation_terms']) ? $input['quotation_terms'] : config('constants.default_quotation_terms'))
-                : $transaction->quotation_terms,
+                : ($transaction->quotation_terms ?: config('constants.default_quotation_terms')),
             'quotation_additional_terms' => $this->resolveQuotationAdditionalTerms(
                 $input,
                 $transaction->quotation_additional_terms,
@@ -458,6 +470,7 @@ class TransactionUtil extends Util
                     'tax_id' => $product['tax_id'],
                     'unit_price_inc_tax' => $uf_unit_price_inc_tax / $multiplier,
                     'sell_line_note' => ! empty($product['sell_line_note']) ? $product['sell_line_note'] : '',
+                    'option_group' => max(1, (int) ($product['option_group'] ?? 1)),
                     'sub_unit_id' => ! empty($product['sub_unit_id']) ? $product['sub_unit_id'] : null,
                     'discount_id' => ! empty($product['discount_id']) ? $product['discount_id'] : null,
                     'res_service_staff_id' => ! empty($product['res_service_staff_id']) ? $product['res_service_staff_id'] : null,
@@ -680,6 +693,7 @@ class TransactionUtil extends Util
             'tax_id' => $product['tax_id'],
             'unit_price_inc_tax' => $uf_data ? $this->num_uf($product['unit_price_inc_tax']) / $multiplier : $product['unit_price_inc_tax'] / $multiplier,
             'sell_line_note' => ! empty($product['sell_line_note']) ? $product['sell_line_note'] : '',
+            'option_group' => max(1, (int) ($product['option_group'] ?? $sell_line->option_group ?? 1)),
             'sub_unit_id' => ! empty($product['sub_unit_id']) ? $product['sub_unit_id'] : null,
             'res_service_staff_id' => ! empty($product['res_service_staff_id']) ? $product['res_service_staff_id'] : null,
             'secondary_unit_quantity' => ! empty($product['secondary_unit_quantity']) ? $this->num_uf($product['secondary_unit_quantity']) : 0,
@@ -2002,6 +2016,8 @@ class TransactionUtil extends Util
         }
 
         $output['is_quotation'] = (int) $transaction->is_quotation;
+        $brand = $transaction->document_brand ?? 'printworks';
+        $output['document_brand'] = in_array($brand, ['printworks', 'safetysign'], true) ? $brand : 'printworks';
         $output['is_proforma'] = (int) (
             $transaction->status === 'draft'
             && ($transaction->sub_status ?? '') === 'proforma'
@@ -2042,7 +2058,7 @@ class TransactionUtil extends Util
                 : config('constants.default_pdf_bank_details'));
         $output['quotation_terms'] = ! empty($transaction->quotation_terms)
             ? $transaction->quotation_terms
-            : ((! empty($transaction->is_quotation)) ? config('constants.default_quotation_terms') : null);
+            : config('constants.default_quotation_terms');
         $output['quotation_additional_terms'] = $transaction->quotation_additional_terms ?? null;
         $output['quotation_valid_till'] = $transaction->quotation_valid_till ?? null;
         $output['prepared_by_name'] = $output['added_by'] ?: (
@@ -2264,6 +2280,7 @@ class TransactionUtil extends Util
             }
             // Always pass line description so Attract invoice/quotation PDFs can show it
             $line_array['sell_line_note'] = ! empty($line->sell_line_note) ? nl2br($line->sell_line_note) : '';
+            $line_array['option_group'] = max(1, (int) ($line->option_group ?? 1));
             if ($is_lot_number_enabled == 1 && $il->show_lot == 1) {
                 $line_array['lot_number'] = ! empty($line->lot_details->lot_number) ? $line->lot_details->lot_number : null;
                 $line_array['lot_number_label'] = __('lang_v1.lot');
@@ -2443,6 +2460,7 @@ class TransactionUtil extends Util
                 $line_array['cat_code'] = ! empty($cat->short_code) ? $cat->short_code : '';
             }
             $line_array['sell_line_note'] = ! empty($line->sell_line_note) ? $line->sell_line_note : '';
+            $line_array['option_group'] = max(1, (int) ($line->option_group ?? 1));
             // if ($is_lot_number_enabled == 1 && $il->show_lot == 1) {
             //     $line_array['lot_number'] = !empty($line->lot_details->lot_number) ? $line->lot_details->lot_number : null;
             //     $line_array['lot_number_label'] = __('lang_v1.lot');

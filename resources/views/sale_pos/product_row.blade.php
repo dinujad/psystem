@@ -13,11 +13,12 @@
 	@endif
 @endforeach
 
-<tr class="product_row" data-row_index="{{$row_count}}" @if(!empty($so_line)) data-so_id="{{$so_line->transaction_id}}" @endif>
+<tr class="product_row" data-row_index="{{$row_count}}" data-option-group="{{ max(1, (int) ($product->option_group ?? ($quote_option_group ?? 1))) }}" @if(!empty($so_line)) data-so_id="{{$so_line->transaction_id}}" @endif>
 	@if(!empty($is_serial_no))
 		<td class="serial_no" ></td>
 	@endif
 	<td>
+		<input type="hidden" class="row_option_group" name="products[{{$row_count}}][option_group]" value="{{ max(1, (int) ($product->option_group ?? ($quote_option_group ?? 1))) }}">
 		@if(!empty($so_line))
 			<input type="hidden" 
 			name="products[{{$row_count}}][so_line_id]" 

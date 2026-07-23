@@ -52,6 +52,7 @@ npm-debug.log
 !/public/images/logo.jpeg
 !/public/images/logo.png
 !/public/images/printworks_logo.png
+!/public/images/safetysignlogo.jpeg
 /public/modules/
 /public/mix-manifest.json
 .scribe

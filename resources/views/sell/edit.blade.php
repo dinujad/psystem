@@ -35,6 +35,7 @@
 	<div class="row">
 		<div class="col-md-12 col-sm-12">
 			@component('components.widget', ['class' => 'box-solid'])
+				@include('sell.partials.document_brand_selector')
 				@if(!empty($transaction->selling_price_group_id))
 					<div class="col-md-4 col-sm-6">
 						<div class="form-group">
@@ -366,6 +367,7 @@
 						}
 					@endphp
 					<div class="table-responsive">
+					@include('sell.partials.quotation_options_toolbar')
 					<table class="table table-condensed table-bordered table-striped table-responsive" id="pos_table">
 						<thead>
 							<tr>
@@ -818,6 +820,11 @@
 			'savedAdditionalTermsJson' => $transaction->quotation_additional_terms ?? null,
 			'saleNoteValue' => old('sale_note', $transaction->additional_notes),
 		])
+	@elseif(!empty($status) && in_array($status, ['proforma', 'final', 'draft'], true))
+		@include('sell.partials.document_terms_fields', [
+			'defaultQuotationTerms' => $transaction->quotation_terms ?: config('constants.default_quotation_terms'),
+			'saleNoteValue' => old('sale_note', $transaction->additional_notes),
+		])
 	@endif
 
 	@if($transaction->type = 'sell')
@@ -966,4 +973,5 @@
             });
     	});
     </script>
+	@include('sell.partials.quotation_options_script')
 @endsection
