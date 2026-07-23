@@ -1797,6 +1797,13 @@
                 </label>
                 @show_tooltip('Limited WhatsApp access: Inbox for assigned / unassigned chats and My Inquiries. No QR, bots, or agent management.')
               </div>
+              <div class="checkbox">
+                <label>
+                  {!! Form::checkbox('permissions[]', 'whatsapp.assign', in_array('whatsapp.assign', $role_permissions), ['class' => 'input-icheck']); !!}
+                  Assign to Agent
+                </label>
+                @show_tooltip('Can assign / reassign Inbox chats to other agents. Usually combined with WhatsApp Agent or Full Access.')
+              </div>
             </div>
           </div>
         </div>

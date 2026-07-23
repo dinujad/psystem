@@ -98,10 +98,11 @@ class WhatsappController extends Controller
 
         $userId = $user->id;
         $openPhone = preg_replace('/\D/', '', (string) $request->query('phone', ''));
+        $canAssign = $this->canAssignWhatsappChats();
 
         return response()
             ->view('whatsapp.inbox', compact(
-                'threads', 'status', 'contacts', 'assignments', 'userId', 'isAdmin', 'openPhone', 'waConnected'
+                'threads', 'status', 'contacts', 'assignments', 'userId', 'isAdmin', 'canAssign', 'openPhone', 'waConnected'
             ))
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
             ->header('Pragma', 'no-cache')

@@ -26,6 +26,17 @@ trait WhatsappAccess
     }
 
     /**
+     * Can assign / reassign chats to agents (admin, or role tick "Assign to Agent").
+     */
+    protected function canAssignWhatsappChats(): bool
+    {
+        $user = auth()->user();
+
+        return $this->isWhatsappAdmin()
+            || $user->can('whatsapp.assign');
+    }
+
+    /**
      * Any WhatsApp UI access (full or agent).
      */
     protected function canAccessWhatsapp(): bool

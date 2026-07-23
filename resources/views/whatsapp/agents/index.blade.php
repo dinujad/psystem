@@ -126,9 +126,10 @@
                         <strong>Assign the "WhatsApp Agent" permission</strong>
                         <p style="margin:6px 0 0 36px;font-size:13px;color:#555;">
                             Go to <a href="{{ action([\App\Http\Controllers\RoleController::class, 'index']) }}">User Management → Roles</a>,
-                            create or edit a role, and tick <code>whatsapp.access</code> (full)
-                            or <code>whatsapp.agent</code> (inbox only).
-                            Then assign that role to the agent user.
+                            create or edit a role, and tick <code>whatsapp.access</code> (full),
+                            <code>whatsapp.agent</code> (inbox only), and/or
+                            <code>whatsapp.assign</code> (Assign to Agent — can assign chats to others).
+                            Then assign that role to the user.
                         </p>
                         <p style="margin:4px 0 0 36px;font-size:12px;color:#888;">
                             If the permission is not listed yet, run:<br>

@@ -641,7 +641,7 @@
                                 <svg width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                                 {{ $isMe ? 'You' : $agentName }}
                             </div>
-                        @elseif($isAdmin)
+                        @elseif($isAdmin || !empty($canAssign))
                             <div class="wa-agent-badge unassigned">⚠ Unassigned</div>
                         @endif
                     </div>
@@ -718,16 +718,16 @@
                     <label>Assigned to</label>
                     <span id="ap-status" class="wa-assign-status none">Unassigned</span>
                     <button class="wa-assign-btn claim" id="ap-claim-btn" onclick="claimChat()" style="display:none;">Claim for me</button>
-                    @if($isAdmin)
+                    @if($isAdmin || !empty($canAssign))
                     <button class="wa-assign-btn unassign" id="ap-unassign-btn" onclick="unassignChat()" style="display:none;">Remove</button>
                     @endif
                 </div>
                 <div class="wa-assign-row wa-agent-picker" id="ap-picker-row" style="display:none;">
-                    <label>{{ $isAdmin ? 'Assign to' : 'Transfer to' }}</label>
+                    <label>{{ ($isAdmin || !empty($canAssign)) ? 'Assign to' : 'Transfer to' }}</label>
                     <select id="ap-agent-select">
                         <option value="">— pick agent —</option>
                     </select>
-                    <button class="wa-assign-btn transfer" onclick="assignToSelected()">{{ $isAdmin ? 'Assign' : 'Transfer' }}</button>
+                    <button class="wa-assign-btn transfer" onclick="assignToSelected()">{{ ($isAdmin || !empty($canAssign)) ? 'Assign' : 'Transfer' }}</button>
                 </div>
                 <div class="wa-assign-row">
                     <label></label>
@@ -860,6 +860,7 @@
     const AGENTS_URL    = @json(route('admin.whatsapp.agents.list'));
     const ASSIGN_BASE   = @json(url('admin/whatsapp/agents'));
     const IS_ADMIN      = @json($isAdmin);
+    const CAN_ASSIGN    = @json($isAdmin || !empty($canAssign));
     const MY_USER_ID    = @json($userId);
     const OPEN_PHONE    = @json($openPhone ?? '');
 
@@ -1068,7 +1069,7 @@
             const cls  = asgn.is_me ? 'mine' : 'other';
             const lbl  = asgn.is_me ? 'You' : esc(asgn.agent_name || '?');
             agentBadgeHtml = `<div class="wa-agent-badge ${cls}">👤 ${lbl}</div>`;
-        } else if(IS_ADMIN){
+        } else if(CAN_ASSIGN){
             agentBadgeHtml = `<div class="wa-agent-badge unassigned">⚠ Unassigned</div>`;
         }
 
@@ -1294,12 +1295,12 @@
                 statusEl.textContent  = '✅ You';
                 statusEl.className    = 'wa-assign-status mine';
                 if(claimBtn)   claimBtn.style.display   = 'none';
-                if(unassignBtn) unassignBtn.style.display = IS_ADMIN ? 'inline-block' : 'none';
+                if(unassignBtn) unassignBtn.style.display = CAN_ASSIGN ? 'inline-block' : 'none';
             } else {
                 statusEl.textContent  = '👤 ' + (asgn.agent_name || '?');
                 statusEl.className    = 'wa-assign-status other';
-                if(claimBtn)   claimBtn.style.display   = IS_ADMIN ? 'inline-block' : 'none';
-                if(unassignBtn) unassignBtn.style.display = IS_ADMIN ? 'inline-block' : 'none';
+                if(claimBtn)   claimBtn.style.display   = CAN_ASSIGN ? 'inline-block' : 'none';
+                if(unassignBtn) unassignBtn.style.display = CAN_ASSIGN ? 'inline-block' : 'none';
             }
         } else {
             statusEl.textContent  = 'Unassigned';
@@ -1351,7 +1352,7 @@
         const agentId = parseInt(sel?.value);
         if(!agentId){ showToast('Please select an agent', 'error'); return; }
 
-        const endpoint = IS_ADMIN ? `${ASSIGN_BASE}/assign/${phone}` : `${ASSIGN_BASE}/transfer/${phone}`;
+        const endpoint = CAN_ASSIGN ? `${ASSIGN_BASE}/assign/${phone}` : `${ASSIGN_BASE}/transfer/${phone}`;
         const r = await fetch(endpoint, {
             method:'POST',
             headers:{ 'Content-Type':'application/json', Accept:'application/json','X-CSRF-TOKEN':CSRF },
@@ -1363,7 +1364,7 @@
             renderAssignPanel(phone);
             updateAssignPill(phone);
             updateThreadBadge(phone);
-            showToast(`✅ Chat ${IS_ADMIN ? 'assigned' : 'transferred'} to ${d.agent_name}`, 'success');
+            showToast(`✅ Chat ${CAN_ASSIGN ? 'assigned' : 'transferred'} to ${d.agent_name}`, 'success');
         } else { showToast(d.message || 'Failed', 'error'); }
     };
 
@@ -1445,7 +1446,7 @@
         if(asgn && asgn.agent_id){
             badge.className = 'wa-agent-badge ' + (asgn.is_me ? 'mine' : 'other');
             badge.innerHTML = `👤 ${esc(asgn.is_me ? 'You' : (asgn.agent_name || '?'))}`;
-        } else if(IS_ADMIN){
+        } else if(CAN_ASSIGN){
             badge.className = 'wa-agent-badge unassigned';
             badge.textContent = '⚠ Unassigned';
         } else {

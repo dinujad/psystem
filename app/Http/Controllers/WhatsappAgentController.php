@@ -16,6 +16,7 @@ use Spatie\Permission\Models\Permission;
  * Manages WhatsApp chat assignments between admin and agent users.
  *
  * Admin (whatsapp.access): full access — can assign, transfer, close any chat.
+ * Assign (whatsapp.assign): can assign / reassign chats to agents (with inbox access).
  * Agent (whatsapp.agent):  can claim unassigned chats, view own assigned chats.
  */
 class WhatsappAgentController extends Controller
@@ -30,6 +31,11 @@ class WhatsappAgentController extends Controller
     private function isAgent(): bool
     {
         return $this->isWhatsappAgent();
+    }
+
+    private function canAssign(): bool
+    {
+        return $this->canAssignWhatsappChats();
     }
 
     private function checkAccess()
@@ -125,10 +131,12 @@ class WhatsappAgentController extends Controller
 
     // ── API endpoints ────────────────────────────────────────────────────────
 
-    /** Admin assigns a chat to a specific agent. */
+    /** Admin (or Assign-to-Agent role) assigns a chat to a specific agent. */
     public function assign(Request $request, string $phone)
     {
-        if (! $this->isAdmin()) abort(403);
+        if (! $this->canAssign()) {
+            abort(403);
+        }
 
         $data = $request->validate([
             'agent_id' => ['required', 'integer', 'exists:users,id'],
@@ -154,7 +162,7 @@ class WhatsappAgentController extends Controller
         ]);
     }
 
-    /** Agent (or admin) claims an unassigned chat for themselves. */
+    /** Agent (or admin / assign) claims an unassigned chat for themselves. */
     public function claim(Request $request, string $phone)
     {
         $this->checkAccess();
@@ -162,7 +170,7 @@ class WhatsappAgentController extends Controller
         $existing = WhatsappChatAssignment::where('phone_number', $phone)->where('status', 'open')->first();
 
         if ($existing && $existing->assigned_to && $existing->assigned_to !== auth()->id()) {
-            if (! $this->isAdmin()) {
+            if (! $this->canAssign()) {
                 return response()->json(['success' => false, 'message' => 'Chat is already assigned to another agent.'], 422);
             }
             $existing->update(['assigned_to' => auth()->id(), 'assigned_by' => auth()->id()]);
@@ -188,7 +196,9 @@ class WhatsappAgentController extends Controller
     /** Transfer a chat from current agent to another agent. */
     public function transfer(Request $request, string $phone)
     {
-        if (! $this->isAdmin() && ! $this->isAgent()) abort(403);
+        if (! $this->canAssign() && ! $this->isAgent()) {
+            abort(403);
+        }
 
         $data = $request->validate([
             'agent_id' => ['required', 'integer', 'exists:users,id'],
@@ -196,7 +206,7 @@ class WhatsappAgentController extends Controller
 
         $assignment = WhatsappChatAssignment::where('phone_number', $phone)->where('status', 'open')->first();
 
-        if (! $this->isAdmin()) {
+        if (! $this->canAssign()) {
             if (! $assignment || $assignment->assigned_to !== auth()->id()) {
                 return response()->json(['success' => false, 'message' => 'You can only transfer your own chats.'], 422);
             }
@@ -263,10 +273,12 @@ class WhatsappAgentController extends Controller
         return response()->json(['success' => true]);
     }
 
-    /** Unassign without closing (admin only). */
+    /** Unassign without closing (admin or Assign-to-Agent). */
     public function unassign(string $phone)
     {
-        if (! $this->isAdmin()) abort(403);
+        if (! $this->canAssign()) {
+            abort(403);
+        }
 
         WhatsappChatAssignment::where('phone_number', $phone)->where('status', 'open')
             ->update(['assigned_to' => null, 'assigned_by' => null]);
@@ -415,6 +427,7 @@ class WhatsappAgentController extends Controller
         try {
             Permission::findOrCreate('whatsapp.access', 'web');
             Permission::findOrCreate('whatsapp.agent', 'web');
+            Permission::findOrCreate('whatsapp.assign', 'web');
         } catch (\Throwable $e) {
             \Log::warning('WhatsApp reports: could not ensure permission: '.$e->getMessage());
         }
