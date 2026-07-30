@@ -141,6 +141,7 @@
     $showBalanceDueHeader = ! $isQuotation;
     $grandTotalDisplay = (string) ($receipt_details->total ?? '');
     $totalDueRaw = $receipt_details->total_due ?? null;
+    $previousDueRaw = $receipt_details->total_previous_due ?? null;
     $totalPaid = $receipt_details->total_paid ?? ($currencySym.' 0.00');
     $dueDate = $dateDisplay;
     if (! empty($receipt_details->due_date_raw)) {
@@ -167,17 +168,11 @@
         && $totalPaid !== '0'
         && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalPaid);
 
+    // "Balance Due" in the header means the customer's previous due, not this invoice's due.
     $balanceDue = $currencySym.' 0.00';
-    if ($isProforma && $grandTotalDisplay !== '') {
-        // Proforma: payment not yet received — show full grand total as balance due
-        $balanceDue = $grandTotalDisplay;
-    } elseif ($showDueFields) {
-        if (! empty($totalDueRaw) && $totalDueRaw !== 0 && $totalDueRaw !== '0'
-            && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalDueRaw)) {
-            $balanceDue = (string) $totalDueRaw;
-        } elseif (! $isPaid && $grandTotalDisplay !== '') {
-            $balanceDue = $grandTotalDisplay;
-        }
+    if (! empty($previousDueRaw) && $previousDueRaw !== 0 && $previousDueRaw !== '0'
+        && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $previousDueRaw)) {
+        $balanceDue = (string) $previousDueRaw;
     }
 
     $showTotalDueRow = $showDueFields && (
@@ -279,7 +274,8 @@
         $preparedByName = 'Name';
     }
 
-    $brandRed = $isSafetySign ? '#111111' : '#E31E24';
+    $brandRed = $isSafetySign ? '#F9A810' : '#E31E24';
+    $brandRedText = $isSafetySign ? '#111111' : '#ffffff';
     $rowGrey = '#E8E8E8';
     $brandTagline = $isSafetySign
         ? 'Signage & Advertising Solutions'
@@ -858,12 +854,12 @@
         <table class="items" cellpadding="0" cellspacing="0">
           <thead>
             <tr>
-              <th bgcolor="{{ $brandRed }}" style="width:5%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">#</th>
-              <th class="desc" bgcolor="{{ $brandRed }}" style="width:42%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;text-align:left;padding-left:8px;">Description</th>
-              <th bgcolor="{{ $brandRed }}" style="width:13%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Rate</th>
-              <th bgcolor="{{ $brandRed }}" style="width:11%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Qty.</th>
-              <th bgcolor="{{ $brandRed }}" style="width:14%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Discount</th>
-              <th bgcolor="{{ $brandRed }}" style="width:15%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Total</th>
+              <th bgcolor="{{ $brandRed }}" style="width:5%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">#</th>
+              <th class="desc" bgcolor="{{ $brandRed }}" style="width:42%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;text-align:left;padding-left:8px;">Description</th>
+              <th bgcolor="{{ $brandRed }}" style="width:13%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Rate</th>
+              <th bgcolor="{{ $brandRed }}" style="width:11%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Qty.</th>
+              <th bgcolor="{{ $brandRed }}" style="width:14%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Discount</th>
+              <th bgcolor="{{ $brandRed }}" style="width:15%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -915,8 +911,8 @@
               <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $optSubFormatted }}</td>
             </tr>
             <tr class="grand">
-              <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Grand Total</td>
-              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">{{ $optSubFormatted }}</td>
+              <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Grand Total</td>
+              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">{{ $optSubFormatted }}</td>
             </tr>
           </table>
           @if($loop->last)
@@ -942,12 +938,12 @@
   <table class="items" cellpadding="0" cellspacing="0">
     <thead>
       <tr>
-        <th bgcolor="{{ $brandRed }}" style="width:5%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">#</th>
-        <th class="desc" bgcolor="{{ $brandRed }}" style="width:42%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;text-align:left;padding-left:8px;">Description</th>
-        <th bgcolor="{{ $brandRed }}" style="width:13%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Rate</th>
-        <th bgcolor="{{ $brandRed }}" style="width:11%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Qty.</th>
-        <th bgcolor="{{ $brandRed }}" style="width:14%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Discount</th>
-        <th bgcolor="{{ $brandRed }}" style="width:15%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Total</th>
+        <th bgcolor="{{ $brandRed }}" style="width:5%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">#</th>
+        <th class="desc" bgcolor="{{ $brandRed }}" style="width:42%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;text-align:left;padding-left:8px;">Description</th>
+        <th bgcolor="{{ $brandRed }}" style="width:13%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Rate</th>
+        <th bgcolor="{{ $brandRed }}" style="width:11%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Qty.</th>
+        <th bgcolor="{{ $brandRed }}" style="width:14%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Discount</th>
+        <th bgcolor="{{ $brandRed }}" style="width:15%;background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Total</th>
       </tr>
     </thead>
     <tbody>
@@ -1035,8 +1031,8 @@
             </tr>
             @endif
             <tr class="grand">
-              <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">Grand Total</td>
-              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:#fff !important;">{{ $receipt_details->total ?? ($currencySym.' 0.00') }}</td>
+              <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Grand Total</td>
+              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">{{ $receipt_details->total ?? ($currencySym.' 0.00') }}</td>
             </tr>
           </table>
           <div class="due-meta" style="margin-top:8px;">

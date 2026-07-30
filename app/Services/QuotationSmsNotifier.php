@@ -66,7 +66,7 @@ class QuotationSmsNotifier
         }
         $docNo = (string) $transaction->invoice_no;
         $amount = $this->util->num_f($transaction->final_total, true, $business);
-        $brand = trim((string) (config('app.name') ?: 'PrintWorks'));
+        $brand = $this->resolveBrandLabel($transaction);
         $customerName = $this->customerDisplayName($contact);
         $viewUrl = $this->util->getInvoiceUrl($transaction->id, $businessId);
 
@@ -136,7 +136,7 @@ class QuotationSmsNotifier
         }
         $balanceDue = $this->util->num_f($dueRaw, true, $business);
 
-        $brand = trim((string) (config('app.name') ?: 'PrintWorks'));
+        $brand = $this->resolveBrandLabel($transaction);
         $customerName = $this->customerDisplayName($contact);
         $viewUrl = $this->util->getInvoiceUrl($transaction->id, $businessId);
         $note = trim((string) ($payment['note'] ?? ''));
@@ -232,7 +232,7 @@ class QuotationSmsNotifier
         int $businessId,
         string $docType
     ): bool {
-        $smsSettings = $this->resolveSmsSettings($business);
+        $smsSettings = $this->resolveSmsSettings($business, (string) ($transaction->document_brand ?? 'printworks'));
         if ($smsSettings['sms_service'] === 'textlk' && empty($smsSettings['textlk_api_key'])) {
             Log::warning('DocumentNotify: TextLK API key not configured', ['business_id' => $business->id]);
 
@@ -292,19 +292,39 @@ class QuotationSmsNotifier
         return $sent;
     }
 
-    private function resolveSmsSettings(Business $business): array
+    private function resolveBrandLabel(Transaction $transaction): string
+    {
+        $documentBrand = strtolower(trim((string) ($transaction->document_brand ?? 'printworks')));
+
+        return $documentBrand === 'safetysign'
+            ? 'Safety Sign'
+            : trim((string) (config('app.name') ?: 'PrintWorks'));
+    }
+
+    private function resolveSmsSettings(Business $business, string $documentBrand = 'printworks'): array
     {
         $settings = is_array($business->sms_settings ?? null) ? $business->sms_settings : [];
+        $documentBrand = strtolower(trim($documentBrand));
+        $isSafetySign = $documentBrand === 'safetysign';
 
-        $envKey = env('TEXTLK_API_KEY');
+        $envKey = $isSafetySign
+            ? env('SAFETYSIGN_TEXTLK_API_KEY')
+            : env('TEXTLK_API_KEY');
         $envDriver = env('SMS_DRIVER', 'textlk');
+        $senderFallback = $isSafetySign ? 'Safety Sign' : 'PrintWorks';
+        $envSenderId = $isSafetySign
+            ? env('SAFETYSIGN_TEXTLK_SENDER_ID', $settings['textlk_sender_id'] ?? $senderFallback)
+            : env('TEXTLK_SENDER_ID', $settings['textlk_sender_id'] ?? $senderFallback);
+        $envUrl = $isSafetySign
+            ? env('SAFETYSIGN_TEXTLK_URL', env('TEXTLK_URL', $settings['textlk_url'] ?? 'https://app.text.lk/api/v3/sms/send'))
+            : env('TEXTLK_URL', $settings['textlk_url'] ?? 'https://app.text.lk/api/v3/sms/send');
 
         if (! empty($envKey)) {
             return array_merge($settings, [
                 'sms_service' => 'textlk',
                 'textlk_api_key' => $envKey,
-                'textlk_sender_id' => env('TEXTLK_SENDER_ID', $settings['textlk_sender_id'] ?? 'PrintWorks'),
-                'textlk_url' => env('TEXTLK_URL', $settings['textlk_url'] ?? 'https://app.text.lk/api/v3/sms/send'),
+                'textlk_sender_id' => $envSenderId,
+                'textlk_url' => $envUrl,
             ]);
         }
 
@@ -313,8 +333,8 @@ class QuotationSmsNotifier
         return array_merge($settings, [
             'sms_service' => $service,
             'textlk_api_key' => $settings['textlk_api_key'] ?? null,
-            'textlk_sender_id' => $settings['textlk_sender_id'] ?? env('TEXTLK_SENDER_ID', 'PrintWorks'),
-            'textlk_url' => $settings['textlk_url'] ?? env('TEXTLK_URL', 'https://app.text.lk/api/v3/sms/send'),
+            'textlk_sender_id' => $settings['textlk_sender_id'] ?? $envSenderId,
+            'textlk_url' => $settings['textlk_url'] ?? $envUrl,
         ]);
     }
 }
