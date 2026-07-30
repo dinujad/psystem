@@ -1005,12 +1005,6 @@
             @endforeach
           </div>
 
-          @if(! $isProforma)
-          <div class="sign-block">
-            <div class="sign-line">Items received in good condition.</div>
-            <div class="sign-line">Received by: Date .............................. Signature ..............................</div>
-          </div>
-          @endif
       </td>
       <td style="width:48%;vertical-align:top;">
           <table class="totals totals-inline" cellspacing="0" cellpadding="0">
