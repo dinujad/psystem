@@ -71,6 +71,7 @@
 				{!! Form::hidden('location_id', !empty($default_location) ? $default_location->id : null , ['id' => 'location_id', 'data-receipt_printer_type' => !empty($default_location->receipt_printer_type) ? $default_location->receipt_printer_type : 'browser', 'data-default_payment_accounts' => !empty($default_location) ? $default_location->default_payment_accounts : '']); !!}
 
 				@include('sell.partials.document_brand_selector')
+				@include('sell.partials.description_format_selector')
 
 				@if(!empty($price_groups))
 					@if(count($price_groups) > 1)

@@ -5,11 +5,12 @@
     }
     $isSafetySign = $documentBrand === 'safetysign';
 
+    // Always use Printworks footer banner for quotation / proforma / invoice
     $footerPath = public_path('images/footer.png');
     if (! file_exists($footerPath)) {
         $footerPath = public_path('images/footer (1).png');
     }
-    if ($isSafetySign) {
+    if ($footerPath && ! file_exists($footerPath)) {
         $footerPath = null;
     }
 
@@ -30,10 +31,6 @@
 <div style="width:210mm; margin:0; padding:0 12mm 2mm 12mm; box-sizing:border-box; text-align:left; font-size:9px; color:#666;">
     <div style="font-weight:700; color:#111; margin:0 0 3px 0;">{{ $sysNote }}</div>
     <div style="color:{{ $brandAccent }}; font-style:italic; margin:0 0 6px 0;">{{ $tagline }}</div>
-    @if($isSafetySign)
-    <div style="color:#111; font-weight:700; margin:0 0 2px 0;">Safety Sign.lk — Signage &amp; Advertising Solutions</div>
-    <div style="margin:0 0 4px 0;">Web: www.safetysign.lk</div>
-    @endif
 </div>
 @if($footerPath && file_exists($footerPath))
 <div style="width:210mm; margin:0; padding:0; text-align:center;">

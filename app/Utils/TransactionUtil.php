@@ -91,6 +91,7 @@ class TransactionUtil extends Util
             'commission_agent' => $input['commission_agent'] ?? null,
             'is_quotation' => isset($input['is_quotation']) ? $input['is_quotation'] : 0,
             'document_brand' => $this->resolveDocumentBrand($input),
+            'description_format' => $this->resolveDescriptionFormat($input),
             'shipping_details' => isset($input['shipping_details']) ? $input['shipping_details'] : null,
             'shipping_address' => isset($input['shipping_address']) ? $input['shipping_address'] : null,
             'shipping_status' => isset($input['shipping_status']) ? $input['shipping_status'] : null,
@@ -199,6 +200,16 @@ class TransactionUtil extends Util
     }
 
     /**
+     * Normalize PDF description column format (product_and_note | note_only).
+     */
+    private function resolveDescriptionFormat(array $input): string
+    {
+        $format = strtolower(trim((string) ($input['description_format'] ?? 'product_and_note')));
+
+        return in_array($format, ['product_and_note', 'note_only'], true) ? $format : 'product_and_note';
+    }
+
+    /**
      * Resolve quotation_additional_terms JSON from request input.
      */
     private function resolveQuotationAdditionalTerms(array $input, ?string $existing = null, bool $isQuotation = false): ?string
@@ -279,6 +290,9 @@ class TransactionUtil extends Util
             'document_brand' => array_key_exists('document_brand', $input)
                 ? $this->resolveDocumentBrand($input)
                 : ($transaction->document_brand ?? 'printworks'),
+            'description_format' => array_key_exists('description_format', $input)
+                ? $this->resolveDescriptionFormat($input)
+                : ($transaction->description_format ?? 'product_and_note'),
             'sub_status' => ! empty($input['sub_status']) ? $input['sub_status'] : null,
             'shipping_details' => isset($input['shipping_details']) ? $input['shipping_details'] : null,
             'shipping_charges' => isset($input['shipping_charges']) ? $uf_data ? $this->num_uf($input['shipping_charges']) : $input['shipping_charges'] : 0,
@@ -2018,6 +2032,10 @@ class TransactionUtil extends Util
         $output['is_quotation'] = (int) $transaction->is_quotation;
         $brand = $transaction->document_brand ?? 'printworks';
         $output['document_brand'] = in_array($brand, ['printworks', 'safetysign'], true) ? $brand : 'printworks';
+        $descFormat = $transaction->description_format ?? 'product_and_note';
+        $output['description_format'] = in_array($descFormat, ['product_and_note', 'note_only'], true)
+            ? $descFormat
+            : 'product_and_note';
         $output['is_proforma'] = (int) (
             $transaction->status === 'draft'
             && ($transaction->sub_status ?? '') === 'proforma'

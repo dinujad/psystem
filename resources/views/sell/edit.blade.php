@@ -36,6 +36,7 @@
 		<div class="col-md-12 col-sm-12">
 			@component('components.widget', ['class' => 'box-solid'])
 				@include('sell.partials.document_brand_selector')
+				@include('sell.partials.description_format_selector')
 				@if(!empty($transaction->selling_price_group_id))
 					<div class="col-md-4 col-sm-6">
 						<div class="form-group">

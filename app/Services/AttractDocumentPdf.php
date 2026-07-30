@@ -83,15 +83,15 @@ class AttractDocumentPdf
     public function makeMpdf(string $document_title, string $document_brand = 'printworks'): \Mpdf\Mpdf
     {
         $document_brand = in_array($document_brand, ['printworks', 'safetysign'], true) ? $document_brand : 'printworks';
-        $isSafetySign = $document_brand === 'safetysign';
 
+        // Same Printworks footer image for Printworks and Safety Sign documents
         $footerPath = public_path('images/footer.png');
         if (! file_exists($footerPath)) {
             $footerPath = public_path('images/footer (1).png');
         }
 
-        $footerImgHmm = $isSafetySign ? 12 : 30;
-        if (! $isSafetySign && file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
+        $footerImgHmm = 30;
+        if (file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
             $footerImgHmm = round(210 * $fi[1] / $fi[0], 2);
             $footerImgHmm = min(38, max(24, $footerImgHmm));
         }

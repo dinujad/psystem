@@ -5,6 +5,12 @@
     }
     $isSafetySign = $documentBrand === 'safetysign';
 
+    $descriptionFormat = strtolower(trim((string) ($receipt_details->description_format ?? 'product_and_note')));
+    if (! in_array($descriptionFormat, ['product_and_note', 'note_only'], true)) {
+        $descriptionFormat = 'product_and_note';
+    }
+    $descriptionNoteOnly = $descriptionFormat === 'note_only';
+
     if ($isSafetySign) {
         $logoCandidates = [
             public_path('images/safetysignlogo.jpeg'),
@@ -26,13 +32,10 @@
             break;
         }
     }
+    // Same Printworks footer banner for all brands (Safety Sign keeps its logo/header only)
     $footerPath = public_path('images/footer.png');
     if (! file_exists($footerPath)) {
         $footerPath = public_path('images/footer (1).png');
-    }
-    // Safety Sign: no Printworks red footer banner
-    if ($isSafetySign) {
-        $footerPath = null;
     }
 
     $logoMime = $logoPath ? (mime_content_type($logoPath) ?: 'image/png') : 'image/png';
@@ -286,12 +289,8 @@
     $brandFallbackSub = $isSafetySign
         ? 'signage & advertising solutions'
         : 'promotional & branding solutions';
-    $footerCompany = $isSafetySign
-        ? 'Safety Sign.lk — Signage & Advertising Solutions'
-        : 'Attract Wear & Printing Solutions';
-    $footerContact = $isSafetySign
-        ? 'Web: www.safetysign.lk'
-        : 'Voice: 070 666 8885 &nbsp;|&nbsp; Email: sales@printworks.lk &nbsp;|&nbsp; Web: www.printworks.lk';
+    $footerCompany = 'Attract Wear & Printing Solutions';
+    $footerContact = 'Voice: 070 666 8885 &nbsp;|&nbsp; Email: sales@printworks.lk &nbsp;|&nbsp; Web: www.printworks.lk';
     $quoteTagline = $isSafetySign
         ? '“Clear signs. Strong brands. Safer spaces.”'
         : '“Committed to excellence with every project.”';
@@ -875,6 +874,12 @@
                 if ($descNote === '' && ! empty($line['product_description'])) {
                     $descNote = trim(html_entity_decode(strip_tags($line['product_description']), ENT_QUOTES, 'UTF-8'));
                 }
+                $showProductName = ! $descriptionNoteOnly;
+                $showDescNote = $descNote !== '';
+                // note_only with empty note: fall back to product name so the line is not blank
+                if ($descriptionNoteOnly && ! $showDescNote && $descName !== '') {
+                    $showProductName = true;
+                }
                 $rate = $line['unit_price_before_discount'] ?? $line['unit_price_inc_tax'] ?? $line['unit_price'] ?? '';
                 $qty = ($line['quantity'] ?? '').(! empty($line['units']) ? ' '.$line['units'] : '');
                 $discVal = $line['total_line_discount'] ?? $line['line_discount'] ?? '';
@@ -884,9 +889,11 @@
               <tr>
                 <td class="num" bgcolor="#ffffff" style="background-color:#ffffff !important;">{{ $i + 1 }}</td>
                 <td class="desc" bgcolor="#ffffff" style="background-color:#ffffff !important;">
-                  <div class="prod-name">{{ $descName }}</div>
-                  @if($descNote !== '')
-                    <div class="prod-note">{!! nl2br(e($descNote)) !!}</div>
+                  @if($showProductName)
+                    <div class="prod-name">{{ $descName }}</div>
+                  @endif
+                  @if($showDescNote)
+                    <div class="{{ $showProductName ? 'prod-note' : 'prod-name' }}">{!! nl2br(e($descNote)) !!}</div>
                   @endif
                 </td>
                 <td class="money" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $rate }}</td>
@@ -951,6 +958,11 @@
           if ($descNote === '' && ! empty($line['product_description'])) {
               $descNote = trim(html_entity_decode(strip_tags($line['product_description']), ENT_QUOTES, 'UTF-8'));
           }
+          $showProductName = ! $descriptionNoteOnly;
+          $showDescNote = $descNote !== '';
+          if ($descriptionNoteOnly && ! $showDescNote && $descName !== '') {
+              $showProductName = true;
+          }
           $rate = $line['unit_price_before_discount'] ?? $line['unit_price_inc_tax'] ?? $line['unit_price'] ?? '';
           $qty = ($line['quantity'] ?? '').(! empty($line['units']) ? ' '.$line['units'] : '');
           $discVal = $line['total_line_discount'] ?? $line['line_discount'] ?? '';
@@ -960,9 +972,11 @@
         <tr>
           <td class="num" bgcolor="#ffffff" style="background-color:#ffffff !important;">{{ $i + 1 }}</td>
           <td class="desc" bgcolor="#ffffff" style="background-color:#ffffff !important;">
-            <div class="prod-name">{{ $descName }}</div>
-            @if($descNote !== '')
-              <div class="prod-note">{!! nl2br(e($descNote)) !!}</div>
+            @if($showProductName)
+              <div class="prod-name">{{ $descName }}</div>
+            @endif
+            @if($showDescNote)
+              <div class="{{ $showProductName ? 'prod-note' : 'prod-name' }}">{!! nl2br(e($descNote)) !!}</div>
             @endif
           </td>
           <td class="money" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $rate }}</td>
@@ -1061,9 +1075,7 @@
   @elseif($embedFooter)
     <div class="footer-bar">
       {!! $footerCompany !!}<br>
-      @if(! $isSafetySign)
       1st Floor, No. 210/15, New Kandy Road, Biyagama, Sri Lanka<br>
-      @endif
       {!! $footerContact !!}
     </div>
   @endif
@@ -1099,9 +1111,7 @@
   @elseif($embedFooter)
     <div class="footer-bar">
       {!! $footerCompany !!}<br>
-      @if(! $isSafetySign)
       1st Floor, No. 210/15, New Kandy Road, Biyagama, Sri Lanka<br>
-      @endif
       {!! $footerContact !!}
     </div>
   @endif
