@@ -105,10 +105,11 @@ class AttractDocumentPdf
             }
         }
 
+        // Banner spans the full 210mm width, so reserve its real height at that width
         $footerImgHmm = 30;
         if ($footerPath && file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
             $footerImgHmm = round(210 * $fi[1] / $fi[0], 2);
-            $footerImgHmm = min(38, max(24, $footerImgHmm));
+            $footerImgHmm = min(60, max(24, $footerImgHmm));
         }
 
         $marginBottom = $footerImgHmm + 16;

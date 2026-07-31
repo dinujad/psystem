@@ -57,6 +57,13 @@
     $logoB64 = $logoPath ? base64_encode(file_get_contents($logoPath)) : null;
     $footerB64 = ($footerPath && file_exists($footerPath)) ? base64_encode(file_get_contents($footerPath)) : null;
 
+    // Footer banner spans the full 210mm width, so reserve its real height at that width
+    $footerHeightMm = 36;
+    if ($footerPath && file_exists($footerPath) && ($footerSize = @getimagesize($footerPath)) && $footerSize[0] > 0) {
+        $footerHeightMm = min(60, max(24, round(210 * $footerSize[1] / $footerSize[0], 2)));
+    }
+    $footerReserveMm = round($footerHeightMm + 10, 2);
+
     $embedFooter = $embed_footer ?? true;
 
     $docTitle = $document_title ?? 'INVOICE';
@@ -394,7 +401,7 @@
     @if($embedFooter)
     min-height: 277mm;
     box-sizing: border-box;
-    padding: 0 12mm 48mm 12mm;
+    padding: 0 12mm {{ $footerReserveMm }}mm 12mm;
     @else
     /* mPDF page has 0 side margins so content padding keeps text inset; footer stays full-bleed */
     box-sizing: border-box;
@@ -751,6 +758,25 @@
     text-align: center;
     line-height: 1.45;
   }
+  @if($embedFooter)
+  @media screen {
+    /* Preview: render each sheet as a visibly separate A4 page */
+    body {
+      background: #f1f2f4;
+      padding: 12px 0;
+    }
+    .sheet {
+      width: 210mm;
+      max-width: 100%;
+      margin: 0 auto 18px auto;
+      background: #fff;
+      box-shadow: 0 1px 6px rgba(0, 0, 0, 0.18);
+    }
+    .sheet:last-child {
+      margin-bottom: 0;
+    }
+  }
+  @endif
   @media print {
     html, body, *, *::before, *::after,
     table, thead, tbody, tr, th, td, div, span {
@@ -759,10 +785,21 @@
       color-adjust: exact !important;
     }
     @if($embedFooter)
+    body {
+      background: #fff !important;
+      padding: 0 !important;
+    }
     .sheet {
       min-height: 277mm;
-      padding: 0 12mm 40mm 12mm !important;
+      width: auto !important;
+      margin: 0 !important;
+      box-shadow: none !important;
+      padding: 0 12mm {{ $footerReserveMm }}mm 12mm !important;
       box-sizing: border-box;
+    }
+    .additional-terms-page {
+      page-break-before: always;
+      break-before: page;
     }
     .page-footer,
     .footer-bar {
@@ -778,7 +815,7 @@
     .page-footer img {
       width: 210mm !important;
       max-width: 100% !important;
-      height: auto !important;
+      height: {{ $footerHeightMm }}mm !important;
       display: block !important;
     }
     @endif

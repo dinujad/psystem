@@ -3049,7 +3049,7 @@ class SellPosController extends Controller
         $footerImgHmm = 30;
         if ($footerPath && file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
             $footerImgHmm = round(210 * $fi[1] / $fi[0], 2); // full A4 width
-            $footerImgHmm = min(38, max(24, $footerImgHmm));
+            $footerImgHmm = min(60, max(24, $footerImgHmm));
         }
 
         $marginBottom = $footerImgHmm + 16;
