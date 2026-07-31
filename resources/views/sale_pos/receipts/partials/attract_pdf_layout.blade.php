@@ -32,10 +32,25 @@
             break;
         }
     }
-    // Same Printworks footer banner for all brands (Safety Sign keeps its logo/header only)
-    $footerPath = public_path('images/footer.png');
-    if (! file_exists($footerPath)) {
-        $footerPath = public_path('images/footer (1).png');
+    // Brand-specific footer banner (Safety Sign uses its own image)
+    if ($isSafetySign) {
+        $footerCandidates = [
+            public_path('images/safety sign footer.png'),
+            public_path('images/safetysign_footer.png'),
+            public_path('images/safetysignfooter.png'),
+        ];
+        $footerPath = null;
+        foreach ($footerCandidates as $candidate) {
+            if (file_exists($candidate)) {
+                $footerPath = $candidate;
+                break;
+            }
+        }
+    } else {
+        $footerPath = public_path('images/footer.png');
+        if (! file_exists($footerPath)) {
+            $footerPath = public_path('images/footer (1).png');
+        }
     }
 
     $logoMime = $logoPath ? (mime_content_type($logoPath) ?: 'image/png') : 'image/png';
@@ -163,10 +178,14 @@
         || (is_numeric($totalDueRaw) && (float) $totalDueRaw == 0)
         || (is_string($totalDueRaw) && preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalDueRaw))
     );
-    $hasAdvancePayment = ! empty($totalPaid)
+    $paidIsNonZero = ! empty($totalPaid)
         && $totalPaid !== 0
         && $totalPaid !== '0'
         && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalPaid);
+    // Quotation: never show advance.
+    // Proforma: only if a real payment was recorded.
+    // Invoice: only if paid amount > 0.
+    $hasAdvancePayment = ! $isQuotation && $paidIsNonZero;
 
     // "Balance Due" in the header means the customer's previous due, not this invoice's due.
     $balanceDue = $currencySym.' 0.00';
@@ -910,6 +929,12 @@
               <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Sub Total</td>
               <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $optSubFormatted }}</td>
             </tr>
+            @if($hasDiscount && $loop->last)
+            <tr>
+              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Total Discount</td>
+              <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $discountShow }}</td>
+            </tr>
+            @endif
             <tr class="grand">
               <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Grand Total</td>
               <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">{{ $optSubFormatted }}</td>
@@ -1018,6 +1043,7 @@
               <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $discountShow }}</td>
             </tr>
             @endif
+            {{-- Invoice / Proforma: Advance only when money was actually received --}}
             @if($hasAdvancePayment)
             <tr>
               <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Advance Payment</td>
@@ -1030,9 +1056,10 @@
             </tr>
           </table>
           <div class="due-meta" style="margin-top:8px;">
+            {{-- Invoice only: due date + payment status (Paid / Partial / Due) --}}
             @if($showDueFields)
               <div><span class="lbl">Due</span> : {{ $dueDate }}</div>
-              <div><span class="lbl">Status</span> : {{ $statusDisplay }}</div>
+              <div><span class="lbl">Status</span> : {{ $isPaid ? 'Paid' : ($paymentStatusRaw === 'partial' ? 'Partial' : ($paymentStatus !== '' ? $paymentStatus : 'Due')) }}</div>
               @if($isPaid)
                 <div class="paid-stamp">PAID</div>
               @endif

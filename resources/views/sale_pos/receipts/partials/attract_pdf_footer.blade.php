@@ -5,18 +5,32 @@
     }
     $isSafetySign = $documentBrand === 'safetysign';
 
-    // Always use Printworks footer banner for quotation / proforma / invoice
-    $footerPath = public_path('images/footer.png');
-    if (! file_exists($footerPath)) {
-        $footerPath = public_path('images/footer (1).png');
-    }
-    if ($footerPath && ! file_exists($footerPath)) {
+    if ($isSafetySign) {
+        $footerCandidates = [
+            public_path('images/safety sign footer.png'),
+            public_path('images/safetysign_footer.png'),
+            public_path('images/safetysignfooter.png'),
+        ];
         $footerPath = null;
+        foreach ($footerCandidates as $candidate) {
+            if (file_exists($candidate)) {
+                $footerPath = $candidate;
+                break;
+            }
+        }
+    } else {
+        $footerPath = public_path('images/footer.png');
+        if (! file_exists($footerPath)) {
+            $footerPath = public_path('images/footer (1).png');
+        }
+        if ($footerPath && ! file_exists($footerPath)) {
+            $footerPath = null;
+        }
     }
 
     $docLabel = strtolower($document_title ?? 'invoice');
     $isQuote = str_contains(strtoupper((string) ($document_title ?? '')), 'QUOT');
-    $brandAccent = $isSafetySign ? '#111111' : '#E31E24';
+    $brandAccent = $isSafetySign ? '#F9A810' : '#E31E24';
     $tagline = $isQuote
         ? ($isSafetySign
             ? '“Clear signs. Strong brands. Safer spaces.”'

@@ -1668,6 +1668,14 @@ class TransactionUtil extends Util
                     ];
                 }
             }
+        } elseif (
+            $transaction_type == 'sell'
+            && $transaction->status === 'draft'
+            && ($transaction->sub_status ?? '') === 'proforma'
+        ) {
+            // Proforma: expose paid amount so PDF can show Advance Payment only if money was taken
+            $paid_amount = $this->getTotalPaid($transaction->id);
+            $output['total_paid'] = ($paid_amount == 0) ? 0 : $this->num_f($paid_amount, $show_currency, $business_details);
         }
 
         $output['additional_expenses'] = [];

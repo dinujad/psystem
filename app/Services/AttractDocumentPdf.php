@@ -83,15 +83,30 @@ class AttractDocumentPdf
     public function makeMpdf(string $document_title, string $document_brand = 'printworks'): \Mpdf\Mpdf
     {
         $document_brand = in_array($document_brand, ['printworks', 'safetysign'], true) ? $document_brand : 'printworks';
+        $isSafetySign = $document_brand === 'safetysign';
 
-        // Same Printworks footer image for Printworks and Safety Sign documents
-        $footerPath = public_path('images/footer.png');
-        if (! file_exists($footerPath)) {
-            $footerPath = public_path('images/footer (1).png');
+        if ($isSafetySign) {
+            $footerCandidates = [
+                public_path('images/safety sign footer.png'),
+                public_path('images/safetysign_footer.png'),
+                public_path('images/safetysignfooter.png'),
+            ];
+            $footerPath = null;
+            foreach ($footerCandidates as $candidate) {
+                if (file_exists($candidate)) {
+                    $footerPath = $candidate;
+                    break;
+                }
+            }
+        } else {
+            $footerPath = public_path('images/footer.png');
+            if (! file_exists($footerPath)) {
+                $footerPath = public_path('images/footer (1).png');
+            }
         }
 
         $footerImgHmm = 30;
-        if (file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
+        if ($footerPath && file_exists($footerPath) && ($fi = @getimagesize($footerPath)) && $fi[0] > 0) {
             $footerImgHmm = round(210 * $fi[1] / $fi[0], 2);
             $footerImgHmm = min(38, max(24, $footerImgHmm));
         }
