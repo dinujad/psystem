@@ -35,6 +35,9 @@
 .doc-brand-opt input { margin: 0; }
 .doc-brand-opt input[value="printworks"] { accent-color: #E31E24; }
 .doc-brand-opt input[value="safetysign"] { accent-color: #F9A810; }
+.doc-brand-opt.brand-ss {
+	border-color: #F9A810; background: #fffdf7; color: #8a5700;
+}
 .doc-brand-opt.active-pw {
 	border-color: #E31E24; background: #fff5f5; color: #991b1b;
 }
@@ -50,7 +53,7 @@
 			<input type="radio" name="document_brand" value="printworks" {{ $currentBrand === 'printworks' ? 'checked' : '' }}>
 			Printworks
 		</label>
-		<label class="doc-brand-opt {{ $currentBrand === 'safetysign' ? 'active-ss' : '' }}">
+		<label class="doc-brand-opt brand-ss {{ $currentBrand === 'safetysign' ? 'active-ss' : '' }}">
 			<input type="radio" name="document_brand" value="safetysign" {{ $currentBrand === 'safetysign' ? 'checked' : '' }}>
 			Safety Sign
 		</label>
