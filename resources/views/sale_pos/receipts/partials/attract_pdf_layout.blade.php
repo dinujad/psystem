@@ -55,6 +55,13 @@
 
     $logoMime = $logoPath ? (mime_content_type($logoPath) ?: 'image/png') : 'image/png';
     $logoB64 = $logoPath ? base64_encode(file_get_contents($logoPath)) : null;
+    $logoDisplayWidthMm = 74;
+    $logoDisplayHeightMm = 21;
+    if ($logoPath && ($logoSize = @getimagesize($logoPath)) && $logoSize[0] > 0 && $logoSize[1] > 0) {
+        $logoScale = min($logoDisplayWidthMm / $logoSize[0], $logoDisplayHeightMm / $logoSize[1]);
+        $logoDisplayWidthMm = round($logoSize[0] * $logoScale, 2);
+        $logoDisplayHeightMm = round($logoSize[1] * $logoScale, 2);
+    }
     $footerB64 = ($footerPath && file_exists($footerPath)) ? base64_encode(file_get_contents($footerPath)) : null;
 
     // Footer banner spans the full 210mm width, so reserve its real height at that width
@@ -189,10 +196,16 @@
         && $totalPaid !== 0
         && $totalPaid !== '0'
         && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalPaid);
-    // Quotation: never show advance.
-    // Proforma: only if a real payment was recorded.
-    // Invoice: only if paid amount > 0.
+
+    // Document Balance Due (this invoice/proforma remaining) — only when amount > 0
+    $documentDueIsNonZero = ! empty($totalDueRaw) && $totalDueRaw !== 0 && $totalDueRaw !== '0'
+        && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalDueRaw);
+
+    // Quotation: never show payment row.
+    // Proforma / Invoice: show paid amount when money was received.
     $hasAdvancePayment = ! $isQuotation && $paidIsNonZero;
+    // Full payment → label "Paid"; partial → "Advance Payment"
+    $paymentAmountLabel = ($hasAdvancePayment && ! $documentDueIsNonZero) ? 'Paid' : 'Advance Payment';
 
     // "Balance Due" in the header means the customer's previous due, not this invoice's due.
     $balanceDue = $currencySym.' 0.00';
@@ -201,10 +214,11 @@
         $balanceDue = (string) $previousDueRaw;
     }
 
+    $showDocumentBalanceDue = ! $isQuotation && $documentDueIsNonZero;
+    $documentBalanceDue = $documentDueIsNonZero ? (string) $totalDueRaw : ($currencySym.' 0.00');
+
     $showTotalDueRow = $showDueFields && (
-        ! $isPaid
-        || (! empty($totalDueRaw) && $totalDueRaw !== 0 && $totalDueRaw !== '0'
-            && ! preg_match('/^[\D\s]*0+([.,]0+)?[\D\s]*$/', (string) $totalDueRaw))
+        ! $isPaid || $documentDueIsNonZero
     );
 
     $paymentStatus = ucfirst((string) ($receipt_details->payment_status ?? ''));
@@ -302,14 +316,14 @@
 
     $brandRed = $isSafetySign ? '#F9A810' : '#E31E24';
     $brandRedText = $isSafetySign ? '#111111' : '#ffffff';
+    // Only OPTION 01/02 titles keep brand accent color; all other text is black
+    $textBlack = '#111111';
     $rowGrey = '#E8E8E8';
-    $brandTagline = $isSafetySign
-        ? 'Signage & Advertising Solutions'
-        : 'A trademark of Attract Wear & Printing Solutions';
+    $brandTagline = 'A trademark of Attract Wear & Printing Solutions';
     $brandFallbackName = $isSafetySign ? 'safetysign' : 'printworks';
     $brandFallbackAccent = $isSafetySign ? '.lk' : '.lk';
     $brandFallbackSub = $isSafetySign
-        ? 'signage & advertising solutions'
+        ? 'A trademark of Attract Wear & Printing Solutions'
         : 'promotional & branding solutions';
     $footerCompany = 'Attract Wear & Printing Solutions';
     $footerContact = 'Voice: 070 666 8885 &nbsp;|&nbsp; Email: sales@printworks.lk &nbsp;|&nbsp; Web: www.printworks.lk';
@@ -379,13 +393,15 @@
   @if($embedFooter)
   @page { margin: 10mm 0 0 0; size: A4; color-adjust: exact; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   @else
-  @page { margin: 0; }
+  {{-- mPDF named footer: zero footer offset keeps the banner flush with the A4 bottom edge. --}}
+  @page { margin: 10mm 0 {{ $footerReserveMm }}mm 0; margin-footer: 0; footer: html_attractfooter; }
   @endif
   html, body {
     background: #fff !important;
     margin: 0;
     padding: 0;
-    font-family: DejaVu Sans, Arial, Helvetica, sans-serif;
+    {{-- freesans carries Arial/Helvetica metrics, so mPDF output matches the browser preview. --}}
+    font-family: {{ $embedFooter ? 'Arial, Helvetica, sans-serif' : 'freesans, Arial, Helvetica, sans-serif' }};
     color: #111;
     font-size: {{ $fs(11) }};
   }
@@ -408,6 +424,8 @@
     padding: 0 12mm;
     @endif
   }
+  @if($embedFooter)
+  /* Browser only: mPDF gets the diagonal PAID via SetWatermarkText instead */
   .paid-watermark {
     position: absolute;
     top: 38%;
@@ -415,8 +433,8 @@
     width: 100%;
     text-align: center;
     font-size: 92px;
-    font-weight: 800;
-    color: {{ $brandRed }};
+    font-weight: bold;
+    color: {{ $textBlack }};
     opacity: 0.16;
     letter-spacing: 8px;
     transform: rotate(-32deg);
@@ -425,13 +443,14 @@
     pointer-events: none;
     line-height: 1;
   }
+  @endif
   .paid-stamp {
     display: inline-block;
     margin-top: 6px;
     padding: 3px 10px;
-    border: 2px solid {{ $brandRed }};
-    color: {{ $brandRed }} !important;
-    font-weight: 800;
+    border: 2px solid {{ $textBlack }};
+    color: {{ $textBlack }} !important;
+    font-weight: bold;
     font-size: 12px;
     letter-spacing: 1px;
     text-transform: uppercase;
@@ -460,7 +479,7 @@
   }
   .doc-title {
     font-size: 20px;
-    font-weight: 800;
+    font-weight: bold;
     color: #111;
     letter-spacing: 0.5px;
     text-align: right;
@@ -468,20 +487,20 @@
     margin: 0 0 6px 0;
     text-transform: uppercase;
   }
-  .meta-table { width: auto; margin-left: auto; border-collapse: collapse; font-size: 11px; }
+  .meta-table { width: 88mm; margin-left: auto; border-collapse: collapse; font-size: 11px; }
   .meta-table td { padding: 1px 0; border: none; vertical-align: top; }
-  .meta-table td.lbl { text-align: left; white-space: nowrap; padding-right: 2px; font-weight: 700; color: #111; }
-  .meta-table td.sep { width: 10px; text-align: center; padding: 1px 5px; font-weight: 700; }
-  .meta-table td.val { text-align: left; font-weight: 700; padding-left: 2px; }
-  .meta-table .accent { color: {{ $brandRed }} !important; }
+  .meta-table td.lbl { width: 34mm; text-align: right; white-space: nowrap; padding-right: 2px; font-weight: bold; color: #111; }
+  .meta-table td.sep { width: 6mm; text-align: center; padding: 1px 2px; font-weight: bold; }
+  .meta-table td.val { width: 48mm; text-align: right; font-weight: bold; padding-left: 2px; }
+  .meta-table .accent { color: {{ $textBlack }} !important; }
   .meta-table .day {
-    color: {{ $brandRed }} !important;
-    font-weight: 800;
+    color: {{ $textBlack }} !important;
+    font-weight: bold;
     font-size: 12px;
     letter-spacing: 0.5px;
   }
   .bill-to { margin: 0 0 12px 0; }
-  .bill-to .title { color: {{ $brandRed }} !important; font-weight: 800; font-size: 13px; margin-bottom: 5px; }
+  .bill-to .title { color: {{ $textBlack }} !important; font-weight: bold; font-size: 13px; margin-bottom: 5px; }
   .bill-to .line { margin: 2px 0; color: #222; font-size: 11px; line-height: 1.45; }
   .items { width: 100%; border-collapse: collapse; margin-top: 6px; }
   .items th {
@@ -491,7 +510,7 @@
     box-shadow: inset 0 0 0 1000px {{ $brandRed }} !important;
     @endif
     color: #ffffff !important;
-    font-weight: 700;
+    font-weight: bold;
     font-size: 11px;
     padding: 8px 5px;
     text-align: center;
@@ -538,7 +557,7 @@
     box-shadow: inset 0 0 0 1000px {{ $rowGrey }} !important;
     @endif
   }
-  .prod-name { font-weight: 700; color: #111; font-size: 11px; }
+  .prod-name { font-weight: bold; color: #111; font-size: 11px; }
   .prod-note { margin-top: 3px; color: #444; font-size: 9.5px; line-height: 1.45; word-wrap: break-word; }
   .bottom { width: 100%; border-collapse: collapse; margin-top: 14px; }
   .bottom > td { vertical-align: top; border: none; padding: 0; }
@@ -557,8 +576,8 @@
     margin-top: 12px;
   }
   .bank-title {
-    color: {{ $brandRed }} !important;
-    font-weight: 800;
+    color: {{ $textBlack }} !important;
+    font-weight: bold;
     font-size: 13px;
     margin: 0 0 8px 0;
     letter-spacing: 0.2px;
@@ -570,7 +589,7 @@
   }
   .bank-lines .bank-line {
     margin: 0 0 4px 0;
-    font-weight: 600;
+    font-weight: bold;
   }
   .sign-block {
     margin-top: 18px;
@@ -579,18 +598,18 @@
     color: #111;
   }
   .sys-note {
-    font-weight: 700;
+    font-weight: bold;
     font-size: 11px;
     margin: 0 0 8px 0;
     color: #111;
   }
   .sign-line {
     margin: 0 0 3px 0;
-    font-weight: 500;
+    font-weight: normal;
   }
   .tagline {
     margin-top: 10px;
-    color: {{ $brandRed }} !important;
+    color: {{ $textBlack }} !important;
     font-style: italic;
     font-size: 11px;
   }
@@ -618,24 +637,24 @@
     box-shadow: inset 0 0 0 1000px {{ $rowGrey }} !important;
     @endif
   }
-  .totals td.lbl { text-align: left; font-weight: 800; width: 55%; }
-  .totals td.val { text-align: right; white-space: nowrap; font-weight: 800; }
+  .totals td.lbl { text-align: left; font-weight: bold; width: 55%; }
+  .totals td.val { text-align: right; white-space: nowrap; font-weight: bold; }
   .totals tr.grand td {
     background-color: {{ $brandRed }} !important;
     background: {{ $brandRed }} !important;
     @if($embedFooter)
     box-shadow: inset 0 0 0 1000px {{ $brandRed }} !important;
     @endif
-    color: #ffffff !important;
-    font-weight: 800;
+    color: {{ $brandRedText }} !important;
+    font-weight: bold;
     font-size: 12px;
     padding: 9px 10px;
   }
-  .terms-title { color: {{ $brandRed }} !important; font-weight: 800; font-size: 13px; margin: 0 0 6px 0; }
+  .terms-title { color: {{ $textBlack }} !important; font-weight: bold; font-size: 13px; margin: 0 0 6px 0; }
   .terms-list { margin: 0; padding-left: 16px; font-size: 11px; line-height: 1.65; color: #111; }
   .terms-list li { margin: 0 0 4px 0; }
   .quote-meta { margin-top: 8px; font-size: 11px; line-height: 1.65; }
-  .quote-meta .lbl { font-weight: 700; }
+  .quote-meta .lbl { font-weight: bold; }
   .meta-under-total {
     width: 42%;
     margin-left: auto;
@@ -651,7 +670,7 @@
   .option-title {
     color: {{ $brandRed }} !important;
     font-size: 18px;
-    font-weight: 800;
+    font-weight: bold;
     letter-spacing: 0.5px;
     margin: 4px 0 8px 0;
     text-transform: uppercase;
@@ -668,7 +687,7 @@
     margin-right: 0;
   }
   .due-meta { margin-top: 10px; font-size: 11px; line-height: 1.65; }
-  .due-meta .lbl { font-weight: 700; }
+  .due-meta .lbl { font-weight: bold; }
   .page-break-before {
     page-break-before: always;
     break-before: page;
@@ -682,8 +701,8 @@
     margin-bottom: {{ $sp(16) }};
   }
   .additional-terms-page-title {
-    color: {{ $brandRed }} !important;
-    font-weight: 800;
+    color: {{ $textBlack }} !important;
+    font-weight: bold;
     font-size: {{ $fs(16) }};
     margin: 0 0 {{ $sp(4) }} 0;
     letter-spacing: 0.3px;
@@ -702,8 +721,8 @@
     page-break-inside: avoid;
   }
   .additional-section-title {
-    color: {{ $brandRed }} !important;
-    font-weight: 800;
+    color: {{ $textBlack }} !important;
+    font-weight: bold;
     font-size: {{ $fs(11.5) }};
     margin: 0 0 {{ $sp(8) }} 0;
     text-transform: uppercase;
@@ -823,8 +842,16 @@
 </style>
 </head>
 <body>
+@if(! $embedFooter)
+<htmlpagefooter name="attractfooter">
+@include('sale_pos.receipts.partials.attract_pdf_footer', [
+    'document_title' => $docTitle,
+    'document_brand' => $documentBrand,
+])
+</htmlpagefooter>
+@endif
 <div class="sheet">
-  @if($isPaid)
+  @if($isPaid && $embedFooter)
     <div class="paid-watermark">PAID</div>
   @endif
 
@@ -834,9 +861,15 @@
         <td style="width:52%;">
           <div class="logo-wrap">
             @if($logoSrc)
-              <img src="{{ $logoSrc }}" alt="{{ $isSafetySign ? 'safetysign.lk' : 'printworks.lk' }}">
+              <img
+                src="{{ $logoSrc }}"
+                width="{{ $logoDisplayWidthMm }}mm"
+                height="{{ $logoDisplayHeightMm }}mm"
+                style="width:{{ $logoDisplayWidthMm }}mm;height:{{ $logoDisplayHeightMm }}mm;"
+                alt="{{ $isSafetySign ? 'safetysign.lk' : 'printworks.lk' }}"
+              >
             @else
-              <div style="font-size:28px;font-weight:800;color:#111;">{{ $brandFallbackName }}<span style="color:{{ $brandRed }};">{{ $brandFallbackAccent }}</span></div>
+              <div style="font-size:28px;font-weight:bold;color:#111;">{{ $brandFallbackName }}<span style="color:#111;">{{ $brandFallbackAccent }}</span></div>
               <div style="font-size:10px;color:#666;">{{ $brandFallbackSub }}</div>
             @endif
           </div>
@@ -851,16 +884,17 @@
               <td class="val">{{ $invNo !== '' ? $invNo : '—' }}</td>
             </tr>
             <tr>
-              <td class="lbl" colspan="3" style="padding-top:4px;">
-                @if($dayName !== '')
-                  <span class="day">{{ $dayName }}</span>
+              <td class="lbl">Date</td>
+              <td class="sep">:</td>
+              <td class="val">
+                @if($dayName !== '' && $dateDisplay !== '')
+                  {{ $dayName }}, {{ $dateDisplay }}
+                @elseif($dateDisplay !== '')
+                  {{ $dateDisplay }}
                 @else
-                  Date
+                  —
                 @endif
               </td>
-            </tr>
-            <tr>
-              <td class="val" colspan="3" style="padding-bottom:3px;">{{ $dateDisplay !== '' ? $dateDisplay : '—' }}</td>
             </tr>
             @if(! $isQuotation)
             <tr>
@@ -980,14 +1014,12 @@
           @if($loop->last)
           <table class="totals" cellspacing="0" cellpadding="0" style="border-spacing:0;margin-top:6px;">
             <tr>
-              <td colspan="2" style="background:transparent !important;background-color:transparent !important;box-shadow:none !important;padding:6px 2px 0 2px;border:none;font-weight:400;">
+              <td colspan="2" style="background:transparent !important;background-color:transparent !important;box-shadow:none !important;padding:6px 2px 0 2px;border:none;font-weight:normal;">
                 <div class="quote-meta" style="margin-top:0;">
                   <div><span class="lbl">Valid till</span> : {{ $validTillDisplay }}</div>
                   <div><span class="lbl">Prepared by</span> : {{ $preparedByName }}</div>
-                  @if($embedFooter)
-                    <div class="sys-note" style="margin-top:8px;">System generated Quotation. No signature required.</div>
-                    <div class="tagline">{{ $quoteTagline }}</div>
-                  @endif
+                  <div class="sys-note" style="margin-top:8px;">System generated Quotation. No signature required.</div>
+                  <div class="tagline">{{ $quoteTagline }}</div>
                 </div>
               </td>
             </tr>
@@ -1080,17 +1112,19 @@
               <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $discountShow }}</td>
             </tr>
             @endif
-            {{-- Invoice / Proforma: Advance only when money was actually received --}}
+            {{-- Advance only when a payment was recorded; Balance Due only when remaining > 0 --}}
             @if($hasAdvancePayment)
             <tr>
-              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Advance Payment</td>
+              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $paymentAmountLabel }}</td>
               <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $advanceShow }}</td>
             </tr>
             @endif
+            @if($showDocumentBalanceDue)
             <tr class="grand">
-              <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Grand Total</td>
-              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">{{ $receipt_details->total ?? ($currencySym.' 0.00') }}</td>
+              <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Balance Due</td>
+              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">{{ $documentBalanceDue }}</td>
             </tr>
+            @endif
           </table>
           <div class="due-meta" style="margin-top:8px;">
             {{-- Invoice only: due date + payment status (Paid / Partial / Due) --}}
@@ -1102,16 +1136,14 @@
               @endif
             @endif
             <div><span class="lbl">Prepared by</span> : {{ $preparedByName }}</div>
-            @if($embedFooter)
-              <div class="sys-note" style="margin-top:8px;">
-                @if($isProforma)
-                  System generated Proforma Invoice. No signature required.
-                @else
-                  System-generated invoice. No signature required.
-                @endif
-              </div>
-              <div class="tagline">{{ $invoiceTagline }}</div>
-            @endif
+            <div class="sys-note" style="margin-top:8px;">
+              @if($isProforma)
+                System generated Proforma Invoice. No signature required.
+              @else
+                System-generated invoice. No signature required.
+              @endif
+            </div>
+            <div class="tagline">{{ $invoiceTagline }}</div>
           </div>
       </td>
     </tr>

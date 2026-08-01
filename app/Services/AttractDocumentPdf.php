@@ -23,12 +23,12 @@ class AttractDocumentPdf
 
             $isQuotation = ! empty($receipt_details->is_quotation);
             $isProforma = ! empty($receipt_details->is_proforma) || ($receipt_details->sub_status ?? '') === 'proforma';
-            if ($isQuotation) {
-                $document_title = 'QUOTATION';
-                $blade = 'download_quotation_pdf';
-            } elseif ($isProforma) {
+            if ($isProforma) {
                 $document_title = 'PROFORMA INVOICE';
                 $blade = 'download_proforma_pdf';
+            } elseif ($isQuotation) {
+                $document_title = 'QUOTATION';
+                $blade = 'download_quotation_pdf';
             } else {
                 $document_title = 'INVOICE';
                 $blade = 'download_pdf';
@@ -40,9 +40,9 @@ class AttractDocumentPdf
 
             $mpdf = $this->makeMpdf($document_title, (string) ($receipt_details->document_brand ?? 'printworks'));
             $this->applyPaidWatermark($mpdf, $receipt_details);
-            $filename = $this->buildFilename(
+            $filename = $this->buildFilenameFromReceipt(
+                $receipt_details,
                 $document_title,
-                $receipt_details->invoice_no ?? null,
                 $transactionId
             );
             $mpdf->SetTitle($filename);
@@ -64,20 +64,46 @@ class AttractDocumentPdf
     }
 
     /**
-     * TYPE_DOCNO_DDMMYYYY.pdf — same naming as browser PDF download.
+     * Brand_TYPE_number_ClientName.pdf
+     * e.g. Safetysign_QTN_655_mr_Dinuja_Dulsara.pdf
+     *      Printworks_INV_825_Walk_In_Customer.pdf
      */
-    private function buildFilename(string $documentTitle, $docNo, $fallbackId = null): string
+    public function buildFilenameFromReceipt($receipt_details, string $documentTitle, $fallbackId = null): string
     {
-        $type = strtoupper(preg_replace('/[^A-Za-z0-9]+/', '_', trim($documentTitle)) ?: 'DOCUMENT');
-        $type = trim($type, '_');
+        $brand = strtolower(trim((string) ($receipt_details->document_brand ?? 'printworks')));
+        $brandLabel = $brand === 'safetysign' ? 'Safetysign' : 'Printworks';
 
-        $no = preg_replace('/[^A-Za-z0-9]+/', '_', trim((string) ($docNo ?? '')));
+        $title = strtoupper(trim($documentTitle));
+        if (str_contains($title, 'QUOT')) {
+            $type = 'QTN';
+        } elseif (str_contains($title, 'PROFORMA') || $title === 'PRO') {
+            $type = 'PRO';
+        } else {
+            $type = 'INV';
+        }
+
+        $rawNo = trim((string) ($receipt_details->invoice_no ?? ''));
+        $no = preg_replace('/^(QTN|INV|PROFORMA|PRO|PI|QUOTATION|INVOICE)[\s\-_]*/i', '', $rawNo);
+        $no = preg_replace('/[^A-Za-z0-9]+/', '_', trim((string) $no));
         $no = trim((string) $no, '_');
         if ($no === '') {
             $no = (string) ($fallbackId ?: 'DOC');
         }
 
-        return $type.'_'.$no.'_'.now()->format('dmY').'.pdf';
+        $client = trim((string) (
+            $receipt_details->customer_name
+            ?? $receipt_details->contact_name
+            ?? 'Customer'
+        ));
+        // Keep letters/numbers/spaces/hyphen; collapse spaces to underscores
+        $client = preg_replace('/[^\p{L}\p{N}\s\-]+/u', '', $client);
+        $client = preg_replace('/[\s\-]+/', '_', trim((string) $client));
+        $client = trim((string) $client, '_');
+        if ($client === '') {
+            $client = 'Customer';
+        }
+
+        return $brandLabel.'_'.$type.'_'.$no.'_'.$client.'.pdf';
     }
 
     public function makeMpdf(string $document_title, string $document_brand = 'printworks'): \Mpdf\Mpdf
@@ -112,7 +138,11 @@ class AttractDocumentPdf
             $footerImgHmm = min(60, max(24, $footerImgHmm));
         }
 
-        $marginBottom = $footerImgHmm + 16;
+        // The named HTML footer is anchored to the physical page bottom.
+
+        $marginFooter = 0;
+        // Same reserve as the browser preview ($footerReserveMm in attract_pdf_layout)
+        $marginBottom = $footerImgHmm + 10;
 
         $mpdf = new \Mpdf\Mpdf([
             'tempDir' => public_path('uploads/temp'),
@@ -125,13 +155,14 @@ class AttractDocumentPdf
             'margin_bottom' => $marginBottom,
             'margin_left' => 0,
             'margin_right' => 0,
-            'margin_footer' => 0,
+            'margin_footer' => $marginFooter,
             'format' => 'A4',
+            // Arial-metric font so the PDF matches the browser preview character for character
+            'default_font' => 'freesans',
         ]);
 
         $mpdf->useSubstitutions = true;
         $mpdf->SetAutoPageBreak(true, $marginBottom);
-        $mpdf->setAutoBottomMargin = 'stretch';
 
         $footerHtml = view('sale_pos.receipts.partials.attract_pdf_footer', [
             'document_title' => $document_title,
@@ -164,7 +195,7 @@ class AttractDocumentPdf
         }
 
         $mpdf->SetWatermarkText('PAID', 0.15);
-        $mpdf->watermark_font = 'DejaVuSansCondensed';
+        $mpdf->watermark_font = 'FreeSans';
         $mpdf->showWatermarkText = true;
         $mpdf->watermarkTextAlpha = 0.15;
     }

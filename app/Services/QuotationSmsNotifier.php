@@ -232,14 +232,29 @@ class QuotationSmsNotifier
         int $businessId,
         string $docType
     ): bool {
-        $smsSettings = $this->resolveSmsSettings($business, (string) ($transaction->document_brand ?? 'printworks'));
-        if ($smsSettings['sms_service'] === 'textlk' && empty($smsSettings['textlk_api_key'])) {
-            Log::warning('DocumentNotify: TextLK API key not configured', ['business_id' => $business->id]);
+        $documentBrand = strtolower(trim((string) ($transaction->document_brand ?? 'printworks')));
+        $smsSettings = $this->resolveSmsSettings($business, $documentBrand);
+
+        if (($smsSettings['sms_service'] ?? '') === 'textlk' && empty($smsSettings['textlk_api_key'])) {
+            Log::warning('DocumentNotify: TextLK API key not configured', [
+                'business_id' => $business->id,
+                'document_brand' => $documentBrand,
+                'transaction_id' => $transaction->id,
+            ]);
 
             return false;
         }
 
         try {
+            Log::info('DocumentNotify: sending SMS', [
+                'transaction_id' => $transaction->id,
+                'document_brand' => $documentBrand,
+                'doc_type' => $docType,
+                'sender_id' => $smsSettings['textlk_sender_id'] ?? null,
+                'api_key_prefix' => substr((string) ($smsSettings['textlk_api_key'] ?? ''), 0, 8),
+                'phone' => $mobile,
+            ]);
+
             $this->util->sendSms([
                 'mobile_number' => $mobile,
                 'sms_body' => $message,
@@ -250,7 +265,11 @@ class QuotationSmsNotifier
                 $transaction,
                 $docType.'_sms_sent',
                 null,
-                ['phone' => $mobile],
+                [
+                    'phone' => $mobile,
+                    'document_brand' => $documentBrand,
+                    'sender_id' => $smsSettings['textlk_sender_id'] ?? null,
+                ],
                 false,
                 $businessId
             );
@@ -259,7 +278,9 @@ class QuotationSmsNotifier
         } catch (\Throwable $e) {
             Log::error('DocumentNotify: SMS failed', [
                 'transaction_id' => $transaction->id,
+                'document_brand' => $documentBrand,
                 'phone' => $mobile,
+                'sender_id' => $smsSettings['textlk_sender_id'] ?? null,
                 'message' => $e->getMessage(),
             ]);
 
@@ -306,35 +327,54 @@ class QuotationSmsNotifier
         $settings = is_array($business->sms_settings ?? null) ? $business->sms_settings : [];
         $documentBrand = strtolower(trim($documentBrand));
         $isSafetySign = $documentBrand === 'safetysign';
+        $gatewayKey = $isSafetySign ? 'safetysign' : 'printworks';
+        $gateway = (array) config('sms.'.$gatewayKey, []);
 
-        $envKey = $isSafetySign
-            ? env('SAFETYSIGN_TEXTLK_API_KEY')
-            : env('TEXTLK_API_KEY');
-        $envDriver = env('SMS_DRIVER', 'textlk');
-        $senderFallback = $isSafetySign ? 'Safety Sign' : 'PrintWorks';
-        $envSenderId = $isSafetySign
-            ? env('SAFETYSIGN_TEXTLK_SENDER_ID', $settings['textlk_sender_id'] ?? $senderFallback)
-            : env('TEXTLK_SENDER_ID', $settings['textlk_sender_id'] ?? $senderFallback);
-        $envUrl = $isSafetySign
-            ? env('SAFETYSIGN_TEXTLK_URL', env('TEXTLK_URL', $settings['textlk_url'] ?? 'https://app.text.lk/api/v3/sms/send'))
-            : env('TEXTLK_URL', $settings['textlk_url'] ?? 'https://app.text.lk/api/v3/sms/send');
+        $apiKey = trim((string) ($gateway['api_key'] ?? ''));
+        $senderId = trim((string) ($gateway['sender_id'] ?? ''));
+        $url = trim((string) ($gateway['url'] ?? 'https://app.text.lk/api/v3/sms/send'));
+        $driver = (string) config('sms.driver', env('SMS_DRIVER', 'textlk'));
 
-        if (! empty($envKey)) {
+        // Safety Sign docs must never silently fall back to PrintWorks SMS credentials.
+        if ($isSafetySign) {
+            if ($apiKey === '' || $senderId === '') {
+                Log::warning('DocumentNotify: Safety Sign TextLK credentials missing', [
+                    'has_api_key' => $apiKey !== '',
+                    'has_sender_id' => $senderId !== '',
+                ]);
+
+                return array_merge($settings, [
+                    'sms_service' => 'textlk',
+                    'textlk_api_key' => null,
+                    'textlk_sender_id' => $senderId !== '' ? $senderId : null,
+                    'textlk_url' => $url,
+                ]);
+            }
+
             return array_merge($settings, [
                 'sms_service' => 'textlk',
-                'textlk_api_key' => $envKey,
-                'textlk_sender_id' => $envSenderId,
-                'textlk_url' => $envUrl,
+                'textlk_api_key' => $apiKey,
+                'textlk_sender_id' => $senderId,
+                'textlk_url' => $url !== '' ? $url : 'https://app.text.lk/api/v3/sms/send',
             ]);
         }
 
-        $service = $settings['sms_service'] ?? $envDriver;
+        if ($apiKey !== '') {
+            return array_merge($settings, [
+                'sms_service' => 'textlk',
+                'textlk_api_key' => $apiKey,
+                'textlk_sender_id' => $senderId !== '' ? $senderId : ($settings['textlk_sender_id'] ?? 'PrintWorks'),
+                'textlk_url' => $url !== '' ? $url : ($settings['textlk_url'] ?? 'https://app.text.lk/api/v3/sms/send'),
+            ]);
+        }
+
+        $service = $settings['sms_service'] ?? $driver;
 
         return array_merge($settings, [
             'sms_service' => $service,
             'textlk_api_key' => $settings['textlk_api_key'] ?? null,
-            'textlk_sender_id' => $settings['textlk_sender_id'] ?? $envSenderId,
-            'textlk_url' => $settings['textlk_url'] ?? $envUrl,
+            'textlk_sender_id' => $settings['textlk_sender_id'] ?? ($senderId !== '' ? $senderId : 'PrintWorks'),
+            'textlk_url' => $settings['textlk_url'] ?? ($url !== '' ? $url : 'https://app.text.lk/api/v3/sms/send'),
         ]);
     }
 }

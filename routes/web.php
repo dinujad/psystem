@@ -95,6 +95,10 @@ Route::middleware(['setData'])->group(function () {
         ->name('show_invoice');
     Route::get('/quote/{token}', [SellPosController::class, 'showInvoice'])
         ->name('show_quote');
+    Route::get('/invoice/{token}/download', [SellPosController::class, 'downloadPdfByToken'])
+        ->name('download_invoice_pdf');
+    Route::get('/quote/{token}/download', [SellPosController::class, 'downloadPdfByToken'])
+        ->name('download_quote_pdf');
 
     Route::get('/pay/{token}', [SellPosController::class, 'invoicePayment'])
         ->name('invoice_payment');

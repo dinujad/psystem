@@ -477,11 +477,29 @@ class Util
     {
         $sms_settings = $data['sms_settings'];
 
-        $api_key = $sms_settings['textlk_api_key'] ?? env('TEXTLK_API_KEY');
-        $sender_id = $sms_settings['textlk_sender_id'] ?? env('TEXTLK_SENDER_ID');
-        $url = $sms_settings['textlk_url'] ?? env('TEXTLK_URL', 'https://app.text.lk/api/v3/sms/send');
+        // Prefer explicit settings passed by caller (PrintWorks vs Safety Sign).
+        // Do not silently swap to the other brand's env credentials.
+        $api_key = $sms_settings['textlk_api_key'] ?? null;
+        $sender_id = $sms_settings['textlk_sender_id'] ?? null;
+        $url = $sms_settings['textlk_url'] ?? null;
+
+        if (empty($api_key)) {
+            $api_key = env('TEXTLK_API_KEY');
+        }
+        if (empty($sender_id)) {
+            $sender_id = env('TEXTLK_SENDER_ID');
+        }
+        if (empty($url)) {
+            $url = env('TEXTLK_URL', 'https://app.text.lk/api/v3/sms/send');
+        }
 
         if (empty($api_key) || empty($sender_id) || empty($url)) {
+            \Log::warning('TextLK SMS skipped: missing api_key/sender_id/url', [
+                'has_api_key' => ! empty($api_key),
+                'sender_id' => $sender_id,
+                'url' => $url,
+            ]);
+
             return false;
         }
 

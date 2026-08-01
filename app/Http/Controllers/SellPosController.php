@@ -825,10 +825,10 @@ class SellPosController extends Controller
             $output['data'] = $receipt_details;
         } else {
             // Always use PrintWorks branded A4 layout (letterhead + footer) for browser print
-            if (! empty($receipt_details->is_quotation)) {
-                $document_title = 'QUOTATION';
-            } elseif (! empty($receipt_details->is_proforma) || ($receipt_details->sub_status ?? '') === 'proforma') {
+            if (! empty($receipt_details->is_proforma) || ($receipt_details->sub_status ?? '') === 'proforma') {
                 $document_title = 'PROFORMA INVOICE';
+            } elseif (! empty($receipt_details->is_quotation)) {
+                $document_title = 'QUOTATION';
             } else {
                 $document_title = 'INVOICE';
             }
@@ -2021,9 +2021,12 @@ class SellPosController extends Controller
             }
 
             $title = $transaction->business->name . ' | ' . $transaction->invoice_no;
+            $download_url = (int) ($transaction->is_quotation ?? 0) === 1
+                ? route('download_quote_pdf', ['token' => $transaction->invoice_token])
+                : route('download_invoice_pdf', ['token' => $transaction->invoice_token]);
 
             return view('sale_pos.partials.show_invoice')
-                ->with(compact('receipt', 'title', 'payment_link'));
+                ->with(compact('receipt', 'title', 'payment_link', 'download_url', 'transaction'));
         } else {
             exit(__('messages.something_went_wrong'));
         }
@@ -3052,7 +3055,11 @@ class SellPosController extends Controller
             $footerImgHmm = min(60, max(24, $footerImgHmm));
         }
 
-        $marginBottom = $footerImgHmm + 16;
+        // The named HTML footer is anchored to the physical page bottom.
+
+        $marginFooter = 0;
+        // Same reserve as the browser preview ($footerReserveMm in attract_pdf_layout)
+        $marginBottom = $footerImgHmm + 10;
 
         if (! is_dir(public_path('uploads/temp'))) {
             @mkdir(public_path('uploads/temp'), 0775, true);
@@ -3069,13 +3076,14 @@ class SellPosController extends Controller
             'margin_bottom' => $marginBottom,
             'margin_left' => 0,
             'margin_right' => 0,
-            'margin_footer' => 0,
+            'margin_footer' => $marginFooter,
             'format' => 'A4',
+            // Arial-metric font so the PDF matches the browser preview character for character
+            'default_font' => 'freesans',
         ]);
 
         $mpdf->useSubstitutions = true;
         $mpdf->SetAutoPageBreak(true, $marginBottom);
-        $mpdf->setAutoBottomMargin = 'stretch';
 
         $footerHtml = view('sale_pos.receipts.partials.attract_pdf_footer', [
             'document_title' => $document_title,
@@ -3108,29 +3116,19 @@ class SellPosController extends Controller
         }
 
         $mpdf->SetWatermarkText('PAID', 0.15);
-        $mpdf->watermark_font = 'DejaVuSansCondensed';
+        $mpdf->watermark_font = 'FreeSans';
         $mpdf->showWatermarkText = true;
         $mpdf->watermarkTextAlpha = 0.15;
     }
 
     /**
-     * PDF download name: TYPE_DOCNO_DDMMYYYY.pdf
-     * Example: INVOICE_0003_14072026.pdf
+     * Brand_TYPE_number_ClientName.pdf
+     * e.g. Safetysign_QTN_655_Client.pdf / Printworks_INV_825_Client.pdf
      */
-    private function buildAttractPdfFilename(string $documentTitle, $docNo, $fallbackId = null): string
+    private function buildAttractPdfFilename($receipt_details, string $documentTitle, $fallbackId = null): string
     {
-        $type = strtoupper(preg_replace('/[^A-Za-z0-9]+/', '_', trim($documentTitle)) ?: 'DOCUMENT');
-        $type = trim($type, '_');
-
-        $no = preg_replace('/[^A-Za-z0-9]+/', '_', trim((string) ($docNo ?? '')));
-        $no = trim((string) $no, '_');
-        if ($no === '') {
-            $no = (string) ($fallbackId ?: 'DOC');
-        }
-
-        $date = now()->format('dmY'); // today in numbers DDMMYYYY
-
-        return $type.'_'.$no.'_'.$date.'.pdf';
+        return app(\App\Services\AttractDocumentPdf::class)
+            ->buildFilenameFromReceipt($receipt_details, $documentTitle, $fallbackId);
     }
 
     private function pdfDownloadResponse(string $binary, string $filename)
@@ -3203,8 +3201,8 @@ class SellPosController extends Controller
             }
 
             $filename = $this->buildAttractPdfFilename(
+                $receipt_details,
                 $document_title,
-                $receipt_details->invoice_no ?? null,
                 $id
             );
             $mpdf->SetTitle($filename);
@@ -3251,14 +3249,38 @@ class SellPosController extends Controller
         );
 
         $filename = $this->buildAttractPdfFilename(
+            $receipt_details,
             $document_title,
-            $receipt_details->invoice_no ?? null,
             $id
         );
         $mpdf->SetTitle($filename);
         $mpdf->WriteHTML($body);
 
         return $this->pdfDownloadResponse($mpdf->Output($filename, 'S'), $filename);
+    }
+
+    /**
+     * Guest / preview download by invoice token (correct branded filename).
+     */
+    public function downloadPdfByToken(string $token)
+    {
+        if (! config('constants.enable_download_pdf')) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $transaction = Transaction::where('invoice_token', $token)->first();
+        if (empty($transaction)) {
+            abort(404, 'Document not found.');
+        }
+
+        $pdf = app(\App\Services\AttractDocumentPdf::class)
+            ->render((int) $transaction->business_id, (int) $transaction->id);
+
+        if (empty($pdf)) {
+            abort(500, 'PDF could not be generated.');
+        }
+
+        return $this->pdfDownloadResponse($pdf['binary'], $pdf['filename']);
     }
 
     /**

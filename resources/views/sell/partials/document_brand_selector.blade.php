@@ -33,11 +33,13 @@
 	cursor: pointer; margin: 0;
 }
 .doc-brand-opt input { margin: 0; }
+.doc-brand-opt input[value="printworks"] { accent-color: #E31E24; }
+.doc-brand-opt input[value="safetysign"] { accent-color: #F9A810; }
 .doc-brand-opt.active-pw {
 	border-color: #E31E24; background: #fff5f5; color: #991b1b;
 }
 .doc-brand-opt.active-ss {
-	border-color: #111827; background: #f3f4f6; color: #111827;
+	border-color: #F9A810; background: #fff7e6; color: #111827;
 }
 .doc-brand-hint { font-size: 11px; color: #6b7280; margin-left: auto; }
 </style>

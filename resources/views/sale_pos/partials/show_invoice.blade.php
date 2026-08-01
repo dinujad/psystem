@@ -13,6 +13,11 @@
             <button type="button" class="tw-dw-btn tw-dw-btn-primary tw-text-white no-print tw-dw-btn-sm" id="print_invoice" 
                  aria-label="Print"><i class="fas fa-print"></i> @lang( 'messages.print' )
             </button>
+            @if(!empty($download_url) && config('constants.enable_download_pdf'))
+                <a href="{{ $download_url }}" class="tw-dw-btn tw-dw-btn-accent tw-text-white no-print tw-dw-btn-sm" style="margin-left:8px;" download>
+                    <i class="fas fa-download"></i> @lang('lang_v1.download_pdf')
+                </a>
+            @endif
             @auth
                 <a href="{{action([\App\Http\Controllers\SellController::class, 'index'])}}" class="tw-dw-btn tw-dw-btn-success tw-text-white no-print tw-dw-btn-sm" ><i class="fas fa-backward"></i>
                 </a>

@@ -116,6 +116,7 @@ class SellController extends Controller
                 'only_shipments' => request()->input('only_shipments'),
                 'shipping_status' => request()->input('shipping_status'),
                 'source' => request()->input('source'),
+                'document_brand' => request()->input('document_brand'),
                 'crm_is_order_request' => request()->input('crm_is_order_request'),
                 'only_subscriptions' => request()->input('only_subscriptions'),
                 'res_waiter_id' => request()->input('res_waiter_id'),
@@ -552,15 +553,25 @@ class SellController extends Controller
         $shipping_statuses = $this->transactionUtil->shipping_statuses();
 
         $sources = $this->transactionUtil->getSources($business_id);
+        // Always offer Sales Channel options used on quotations/invoices
+        $sources = array_merge([
+            'Web' => 'Web',
+            'Direct' => 'Direct',
+        ], $sources);
         if ($is_woocommerce) {
             $sources['woocommerce'] = 'Woocommerce';
         }
+
+        $document_brands = [
+            'printworks' => 'Printworks',
+            'safetysign' => 'Safety Sign',
+        ];
 
         $payment_types = $this->transactionUtil->payment_types(null, true, $business_id);
 
 
         return view('sell.index')
-        ->with(compact('business_locations', 'customers', 'is_woocommerce', 'sales_representative', 'is_cmsn_agent_enabled', 'commission_agents', 'service_staffs', 'is_tables_enabled', 'is_service_staff_enabled', 'is_types_service_enabled', 'shipping_statuses', 'sources', 'payment_types'));
+        ->with(compact('business_locations', 'customers', 'is_woocommerce', 'sales_representative', 'is_cmsn_agent_enabled', 'commission_agents', 'service_staffs', 'is_tables_enabled', 'is_service_staff_enabled', 'is_types_service_enabled', 'shipping_statuses', 'sources', 'document_brands', 'payment_types'));
     }
 
     /**
@@ -1186,8 +1197,17 @@ class SellController extends Controller
 
         $sales_representative = User::forDropdown($business_id, false, false, true);
 
+        $sources = [
+            'Web' => 'Web',
+            'Direct' => 'Direct',
+        ];
+        $document_brands = [
+            'printworks' => 'Printworks',
+            'safetysign' => 'Safety Sign',
+        ];
+
         return view('sale_pos.quotations')
-                ->with(compact('business_locations', 'customers', 'sales_representative'));
+                ->with(compact('business_locations', 'customers', 'sales_representative', 'sources', 'document_brands'));
     }
 
     /**
@@ -1214,8 +1234,17 @@ class SellController extends Controller
 
         $sales_representative = User::forDropdown($business_id, false, false, true);
 
+        $sources = [
+            'Web' => 'Web',
+            'Direct' => 'Direct',
+        ];
+        $document_brands = [
+            'printworks' => 'Printworks',
+            'safetysign' => 'Safety Sign',
+        ];
+
         return view('sale_pos.proformas')
-            ->with(compact('business_locations', 'customers', 'sales_representative'));
+            ->with(compact('business_locations', 'customers', 'sales_representative', 'sources', 'document_brands'));
     }
 
     /**
@@ -1320,6 +1349,29 @@ class SellController extends Controller
             if (! empty(request()->customer_id)) {
                 $customer_id = request()->customer_id;
                 $sells->where('contacts.id', $customer_id);
+            }
+
+            if (! empty(request()->input('source'))) {
+                if (request()->input('source') == 'woocommerce') {
+                    $sells->whereNotNull('transactions.woocommerce_order_id');
+                } else {
+                    $sells->where('transactions.source', request()->input('source'));
+                }
+            }
+
+            if (! empty(request()->input('document_brand'))) {
+                $documentBrand = strtolower(trim((string) request()->input('document_brand')));
+                if (in_array($documentBrand, ['printworks', 'safetysign'], true)) {
+                    if ($documentBrand === 'printworks') {
+                        $sells->where(function ($q) {
+                            $q->where('transactions.document_brand', 'printworks')
+                                ->orWhereNull('transactions.document_brand')
+                                ->orWhere('transactions.document_brand', '');
+                        });
+                    } else {
+                        $sells->where('transactions.document_brand', 'safetysign');
+                    }
+                }
             }
 
             if ($is_woocommerce) {
@@ -1832,12 +1884,28 @@ class SellController extends Controller
             }
         }
 
-        // Source
+        // Source / Sales Channel
         if (! empty(request()->input('source'))) {
             if (request()->input('source') == 'woocommerce') {
                 $query->whereNotNull('transactions.woocommerce_order_id');
             } else {
                 $query->where('transactions.source', request()->input('source'));
+            }
+        }
+
+        // Document brand (Printworks / Safety Sign)
+        if (! empty(request()->input('document_brand'))) {
+            $documentBrand = strtolower(trim((string) request()->input('document_brand')));
+            if (in_array($documentBrand, ['printworks', 'safetysign'], true)) {
+                if ($documentBrand === 'printworks') {
+                    $query->where(function ($q) {
+                        $q->where('transactions.document_brand', 'printworks')
+                            ->orWhereNull('transactions.document_brand')
+                            ->orWhere('transactions.document_brand', '');
+                    });
+                } else {
+                    $query->where('transactions.document_brand', 'safetysign');
+                }
             }
         }
 

@@ -38,6 +38,7 @@
                 {!! Form::select('created_by', $sales_representative, null, ['class' => 'form-control select2', 'style' => 'width:100%']); !!}
             </div>
         </div>
+        @include('sell.partials.document_list_brand_filters')
     @endcomponent
     @component('components.widget', ['class' => 'box-primary'])
         @slot('tool')
@@ -114,6 +115,12 @@ $(document).ready( function(){
                 if($('#created_by').length) {
                     d.created_by = $('#created_by').val();
                 }
+                if ($('#sell_list_filter_source').length) {
+                    d.source = $('#sell_list_filter_source').val();
+                }
+                if ($('#sell_list_filter_document_brand').length) {
+                    d.document_brand = $('#sell_list_filter_document_brand').val();
+                }
             }
         },
         columnDefs: [ {
@@ -136,7 +143,7 @@ $(document).ready( function(){
         }
     });
     
-    $(document).on('change', '#sell_list_filter_location_id, #sell_list_filter_customer_id, #created_by',  function() {
+    $(document).on('change', '#sell_list_filter_location_id, #sell_list_filter_customer_id, #created_by, #sell_list_filter_source, #sell_list_filter_document_brand',  function() {
         sell_table.ajax.reload();
     });
 });

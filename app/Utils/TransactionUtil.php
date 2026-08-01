@@ -2055,6 +2055,32 @@ class TransactionUtil extends Util
         $output['pay_term_number'] = $transaction->pay_term_number ?? null;
         $output['pay_term_type'] = $transaction->pay_term_type ?? null;
 
+        // Branded PDF header "Balance Due" = customer's outstanding from earlier
+        // final sales — never this document's own remaining amount.
+        // Works for invoice + proforma even when invoice-layout toggle is off.
+        if (
+            $transaction_type === 'sell'
+            && ! empty($transaction->contact_id)
+            && (int) ($transaction->is_quotation ?? 0) !== 1
+        ) {
+            $all_due = (float) $this->getContactDue($transaction->contact_id, $transaction->business_id);
+            if ($transaction->status === 'final') {
+                $paid_amount = (float) $this->getTotalPaid($transaction->id);
+                $current_due = (float) $transaction->final_total - $paid_amount;
+                $previous_due = $all_due - $current_due;
+            } else {
+                // Draft / proforma are not in getContactDue (final only), so all_due
+                // is already the prior outstanding.
+                $previous_due = $all_due;
+            }
+            if ($previous_due < 0) {
+                $previous_due = 0;
+            }
+            $output['total_previous_due'] = ($previous_due == 0)
+                ? 0
+                : $this->num_f($previous_due, true, $business_details);
+        }
+
         // Always expose due_date for Attract invoice PDF (even if layout setting hides it)
         if (empty($output['due_date']) && ! empty($transaction->due_date)) {
             try {
@@ -6528,12 +6554,13 @@ class TransactionUtil extends Util
         //Get business location details
         $location_details = BusinessLocation::find($transaction->location_id);
 
-        //Get invoice layout
-        $invoice_layout_id = $location_details->invoice_layout_id;
+        // Match the browser preview exactly: same layout resolution and browser rendering
+        $invoice_layout_id = ! empty($transaction->is_direct_sale) && ! empty($location_details->sale_invoice_layout_id)
+            ? $location_details->sale_invoice_layout_id
+            : $location_details->invoice_layout_id;
         $invoice_layout = $businessUtil->invoiceLayout($business_id, $invoice_layout_id);
 
-        //Check if printer setting is provided.
-        $receipt_printer_type = $location_details->receipt_printer_type;
+        $receipt_printer_type = 'browser';
 
         //Get receipt details
         $receipt_details = $this->getReceiptDetails($transaction_id, $transaction->location_id, $invoice_layout, $business_details, $location_details, $receipt_printer_type);

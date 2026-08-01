@@ -72,6 +72,7 @@
 
 				@include('sell.partials.document_brand_selector')
 				@include('sell.partials.description_format_selector')
+				@include('sell.partials.sales_channel_selector')
 
 				@if(!empty($price_groups))
 					@if(count($price_groups) > 1)
@@ -251,16 +252,6 @@
 								'placeholder' => 'e.g. QTN 0650',
 							]) !!}
 							<p class="help-block">Invoice PDF එකේ Quote No එකට යනවා.</p>
-						</div>
-					</div>
-					<div class="col-sm-3">
-						<div class="form-group">
-							{!! Form::label('source', 'Sales Channel') !!}
-							{!! Form::text('source', old('source', 'Web'), [
-								'class' => 'form-control',
-								'placeholder' => 'e.g. Web',
-							]) !!}
-							<p class="help-block">Invoice PDF එකේ Sales Channel එකට යනවා.</p>
 						</div>
 					</div>
 					<input type="hidden" name="status" id="status" value="final">

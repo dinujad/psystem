@@ -37,6 +37,7 @@
 			@component('components.widget', ['class' => 'box-solid'])
 				@include('sell.partials.document_brand_selector')
 				@include('sell.partials.description_format_selector')
+				@include('sell.partials.sales_channel_selector')
 				@if(!empty($transaction->selling_price_group_id))
 					<div class="col-md-4 col-sm-6">
 						<div class="form-group">
@@ -187,15 +188,6 @@
 								'placeholder' => 'e.g. QTN 0650',
 							]) !!}
 							<p class="help-block">Invoice PDF එකේ Quote No එකට යනවා.</p>
-						</div>
-					</div>
-					<div class="col-sm-3">
-						<div class="form-group">
-							{!! Form::label('source', 'Sales Channel') !!}
-							{!! Form::text('source', old('source', $transaction->source ?: 'Web'), [
-								'class' => 'form-control',
-								'placeholder' => 'e.g. Web',
-							]) !!}
 						</div>
 					</div>
 				@endif
