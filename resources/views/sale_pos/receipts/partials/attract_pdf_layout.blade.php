@@ -937,6 +937,12 @@
             $optSubUf += (float) ($ol['line_total_uf'] ?? 0);
         }
         $optSubFormatted = $currencySym.' '.number_format($optSubUf, 2);
+        // Grand Total = Sub Total − Total Discount (discount row only on last option)
+        $optGrandUf = $optSubUf;
+        if ($hasDiscount && $loop->last) {
+            $optGrandUf = max(0, $optSubUf - (float) ($discountRaw ?? 0));
+        }
+        $optGrandFormatted = $currencySym.' '.number_format($optGrandUf, 2);
         $optLabel = 'OPTION '.str_pad((string) $optNum, 2, '0', STR_PAD_LEFT);
       @endphp
       <div class="option-block">
@@ -1008,7 +1014,7 @@
             @endif
             <tr class="grand">
               <td class="lbl" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">Grand Total</td>
-              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">{{ $optSubFormatted }}</td>
+              <td class="val" bgcolor="{{ $brandRed }}" style="background-color:{{ $brandRed }} !important;{{ $shadowRed }}color:{{ $brandRedText }} !important;">{{ $optGrandFormatted }}</td>
             </tr>
           </table>
           @if($loop->last)
