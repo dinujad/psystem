@@ -60,6 +60,9 @@ class BusinessUtil extends Util
         ]);
         $pmRole->syncPermissions(['production.manager', 'production.access']);
 
+        // ACCOUNTANT 2 — Accounting module + invoices / quotations / expenses
+        \App\Support\Accountant2Permissions::syncRoleForBusiness((int) $business_id);
+
         $business = Business::findOrFail($business_id);
 
         //Update reference count
