@@ -472,12 +472,7 @@ const HAS_ITEMS = @json($hasItems);
 const EMPLOYEE_NAME = @json($selectedEmp ? ($selectedEmp['name'] ?? 'Employee') : 'Employee');
 const IS_EMPLOYEE_VIEW = @json($personalOnly);
 const CAN_MANAGE = @json($canManage);
-const DAYS_META = @json(collect($days)->map(fn ($d, $num) => [
-    'num' => (int) $num,
-    'label' => $d['label'],
-    'short' => $d['short'],
-    'date' => $d['date']->format('d M'),
-])->values());
+const DAYS_META = @json($daysMeta ?? []);
 
 function toast(msg){
     const t = document.getElementById('etToast');

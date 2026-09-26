@@ -205,11 +205,18 @@ class EmployeeTodoController extends Controller
             ? $allEmployees->firstWhere('id', (int) $employeeId)
             : null;
 
+        $daysMeta = collect($days)->map(fn ($d, $num) => [
+            'num'   => (int) $num,
+            'label' => $d['label'],
+            'short' => $d['short'],
+            'date'  => $d['date']->format('d M'),
+        ])->values()->all();
+
         return view('employee-todos.index', compact(
             'plan', 'weekStart', 'weekEnd', 'prevWeek', 'nextWeek',
             'allEmployees', 'categories', 'allCategories', 'items', 'days', 'dayStats', 'weekStats',
             'canManage', 'employeeId', 'personalOnly', 'templates', 'selectedEmp',
-            'badgeStats', 'myStatus', 'todayItems', 'overdueItems', 'todayDow'
+            'badgeStats', 'myStatus', 'todayItems', 'overdueItems', 'todayDow', 'daysMeta'
         ));
     }
 
