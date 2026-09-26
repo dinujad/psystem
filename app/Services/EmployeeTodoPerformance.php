@@ -246,6 +246,14 @@ class EmployeeTodoPerformance
             $actual = (int) ceil(Carbon::parse($item->started_at)->diffInSeconds(Carbon::parse($item->ended_at)) / 60);
         }
 
+        $fmt = function ($value) {
+            if (! $value) {
+                return null;
+            }
+
+            return Carbon::parse($value)->format('d M H:i');
+        };
+
         return [
             'id'                 => $item->id,
             'title'              => $item->title,
@@ -253,10 +261,10 @@ class EmployeeTodoPerformance
             'checklist_count'    => $item->checklist_count,
             'allocated_minutes'  => (int) ($item->allocated_minutes ?: 60),
             'is_completed'       => (bool) $item->is_completed,
-            'completed_at'       => $item->completed_at?->format('d M H:i'),
-            'started_at'         => $item->started_at?->format('d M H:i'),
-            'ended_at'           => $item->ended_at?->format('d M H:i'),
-            'started_at_raw'     => $item->started_at?->toIso8601String(),
+            'completed_at'       => $fmt($item->completed_at),
+            'started_at'         => $fmt($item->started_at),
+            'ended_at'           => $fmt($item->ended_at),
+            'started_at_raw'     => $item->started_at ? Carbon::parse($item->started_at)->toIso8601String() : null,
             'status'             => $item->status ?: ($item->is_completed ? 'completed' : 'pending'),
             'performance_tier'   => $item->performance_tier,
             'earned_star'        => (bool) $item->earned_star,
@@ -267,7 +275,7 @@ class EmployeeTodoPerformance
             'day_of_week'        => $item->day_of_week,
             'category_name'      => $item->category?->name,
             'category_color'     => $item->category?->color,
-            'employee_id'        => $item->plan?->employee_id,
+            'employee_id'        => $item->relationLoaded('plan') ? $item->plan?->employee_id : null,
         ];
     }
 }

@@ -42,9 +42,6 @@
 @endsection
 
 @section('content')
-@php
-    $tabUrl = fn($t) => route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => $t]);
-@endphp
 <div class="tv-page">
     <div class="tv-head">
         <div class="tv-title"><i class="fas fa-chart-line" style="color:#7c5cfc;"></i> Task View</div>
@@ -57,9 +54,9 @@
     </div>
 
     <div class="tv-tabs">
-        <a class="tv-tab {{ $tab === 'overview' ? 'active' : '' }}" href="{{ $tabUrl('overview') }}">Overview</a>
-        <a class="tv-tab {{ $tab === 'performance' ? 'active' : '' }}" href="{{ $tabUrl('performance') }}">Performance</a>
-        <a class="tv-tab {{ $tab === 'charts' ? 'active' : '' }}" href="{{ $tabUrl('charts') }}">Charts</a>
+        <a class="tv-tab {{ $tab === 'overview' ? 'active' : '' }}" href="{{ route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => 'overview']) }}">Overview</a>
+        <a class="tv-tab {{ $tab === 'performance' ? 'active' : '' }}" href="{{ route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => 'performance']) }}">Performance</a>
+        <a class="tv-tab {{ $tab === 'charts' ? 'active' : '' }}" href="{{ route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => 'charts']) }}">Charts</a>
     </div>
 
     @if($tab === 'overview')
@@ -172,7 +169,7 @@
             labels: data.names,
             datasets: [
                 { label: 'Stars', data: data.stars, backgroundColor: '#fcd34d' },
-                { label: 'Super', data: data.super, backgroundColor: '#4ade80' },
+                { label: 'Super', data: data.supers, backgroundColor: '#4ade80' },
                 { label: 'Great', data: data.great, backgroundColor: '#fde047' },
             ]
         },

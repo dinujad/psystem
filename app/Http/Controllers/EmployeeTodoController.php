@@ -410,7 +410,7 @@ class EmployeeTodoController extends Controller
             'names'     => [],
             'completed' => [],
             'overdue'   => [],
-            'super'     => [],
+            'supers'    => [],
             'great'     => [],
             'stars'     => [],
         ];
@@ -467,7 +467,7 @@ class EmployeeTodoController extends Controller
             $chart['names'][] = $emp['name'];
             $chart['completed'][] = $badges['done'];
             $chart['overdue'][] = $badges['overdue'];
-            $chart['super'][] = $badges['super'];
+            $chart['supers'][] = $badges['super'];
             $chart['great'][] = $badges['great'];
             $chart['stars'][] = $badges['stars'];
         }
