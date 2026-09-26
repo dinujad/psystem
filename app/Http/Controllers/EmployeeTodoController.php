@@ -386,7 +386,7 @@ class EmployeeTodoController extends Controller
         $weekEnd   = $weekStart->copy()->addDays(6);
         $prevWeek  = $weekStart->copy()->subWeek()->toDateString();
         $nextWeek  = $weekStart->copy()->addWeek()->toDateString();
-        $tab       = in_array($request->get('tab'), ['overview', 'performance', 'charts'], true)
+        $tab = in_array($request->get('tab'), ['overview', 'performance', 'charts', 'employee'], true)
             ? $request->get('tab')
             : 'overview';
 
@@ -398,6 +398,11 @@ class EmployeeTodoController extends Controller
         }
 
         $employees = $this->employees();
+        $selectedEmployeeId = (int) ($request->get('employee') ?: ($employees->first()['id'] ?? 0));
+        if ($selectedEmployeeId && ! $employees->firstWhere('id', $selectedEmployeeId)) {
+            $selectedEmployeeId = (int) ($employees->first()['id'] ?? 0);
+        }
+
         $plans = EmployeeWeeklyPlan::where('business_id', $this->businessId())
             ->where('week_start_date', $weekStart->toDateString())
             ->with(['items.category', 'employee'])
@@ -499,10 +504,135 @@ class EmployeeTodoController extends Controller
             ];
         }
 
+        $employeeTrend = $this->buildEmployeeTrend(
+            $perf,
+            $selectedEmployeeId,
+            $weekStart,
+            $employees->firstWhere('id', $selectedEmployeeId)
+        );
+
         return view('employee-todos.task-view', compact(
             'weekStart', 'weekEnd', 'prevWeek', 'nextWeek', 'tab',
-            'rows', 'rankedRows', 'overview', 'chart', 'days', 'todayDow'
+            'rows', 'rankedRows', 'overview', 'chart', 'days', 'todayDow',
+            'employees', 'selectedEmployeeId', 'employeeTrend'
         ));
+    }
+
+    private function buildEmployeeTrend(
+        EmployeeTodoPerformance $perf,
+        int $employeeId,
+        Carbon $selectedWeekStart,
+        ?array $employee
+    ): array {
+        $empty = [
+            'employee'     => $employee,
+            'weeks'        => [],
+            'chart'        => ['labels' => [], 'scores' => [], 'done' => [], 'overdue' => []],
+            'current'      => null,
+            'previous'     => null,
+            'trend'        => ['key' => 'none', 'label' => 'No data yet', 'delta_score' => 0, 'delta_done' => 0],
+            'current_tasks'=> [],
+        ];
+
+        if ($employeeId < 1 || ! $employee) {
+            return $empty;
+        }
+
+        $weekStarts = [];
+        for ($i = 5; $i >= 0; $i--) {
+            $weekStarts[] = $selectedWeekStart->copy()->subWeeks($i)->toDateString();
+        }
+
+        $plans = EmployeeWeeklyPlan::where('business_id', $this->businessId())
+            ->where('employee_id', $employeeId)
+            ->whereIn('week_start_date', $weekStarts)
+            ->with(['items.category'])
+            ->get()
+            ->keyBy(fn ($p) => Carbon::parse($p->week_start_date)->toDateString());
+
+        $weeks = [];
+        foreach ($weekStarts as $ws) {
+            $plan = $plans->get($ws);
+            $items = $plan ? $plan->items : collect();
+            $badges = $perf->weekBadgeStats($items);
+            $status = $perf->myStatus($items);
+            $score = ($badges['stars'] * 3) + ($badges['super'] * 2) + $badges['great'];
+
+            $avgRatio = null;
+            $timed = $items->filter(fn ($i) => $i->started_at && $i->ended_at && $i->allocated_minutes);
+            if ($timed->isNotEmpty()) {
+                $avgRatio = round($timed->map(function ($i) {
+                    $actual = max(1, (int) ceil(Carbon::parse($i->started_at)->diffInSeconds(Carbon::parse($i->ended_at)) / 60));
+
+                    return $actual / max(1, (int) $i->allocated_minutes);
+                })->avg(), 2);
+            }
+
+            $start = Carbon::parse($ws);
+            $weeks[] = [
+                'week_start' => $ws,
+                'label'      => $start->format('d M').' – '.$start->copy()->addDays(6)->format('d M'),
+                'is_current' => $ws === $selectedWeekStart->toDateString(),
+                'badges'     => $badges,
+                'status'     => $status,
+                'score'      => $score,
+                'avg_ratio'  => $avgRatio,
+                'tasks'      => $items->map(fn ($i) => $perf->itemToArray($i))->values()->all(),
+            ];
+        }
+
+        $current = collect($weeks)->firstWhere('is_current');
+        $prevIndex = null;
+        foreach ($weeks as $idx => $week) {
+            if (! empty($week['is_current'])) {
+                $prevIndex = $idx - 1;
+                break;
+            }
+        }
+        $previous = ($prevIndex !== null && $prevIndex >= 0) ? $weeks[$prevIndex] : null;
+
+        $trend = ['key' => 'none', 'label' => 'No comparison yet', 'delta_score' => 0, 'delta_done' => 0];
+        if ($current && $previous) {
+            $deltaScore = (int) $current['score'] - (int) $previous['score'];
+            $deltaDone = (int) $current['badges']['done'] - (int) $previous['badges']['done'];
+            if ($deltaScore > 0 || ($deltaScore === 0 && $deltaDone > 0)) {
+                $trend = [
+                    'key' => 'up',
+                    'label' => 'Performance improved vs last week',
+                    'delta_score' => $deltaScore,
+                    'delta_done' => $deltaDone,
+                ];
+            } elseif ($deltaScore < 0 || ($deltaScore === 0 && $deltaDone < 0)) {
+                $trend = [
+                    'key' => 'down',
+                    'label' => 'Performance dropped vs last week',
+                    'delta_score' => $deltaScore,
+                    'delta_done' => $deltaDone,
+                ];
+            } else {
+                $trend = [
+                    'key' => 'same',
+                    'label' => 'Performance same as last week',
+                    'delta_score' => 0,
+                    'delta_done' => 0,
+                ];
+            }
+        }
+
+        return [
+            'employee'      => $employee,
+            'weeks'         => $weeks,
+            'chart'         => [
+                'labels'  => array_column($weeks, 'label'),
+                'scores'  => array_column($weeks, 'score'),
+                'done'    => array_map(fn ($w) => $w['badges']['done'], $weeks),
+                'overdue' => array_map(fn ($w) => $w['badges']['overdue'], $weeks),
+            ],
+            'current'       => $current,
+            'previous'      => $previous,
+            'trend'         => $trend,
+            'current_tasks' => $current['tasks'] ?? [],
+        ];
     }
 
     public function deleteItem(EmployeeWeeklyPlanItem $item)
