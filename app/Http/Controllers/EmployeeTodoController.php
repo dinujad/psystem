@@ -47,22 +47,65 @@ class EmployeeTodoController extends Controller
 
     public function index(Request $request)
     {
-        if (! $this->canManage()) {
-            return redirect()->route('employee-todos.my-week', $request->only('week'));
-        }
+        try {
+            if (! $this->canManage()) {
+                return redirect()->route('employee-todos.my-week', $request->only('week'));
+            }
 
-        return $this->weekView($request, false);
+            return $this->renderTodoView($this->weekView($request, false), $request);
+        } catch (\Throwable $e) {
+            return $this->todoDebugResponse($e, $request);
+        }
     }
 
     public function myWeek(Request $request)
     {
-        if (! $this->isStaffUser()) {
-            abort(403, 'You do not have access to To-Do.');
+        try {
+            if (! $this->isStaffUser()) {
+                abort(403, 'You do not have access to To-Do.');
+            }
+
+            $request->merge(['employee' => auth()->id()]);
+
+            return $this->renderTodoView($this->weekView($request, true), $request);
+        } catch (\Throwable $e) {
+            return $this->todoDebugResponse($e, $request);
+        }
+    }
+
+    public function taskView(Request $request)
+    {
+        try {
+            return $this->renderTodoView($this->buildTaskView($request), $request);
+        } catch (\Throwable $e) {
+            return $this->todoDebugResponse($e, $request);
+        }
+    }
+
+    private function renderTodoView($view, Request $request)
+    {
+        if ($request->query('todo_debug')) {
+            return response($view->render());
         }
 
-        $request->merge(['employee' => auth()->id()]);
+        return $view;
+    }
 
-        return $this->weekView($request, true);
+    private function todoDebugResponse(\Throwable $e, Request $request)
+    {
+        report($e);
+
+        if ($request->query('todo_debug')) {
+            $html = '<pre style="white-space:pre-wrap;padding:24px;background:#111;color:#86efac;font:13px/1.45 monospace;">'
+                .e($e->getMessage())."\n\n"
+                .e($e->getFile().':'.$e->getLine())."\n\n"
+                .e($e->getTraceAsString())
+                .'</pre>';
+
+            return response($html, 500);
+        }
+
+        throw $e;
     }
 
     private function weekView(Request $request, bool $personalOnly)
@@ -328,7 +371,7 @@ class EmployeeTodoController extends Controller
         ], $result['success'] ? 200 : 422);
     }
 
-    public function taskView(Request $request)
+    private function buildTaskView(Request $request)
     {
         $this->authorizeManage();
 

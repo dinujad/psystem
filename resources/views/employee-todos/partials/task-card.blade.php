@@ -8,6 +8,8 @@
     $classes = 'et-task status-'.$status;
     if ($task->is_completed) $classes .= ' done';
     if ($tier) $classes .= ' tier-'.$tier;
+    $startedLabel = $task->started_at ? \Carbon\Carbon::parse($task->started_at)->format('H:i') : null;
+    $endedLabel = $task->ended_at ? \Carbon\Carbon::parse($task->ended_at)->format('d M H:i') : null;
 @endphp
 <div class="{{ $classes }}" id="task-{{ $task->id }}{{ !empty($sectionPrefix) ? '-'.$sectionPrefix : '' }}" data-id="{{ $task->id }}">
     <div class="et-task-row">
@@ -20,14 +22,14 @@
                 <span class="et-alloc"><i class="far fa-hourglass"></i> {{ $allocLabel }}</span>
                 @if($task->task_time)<span><i class="far fa-clock"></i> {{ substr($task->task_time, 0, 5) }}</span>@endif
                 @if($task->checklist_count > 1)<span><i class="far fa-check-square"></i> {{ $task->checklist_count }}</span>@endif
-                @if($task->started_at && ! $task->ended_at)
-                <span><i class="fas fa-play"></i> Started {{ $task->started_at->format('H:i') }}</span>
+                @if($startedLabel && ! $endedLabel)
+                <span><i class="fas fa-play"></i> Started {{ $startedLabel }}</span>
                 @endif
                 @if($task->is_completed)
                     @if($task->earned_star)<span class="et-badge-pill star" style="padding:2px 6px;"><i class="fas fa-star"></i></span>@endif
                     @if($tier === 'super')<span class="et-badge-pill super" style="padding:2px 6px;">Super</span>
                     @elseif($tier === 'great')<span class="et-badge-pill great" style="padding:2px 6px;">Great</span>@endif
-                    <span class="et-done-at"><i class="fas fa-check"></i> {{ $task->ended_at?->format('d M H:i') ?? 'Done' }}</span>
+                    <span class="et-done-at"><i class="fas fa-check"></i> {{ $endedLabel ?: 'Done' }}</span>
                 @elseif($status === 'overdue')
                 <span style="color:#dc2626;font-weight:700;">Overdue</span>
                 @endif
