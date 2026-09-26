@@ -84,16 +84,17 @@
                     <span>Overdue {{ $row['badges']['overdue'] }}</span>
                 </div>
             </div>
-            @if(count($row['tasks']))
+            @if(!empty($row['tasks']))
             <div class="tv-tasks">
                 @foreach($row['tasks'] as $t)
                 <div class="tv-task {{ $t['status'] }}">
                     <strong>{{ $t['title'] }}</strong>
                     <div>{{ $t['category_name'] ?? '—' }} · Day {{ $t['day_of_week'] }}</div>
-                    <div>Budget {{ $t['allocated_minutes'] }}m
-                        @if($t['started_at']) · Start {{ $t['started_at'] }}@endif
-                        @if($t['ended_at']) · End {{ $t['ended_at'] }}@endif
-                        @if($t['actual_minutes']) · Took {{ $t['actual_minutes'] }}m@endif
+                    <div>
+                        Budget {{ $t['allocated_minutes'] }}m
+                        {{ !empty($t['started_at']) ? '· Start '.$t['started_at'] : '' }}
+                        {{ !empty($t['ended_at']) ? '· End '.$t['ended_at'] : '' }}
+                        {{ !empty($t['actual_minutes']) ? '· Took '.$t['actual_minutes'].'m' : '' }}
                     </div>
                 </div>
                 @endforeach
@@ -118,7 +119,7 @@
                 <div style="font-weight:800;">{{ $row['employee']['name'] }}</div>
                 <div style="font-size:12px;color:#6b7280;">
                     Score {{ $row['score'] }} · ⭐ {{ $row['badges']['stars'] }} · Super {{ $row['badges']['super'] }} · Great {{ $row['badges']['great'] }} · Done {{ $row['badges']['done'] }}/{{ $row['badges']['total'] }}
-                    @if($row['avg_ratio'] !== null) · Avg time ratio {{ $row['avg_ratio'] }}x @endif
+                    {{ $row['avg_ratio'] !== null ? '· Avg time ratio '.$row['avg_ratio'].'x' : '' }}
                 </div>
             </div>
             <span class="tv-status {{ $row['status']['color'] }}">{{ $row['status']['label'] }}</span>
