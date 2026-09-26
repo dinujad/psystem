@@ -510,11 +510,45 @@ class EmployeeTodoController extends Controller
             $weekStart,
             $employees->firstWhere('id', $selectedEmployeeId)
         );
+        $employeeTrendChart = $employeeTrend['chart'] ?? [
+            'labels' => [],
+            'scores' => [],
+            'done' => [],
+            'overdue' => [],
+        ];
+
+        $empParam = $tab === 'employee' ? $selectedEmployeeId : null;
+        $tvPrevUrl = route('employee-todos.task-view', array_filter([
+            'week' => $prevWeek,
+            'tab' => $tab,
+            'employee' => $empParam,
+        ]));
+        $tvNextUrl = route('employee-todos.task-view', array_filter([
+            'week' => $nextWeek,
+            'tab' => $tab,
+            'employee' => $empParam,
+        ]));
+        $tvThisUrl = route('employee-todos.task-view', array_filter([
+            'week' => now()->startOfWeek()->toDateString(),
+            'tab' => $tab,
+            'employee' => $empParam,
+        ]));
+        $tvTabUrls = [
+            'overview' => route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => 'overview']),
+            'performance' => route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => 'performance']),
+            'employee' => route('employee-todos.task-view', array_filter([
+                'week' => $weekStart->toDateString(),
+                'tab' => 'employee',
+                'employee' => $selectedEmployeeId ?: null,
+            ])),
+            'charts' => route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => 'charts']),
+        ];
 
         return view('employee-todos.task-view', compact(
             'weekStart', 'weekEnd', 'prevWeek', 'nextWeek', 'tab',
             'rows', 'rankedRows', 'overview', 'chart', 'days', 'todayDow',
-            'employees', 'selectedEmployeeId', 'employeeTrend'
+            'employees', 'selectedEmployeeId', 'employeeTrend', 'employeeTrendChart',
+            'tvPrevUrl', 'tvNextUrl', 'tvThisUrl', 'tvTabUrls'
         ));
     }
 

@@ -56,22 +56,36 @@
 @endsection
 
 @section('content')
+@php
+    $rankedList = isset($rankedRows) ? $rankedRows : array();
+    $empList = isset($employees) ? $employees : collect();
+    $trend = isset($employeeTrend) ? $employeeTrend : array();
+    $trendWeeks = isset($trend['weeks']) ? $trend['weeks'] : array();
+    $trendTasks = isset($trend['current_tasks']) ? $trend['current_tasks'] : array();
+    $trendKey = isset($trend['trend']['key']) ? $trend['trend']['key'] : 'none';
+    $trendLabel = isset($trend['trend']['label']) ? $trend['trend']['label'] : 'No data yet';
+    $deltaScore = isset($trend['trend']['delta_score']) ? $trend['trend']['delta_score'] : 0;
+    $deltaDone = isset($trend['trend']['delta_done']) ? $trend['trend']['delta_done'] : 0;
+    $current = isset($trend['current']) ? $trend['current'] : null;
+    $previous = isset($trend['previous']) ? $trend['previous'] : null;
+    $trendEmp = isset($trend['employee']) ? $trend['employee'] : null;
+@endphp
 <div class="tv-page">
     <div class="tv-head">
         <div class="tv-title"><i class="fas fa-chart-line" style="color:#7c5cfc;"></i> Task View</div>
         <div class="tv-week">
-            <a class="tv-btn outline" href="{{ route('employee-todos.task-view', array_filter(['week' => $prevWeek, 'tab' => $tab, 'employee' => $tab === 'employee' ? ($selectedEmployeeId ?? null) : null])) }}"><i class="fas fa-chevron-left"></i> Prev</a>
+            <a class="tv-btn outline" href="{{ $tvPrevUrl }}"><i class="fas fa-chevron-left"></i> Prev</a>
             <span class="tv-pill">{{ $weekStart->format('d M') }} – {{ $weekEnd->format('d M Y') }}</span>
-            <a class="tv-btn outline" href="{{ route('employee-todos.task-view', array_filter(['week' => $nextWeek, 'tab' => $tab, 'employee' => $tab === 'employee' ? ($selectedEmployeeId ?? null) : null])) }}">Next <i class="fas fa-chevron-right"></i></a>
-            <a class="tv-btn outline" href="{{ route('employee-todos.task-view', array_filter(['week' => now()->startOfWeek()->toDateString(), 'tab' => $tab, 'employee' => $tab === 'employee' ? ($selectedEmployeeId ?? null) : null])) }}">This Week</a>
+            <a class="tv-btn outline" href="{{ $tvNextUrl }}">Next <i class="fas fa-chevron-right"></i></a>
+            <a class="tv-btn outline" href="{{ $tvThisUrl }}">This Week</a>
         </div>
     </div>
 
     <div class="tv-tabs">
-        <a class="tv-tab {{ $tab === 'overview' ? 'active' : '' }}" href="{{ route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => 'overview']) }}">Overview</a>
-        <a class="tv-tab {{ $tab === 'performance' ? 'active' : '' }}" href="{{ route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => 'performance']) }}">Performance</a>
-        <a class="tv-tab {{ $tab === 'employee' ? 'active' : '' }}" href="{{ route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => 'employee', 'employee' => $selectedEmployeeId ?? null]) }}">Employee Detail</a>
-        <a class="tv-tab {{ $tab === 'charts' ? 'active' : '' }}" href="{{ route('employee-todos.task-view', ['week' => $weekStart->toDateString(), 'tab' => 'charts']) }}">Charts</a>
+        <a class="tv-tab {{ $tab === 'overview' ? 'active' : '' }}" href="{{ $tvTabUrls['overview'] }}">Overview</a>
+        <a class="tv-tab {{ $tab === 'performance' ? 'active' : '' }}" href="{{ $tvTabUrls['performance'] }}">Performance</a>
+        <a class="tv-tab {{ $tab === 'employee' ? 'active' : '' }}" href="{{ $tvTabUrls['employee'] }}">Employee Detail</a>
+        <a class="tv-tab {{ $tab === 'charts' ? 'active' : '' }}" href="{{ $tvTabUrls['charts'] }}">Charts</a>
     </div>
 
     @if($tab === 'overview')
@@ -127,7 +141,7 @@
     @if($tab === 'performance')
     <div class="tv-panel">
         <h3 style="margin:0 0 12px;font-size:15px;font-weight:800;">Week rankings</h3>
-        @forelse(($rankedRows ?? []) as $row)
+        @forelse($rankedList as $row)
         <div class="tv-rank">
             <div class="tv-rank-num {{ $row['rank'] <= 3 ? 'top' : '' }}">{{ $row['rank'] }}</div>
             <div style="flex:1;">
@@ -148,28 +162,22 @@
     @endif
 
     @if($tab === 'employee')
-    @php
-        $trend = $employeeTrend ?? [];
-        $trendKey = $trend['trend']['key'] ?? 'none';
-        $current = $trend['current'] ?? null;
-        $previous = $trend['previous'] ?? null;
-    @endphp
     <form method="GET" action="{{ route('employee-todos.task-view') }}" class="tv-emp-select">
         <input type="hidden" name="week" value="{{ $weekStart->toDateString() }}">
         <input type="hidden" name="tab" value="employee">
         <label for="tvEmployee">Employee</label>
         <select id="tvEmployee" name="employee" onchange="this.form.submit()">
-            @foreach(($employees ?? collect()) as $emp)
-            <option value="{{ $emp['id'] }}" @selected((string)($selectedEmployeeId ?? '') === (string)$emp['id'])>{{ $emp['name'] }}</option>
+            @foreach($empList as $emp)
+            <option value="{{ $emp['id'] }}" {{ (string)($selectedEmployeeId ?? '') === (string)$emp['id'] ? 'selected' : '' }}>{{ $emp['name'] }}</option>
             @endforeach
         </select>
         <span style="font-size:12px;color:#6b7280;">Compare this week with previous weeks for the selected person.</span>
     </form>
 
-    @if(!empty($trend['employee']))
+    @if($trendEmp)
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;">
-        <div style="font-size:16px;font-weight:800;color:#1e1b4b;">{{ $trend['employee']['name'] }}</div>
-        <span class="tv-trend {{ $trendKey }}">{{ $trend['trend']['label'] ?? 'No data yet' }}</span>
+        <div style="font-size:16px;font-weight:800;color:#1e1b4b;">{{ $trendEmp['name'] }}</div>
+        <span class="tv-trend {{ $trendKey }}">{{ $trendLabel }}</span>
     </div>
 
     <div class="tv-compare">
@@ -178,7 +186,7 @@
             <div class="l">This week score</div>
             <div class="sub">
                 @if($previous)
-                    {{ ($trend['trend']['delta_score'] ?? 0) >= 0 ? '+' : '' }}{{ $trend['trend']['delta_score'] ?? 0 }} vs last week
+                    {{ $deltaScore >= 0 ? '+' : '' }}{{ $deltaScore }} vs last week
                 @else
                     No previous week data
                 @endif
@@ -189,7 +197,7 @@
             <div class="l">Done this week</div>
             <div class="sub">
                 @if($previous)
-                    {{ ($trend['trend']['delta_done'] ?? 0) >= 0 ? '+' : '' }}{{ $trend['trend']['delta_done'] ?? 0 }} tasks vs last week
+                    {{ $deltaDone >= 0 ? '+' : '' }}{{ $deltaDone }} tasks vs last week
                 @else
                     —
                 @endif
@@ -211,9 +219,9 @@
             <div class="sub">Last week: {{ $previous['badges']['overdue'] ?? 0 }}</div>
         </div>
         <div class="tv-card">
-            <div class="n">{{ $current['avg_ratio'] !== null ? $current['avg_ratio'].'x' : '—' }}</div>
+            <div class="n">{{ isset($current['avg_ratio']) && $current['avg_ratio'] !== null ? $current['avg_ratio'].'x' : '—' }}</div>
             <div class="l">Avg time ratio</div>
-            <div class="sub">Last week: {{ ($previous['avg_ratio'] ?? null) !== null ? $previous['avg_ratio'].'x' : '—' }}</div>
+            <div class="sub">Last week: {{ isset($previous['avg_ratio']) && $previous['avg_ratio'] !== null ? $previous['avg_ratio'].'x' : '—' }}</div>
         </div>
     </div>
 
@@ -235,7 +243,7 @@
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach(($trend['weeks'] ?? []) as $week)
+                    @foreach($trendWeeks as $week)
                     <tr class="{{ !empty($week['is_current']) ? 'current' : '' }}">
                         <td>{{ $week['label'] }}{{ !empty($week['is_current']) ? ' (selected)' : '' }}</td>
                         <td>{{ $week['score'] }}</td>
@@ -260,9 +268,9 @@
 
     <div class="tv-panel">
         <h3 style="margin:0 0 12px;font-size:15px;font-weight:800;">Selected week tasks</h3>
-        @if(!empty($trend['current_tasks']))
+        @if(count($trendTasks))
         <div class="tv-tasks">
-            @foreach($trend['current_tasks'] as $t)
+            @foreach($trendTasks as $t)
             <div class="tv-task {{ $t['status'] }}">
                 <strong>{{ $t['title'] }}</strong>
                 <div>{{ $t['category_name'] ?? '—' }} · Day {{ $t['day_of_week'] }}</div>
@@ -319,7 +327,7 @@
             labels: data.names,
             datasets: [
                 { label: 'Completed', data: data.completed, backgroundColor: '#86efac' },
-                { label: 'Overdue', data: data.overdue, backgroundColor: '#fca5a5' },
+                { label: 'Overdue', data: data.overdue, backgroundColor: '#fca5a5' }
             ]
         },
         options: commonOpts
@@ -331,7 +339,7 @@
             datasets: [
                 { label: 'Stars', data: data.stars, backgroundColor: '#fcd34d' },
                 { label: 'Super', data: data.supers, backgroundColor: '#4ade80' },
-                { label: 'Great', data: data.great, backgroundColor: '#fde047' },
+                { label: 'Great', data: data.great, backgroundColor: '#fde047' }
             ]
         },
         options: commonOpts
@@ -342,7 +350,7 @@
 @if($tab === 'employee')
 <script>
 (function(){
-    const trend = @json(($employeeTrend['chart'] ?? ['labels'=>[], 'scores'=>[], 'done'=>[], 'overdue'=>[]]));
+    const trend = @json($employeeTrendChart);
     const el = document.getElementById('tvEmpTrendChart');
     if(!el) return;
     new Chart(el, {
@@ -352,7 +360,7 @@
             datasets: [
                 { label: 'Score', data: trend.scores || [], borderColor: '#7c5cfc', backgroundColor: 'rgba(124,92,252,.15)', tension: 0.25, fill: true },
                 { label: 'Done', data: trend.done || [], borderColor: '#16a34a', backgroundColor: 'transparent', tension: 0.25 },
-                { label: 'Overdue', data: trend.overdue || [], borderColor: '#dc2626', backgroundColor: 'transparent', tension: 0.25 },
+                { label: 'Overdue', data: trend.overdue || [], borderColor: '#dc2626', backgroundColor: 'transparent', tension: 0.25 }
             ]
         },
         options: {
