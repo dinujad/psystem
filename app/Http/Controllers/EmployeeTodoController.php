@@ -90,16 +90,21 @@ class EmployeeTodoController extends Controller
         $weekStats = ['total' => 0, 'completed' => 0, 'percent' => 0];
         $visibleCategoryIds = [];
 
-        $perf = app(EmployeeTodoPerformance::class);
         $badgeStats = ['stars' => 0, 'super' => 0, 'great' => 0, 'done' => 0, 'total' => 0, 'overdue' => 0];
         $myStatus = ['color' => 'green', 'label' => 'On Track', 'key' => 'on_track'];
         $todayItems = collect();
         $overdueItems = collect();
-        $todayDow = (int) Carbon::today()->dayOfWeekIso;
+        $todayDow = (int) Carbon::now()->dayOfWeekIso;
+        $perf = null;
 
         if ($employeeId) {
             $plan = $this->getOrCreateEmployeePlan((int) $employeeId, $weekStart);
-            $perf->refreshOverdueForPlan($plan);
+            try {
+                $perf = app(EmployeeTodoPerformance::class);
+                $perf->refreshOverdueForPlan($plan);
+            } catch (\Throwable $e) {
+                \Log::warning('employee-todos overdue refresh failed: '.$e->getMessage());
+            }
             $flatItems = $plan->items()
                 ->with('category')
                 ->orderBy('sort_order')
@@ -112,10 +117,15 @@ class EmployeeTodoController extends Controller
             $visibleCategoryIds = $flatItems->pluck('category_id')->unique()->filter()->values()->all();
 
             $weekStats = $plan->completionStats();
-            $badgeStats = $perf->weekBadgeStats($flatItems);
-            $myStatus = $perf->myStatus($flatItems);
+            try {
+                $perf = $perf ?: app(EmployeeTodoPerformance::class);
+                $badgeStats = $perf->weekBadgeStats($flatItems);
+                $myStatus = $perf->myStatus($flatItems);
+            } catch (\Throwable $e) {
+                \Log::warning('employee-todos badge stats failed: '.$e->getMessage());
+            }
             $todayItems = $flatItems->where('day_of_week', $todayDow)->values();
-            $overdueItems = $flatItems->where('status', 'overdue')->values();
+            $overdueItems = $flatItems->filter(fn ($i) => ($i->status ?? null) === 'overdue')->values();
 
             foreach (EmployeeWeeklyPlan::dayLabels() as $d => $label) {
                 $dayItems = $flatItems->where('day_of_week', $d);
@@ -331,7 +341,11 @@ class EmployeeTodoController extends Controller
             : 'overview';
 
         $perf = app(EmployeeTodoPerformance::class);
-        $perf->refreshOverdueForBusiness($this->businessId());
+        try {
+            $perf->refreshOverdueForBusiness($this->businessId());
+        } catch (\Throwable $e) {
+            \Log::warning('employee-todos task-view overdue refresh failed: '.$e->getMessage());
+        }
 
         $employees = $this->employees();
         $plans = EmployeeWeeklyPlan::where('business_id', $this->businessId())
@@ -340,7 +354,7 @@ class EmployeeTodoController extends Controller
             ->get()
             ->keyBy('employee_id');
 
-        $todayDow = (int) Carbon::today()->dayOfWeekIso;
+        $todayDow = (int) Carbon::now()->dayOfWeekIso;
         $rows = [];
         $chart = [
             'names'     => [],

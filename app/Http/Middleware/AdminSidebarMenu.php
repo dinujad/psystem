@@ -306,7 +306,9 @@ class AdminSidebarMenu
             if ($is_admin || auth()->user()->can('employee_todos.manage') || auth()->user()->can('send_notifications')) {
                 $menu->dropdown('To-Do', function ($sub) {
                     $sub->url(route('employee-todos.index'), 'Weekly Planner', ['icon' => '', 'active' => request()->segment(1) == 'employee-todos' && ! request()->segment(2)]);
-                    $sub->url(route('employee-todos.task-view'), 'Task View', ['icon' => '', 'active' => request()->segment(2) == 'task-view']);
+                    if (\Illuminate\Support\Facades\Route::has('employee-todos.task-view')) {
+                        $sub->url(route('employee-todos.task-view'), 'Task View', ['icon' => '', 'active' => request()->segment(2) == 'task-view']);
+                    }
                     $sub->url(route('employee-todos.my-week'), 'My Week', ['icon' => '', 'active' => request()->segment(2) == 'my-week']);
                     $sub->url(route('employee-todos.templates.index'), 'Plan Templates', ['icon' => '', 'active' => request()->segment(2) == 'templates']);
                     $sub->url(route('employee-todos.categories.index'), 'Categories', ['icon' => '', 'active' => request()->segment(2) == 'categories']);

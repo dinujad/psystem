@@ -6,28 +6,60 @@ use App\EmployeeWeeklyPlan;
 use App\EmployeeWeeklyPlanItem;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class EmployeeTodoPerformance
 {
-    public function assignedDate(EmployeeWeeklyPlanItem $item): Carbon
+    private static ?bool $hasColumns = null;
+
+    public function hasPerformanceColumns(): bool
     {
-        $item->loadMissing('plan');
-        $weekStart = Carbon::parse($item->plan->week_start_date)->startOfDay();
+        if (self::$hasColumns === null) {
+            self::$hasColumns = Schema::hasColumn('employee_weekly_plan_items', 'status')
+                && Schema::hasColumn('employee_weekly_plan_items', 'allocated_minutes');
+        }
+
+        return self::$hasColumns;
+    }
+
+    public function assignedDate(EmployeeWeeklyPlanItem $item, ?EmployeeWeeklyPlan $plan = null): Carbon
+    {
+        if (! $plan) {
+            if ($item->relationLoaded('plan')) {
+                $plan = $item->plan;
+            } else {
+                $item->loadMissing('plan');
+                $plan = $item->plan;
+            }
+        }
+
+        if (! $plan || empty($plan->week_start_date)) {
+            return Carbon::today()->startOfDay();
+        }
+
+        $weekStart = Carbon::parse($plan->week_start_date)->startOfDay();
 
         return $weekStart->copy()->addDays(max(0, (int) $item->day_of_week - 1))->startOfDay();
     }
 
     public function refreshOverdueForPlan(EmployeeWeeklyPlan $plan): void
     {
+        if (! $this->hasPerformanceColumns()) {
+            return;
+        }
+
         $today = Carbon::today();
         $plan->loadMissing('items');
 
         foreach ($plan->items as $item) {
-            if ($item->is_completed || $item->status === 'completed') {
+            $item->setRelation('plan', $plan);
+
+            if ($item->is_completed || ($item->status ?? null) === 'completed') {
                 continue;
             }
-            $assigned = $this->assignedDate($item);
-            if ($assigned->lt($today) && $item->status !== 'overdue') {
+
+            $assigned = $this->assignedDate($item, $plan);
+            if ($assigned->lt($today) && ($item->status ?? null) !== 'overdue') {
                 $item->update(['status' => 'overdue']);
             }
         }

@@ -83,7 +83,12 @@ class HomeController extends Controller
         $business_id = request()->session()->get('user.business_id');
 
         $is_admin = $this->businessUtil->is_admin(auth()->user());
-        $todoWidget = $this->buildTodoWidget($user, (int) $business_id);
+        $todoWidget = null;
+        try {
+            $todoWidget = $this->buildTodoWidget($user, (int) $business_id);
+        } catch (\Throwable $e) {
+            \Log::warning('home todo widget failed: '.$e->getMessage());
+        }
 
         if (! auth()->user()->can('dashboard.data')) {
             return view('home.index', compact('is_admin', 'todoWidget'));
