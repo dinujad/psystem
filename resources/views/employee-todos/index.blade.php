@@ -5,7 +5,8 @@
 <style>
 .et-page { padding: 0 20px 60px; max-width: 1400px; margin: 0 auto; }
 .et-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 20px 0 16px; }
-.et-title { font-size: 20px; font-weight: 800; color: #1e1b4b; }
+.et-title { font-size: 20px; font-weight: 800; color: #1e1b4b; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.et-title > i { color: #7c5cfc; }
 .et-week-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .et-week-pill { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 8px 14px; font-size: 13px; font-weight: 700; color: #374151; }
 .et-btn { background: #7c5cfc; color: #fff; border: none; border-radius: 9px; padding: 8px 14px; font-size: 12px; font-weight: 700; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
@@ -93,9 +94,9 @@ body.theme-admin-pro .et-modal-ov textarea {
     <div class="et-head">
         <div class="et-title">
             @if($personalOnly)
-            ✅ My Weekly Tasks
+            <i class="fas fa-check-circle"></i> My Weekly Tasks
             @else
-            📋 Weekly To-Do
+            <i class="fas fa-clipboard-list"></i> Weekly To-Do
             @endif
             <span class="et-pct {{ ($weekStats['percent'] ?? 0) >= 100 ? 'done' : '' }}" id="weekPct">{{ $weekStats['percent'] ?? 0 }}%</span>
             @if($canManage && ($weekStats['total'] ?? 0) > 0)
@@ -103,10 +104,10 @@ body.theme-admin-pro .et-modal-ov textarea {
             @endif
         </div>
         <div class="et-week-nav">
-            <a href="{{ route($personalOnly ? 'employee-todos.my-week' : 'employee-todos.index', array_filter(['week' => $prevWeek, 'employee' => $employeeId])) }}" class="et-btn outline">← Prev Week</a>
+            <a href="{{ route($personalOnly ? 'employee-todos.my-week' : 'employee-todos.index', array_filter(['week' => $prevWeek, 'employee' => $employeeId])) }}" class="et-btn outline"><i class="fas fa-chevron-left"></i> Prev Week</a>
             <span class="et-week-pill">{{ $weekStart->format('d M') }} – {{ $weekEnd->format('d M Y') }}</span>
-            <a href="{{ route($personalOnly ? 'employee-todos.my-week' : 'employee-todos.index', array_filter(['week' => $nextWeek, 'employee' => $employeeId])) }}" class="et-btn outline">Next Week →</a>
-            <a href="{{ route($personalOnly ? 'employee-todos.my-week' : 'employee-todos.index', array_filter(['week' => now()->startOfWeek()->toDateString(), 'employee' => $employeeId])) }}" class="et-btn outline">This Week</a>
+            <a href="{{ route($personalOnly ? 'employee-todos.my-week' : 'employee-todos.index', array_filter(['week' => $nextWeek, 'employee' => $employeeId])) }}" class="et-btn outline">Next Week <i class="fas fa-chevron-right"></i></a>
+            <a href="{{ route($personalOnly ? 'employee-todos.my-week' : 'employee-todos.index', array_filter(['week' => now()->startOfWeek()->toDateString(), 'employee' => $employeeId])) }}" class="et-btn outline"><i class="fas fa-calendar-week"></i> This Week</a>
         </div>
     </div>
 
@@ -134,7 +135,7 @@ body.theme-admin-pro .et-modal-ov textarea {
             @csrf
             <input type="hidden" name="week" value="{{ $weekStart->toDateString() }}">
             <input type="hidden" name="employee_id" value="{{ $employeeId }}">
-            <button type="submit" class="et-btn outline">Copy Previous Week</button>
+            <button type="submit" class="et-btn outline"><i class="fas fa-copy"></i> Copy Previous Week</button>
         </form>
         @else
         <span class="et-emp-badge">{{ $selectedEmp['name'] ?? 'My Week' }}</span>
@@ -150,7 +151,7 @@ body.theme-admin-pro .et-modal-ov textarea {
     @if($canManage && $employeeId && $selectedEmp)
     <div class="et-emp-banner">
         <div>
-            <strong>👤 {{ $selectedEmp['name'] }}</strong>
+            <strong><i class="fas fa-user"></i> {{ $selectedEmp['name'] }}</strong>
             <span> — Week of {{ $weekStart->format('d M') }} – {{ $weekEnd->format('d M Y') }}</span>
             @if(($weekStats['total'] ?? 0) > 0)
             <span class="et-admin-stats">· {{ $weekStats['completed'] ?? 0 }}/{{ $weekStats['total'] }} tasks done ({{ $weekStats['percent'] ?? 0 }}%)</span>
@@ -158,11 +159,11 @@ body.theme-admin-pro .et-modal-ov textarea {
         </div>
         @if($templates->isNotEmpty())
         <div class="et-assign-actions">
-            <button type="button" class="et-btn outline" onclick="openAssignModal()">Load Template</button>
+            <button type="button" class="et-btn outline" onclick="openAssignModal()"><i class="fas fa-file-import"></i> Load Template</button>
         </div>
         @else
         <div class="et-assign-actions">
-            <a href="{{ route('employee-todos.templates.create') }}" class="et-btn outline">Create Template</a>
+            <a href="{{ route('employee-todos.templates.create') }}" class="et-btn outline"><i class="fas fa-plus"></i> Create Template</a>
         </div>
         @endif
     </div>
@@ -228,12 +229,12 @@ body.theme-admin-pro .et-modal-ov textarea {
                                 <div style="flex:1;">
                                     <div class="et-task-title">{{ $task->title }}</div>
                                     <div class="et-task-meta">
-                                        @if($task->task_time)<span>🕐 {{ substr($task->task_time, 0, 5) }}</span>@endif
-                                        @if($task->checklist_count > 1)<span>☑ {{ $task->checklist_count }}</span>@endif
+                                        @if($task->task_time)<span><i class="far fa-clock"></i> {{ substr($task->task_time, 0, 5) }}</span>@endif
+                                        @if($task->checklist_count > 1)<span><i class="far fa-check-square"></i> {{ $task->checklist_count }}</span>@endif
                                         @if($canManage && $task->is_completed && $task->completed_at)
-                                        <span class="et-done-at">✓ Done {{ $task->completed_at->format('d M H:i') }}</span>
+                                        <span class="et-done-at"><i class="fas fa-check"></i> Done {{ $task->completed_at->format('d M H:i') }}</span>
                                         @elseif($personalOnly && $task->is_completed)
-                                        <span class="et-done-at">✓ Completed</span>
+                                        <span class="et-done-at"><i class="fas fa-check"></i> Completed</span>
                                         @endif
                                     </div>
                                     @if($canManage)
@@ -248,7 +249,7 @@ body.theme-admin-pro .et-modal-ov textarea {
                             data-category-id="{{ $cat->id }}"
                             data-day="{{ $num }}"
                             data-category-name="{{ $cat->name }}"
-                            data-day-label="{{ $day['label'] }}">+ Add</button>
+                            data-day-label="{{ $day['label'] }}"><i class="fas fa-plus"></i> Add</button>
                         @endif
                     </td>
                     @endforeach
@@ -408,9 +409,11 @@ window.toggleTask = async function(id, checkbox){
                 if(meta){
                     let doneEl = meta.querySelector('.et-done-at');
                     if(d.item.is_completed){
-                        const label = IS_EMPLOYEE_VIEW ? '✓ Completed' : ('✓ Done ' + (d.item.completed_at || ''));
-                        if(doneEl) doneEl.textContent = label;
-                        else { doneEl = document.createElement('span'); doneEl.className='et-done-at'; doneEl.textContent=label; meta.appendChild(doneEl); }
+                        const label = IS_EMPLOYEE_VIEW
+                            ? '<i class="fas fa-check"></i> Completed'
+                            : ('<i class="fas fa-check"></i> Done ' + (d.item.completed_at || ''));
+                        if(doneEl) doneEl.innerHTML = label;
+                        else { doneEl = document.createElement('span'); doneEl.className='et-done-at'; doneEl.innerHTML=label; meta.appendChild(doneEl); }
                     } else if(doneEl) doneEl.remove();
                 }
             }
@@ -433,9 +436,9 @@ window.deleteTask = async function(id){
 };
 
 function taskHtml(item){
-    const time = item.task_time ? `<span>🕐 ${String(item.task_time).substring(0,5)}</span>` : '';
-    const chk = item.checklist_count > 1 ? `<span>☑ ${item.checklist_count}</span>` : '';
-    const done = item.is_completed && item.completed_at ? `<span class="et-done-at">✓ Done ${item.completed_at}</span>` : '';
+    const time = item.task_time ? `<span><i class="far fa-clock"></i> ${String(item.task_time).substring(0,5)}</span>` : '';
+    const chk = item.checklist_count > 1 ? `<span><i class="far fa-check-square"></i> ${item.checklist_count}</span>` : '';
+    const done = item.is_completed && item.completed_at ? `<span class="et-done-at"><i class="fas fa-check"></i> Done ${item.completed_at}</span>` : '';
     const del = CAN_MANAGE ? `<button type="button" class="et-task-del" onclick="deleteTask(${item.id})">Remove</button>` : '';
     const cb = IS_EMPLOYEE_VIEW
         ? `<input type="checkbox" onchange="toggleTask(${item.id}, this)">`

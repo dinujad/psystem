@@ -21,11 +21,11 @@
 .te-item input{width:100%;border:1px solid #e5e7eb;border-radius:5px;padding:4px 6px;font-size:11px;margin-bottom:4px;box-sizing:border-box}
 .te-item-row{display:flex;gap:4px}
 .te-item-row input{flex:1}
-.te-add{width:100%;border:1px dashed #d1d5db;background:transparent;border-radius:6px;padding:4px;font-size:10px;font-weight:700;color:#9ca3af;cursor:pointer}
+.te-btn{background:#7c5cfc;color:#fff;border:none;border-radius:9px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.te-btn.outline{background:#fff;color:#7c5cfc;border:1.5px solid #7c5cfc}
+.te-add{width:100%;border:1px dashed #d1d5db;background:transparent;border-radius:6px;padding:4px;font-size:10px;font-weight:700;color:#9ca3af;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px}
 .te-add:hover{border-color:#7c5cfc;color:#7c5cfc}
 .te-foot{margin-top:14px;display:flex;gap:10px;justify-content:flex-end}
-.te-btn{background:#7c5cfc;color:#fff;border:none;border-radius:9px;padding:10px 20px;font-size:13px;font-weight:700;cursor:pointer}
-.te-btn.outline{background:#fff;color:#7c5cfc;border:1.5px solid #7c5cfc}
 </style>
 @endsection
 
@@ -33,7 +33,7 @@
 <div class="te-page" x-data="templateBuilder()" x-init="init()">
     <div class="te-head">
         <div class="te-title">{{ $template->exists ? 'Edit Template' : 'New Template' }}</div>
-        <a href="{{ route('employee-todos.templates.index') }}" class="te-btn outline" style="text-decoration:none;">← Templates</a>
+        <a href="{{ route('employee-todos.templates.index') }}" class="te-btn outline" style="text-decoration:none;"><i class="fas fa-arrow-left"></i> Templates</a>
     </div>
 
     <div class="te-meta">
@@ -73,7 +73,7 @@
                                         <button type="button" style="font-size:10px;color:#dc2626;border:none;background:none;cursor:pointer;padding:0;" @click="removeItem(cat.id, day.num, idx)">Remove</button>
                                     </div>
                                 </template>
-                                <button type="button" class="te-add" @click="addItem(cat.id, day.num)">+ Add</button>
+                                <button type="button" class="te-add" @click="addItem(cat.id, day.num)"><i class="fas fa-plus"></i> Add</button>
                             </td>
                         </template>
                     </tr>

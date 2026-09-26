@@ -5,23 +5,23 @@
 <style>
 .wt-page{padding:0 20px 60px;max-width:1000px;margin:0 auto}
 .wt-head{display:flex;justify-content:space-between;align-items:center;margin:20px 0 16px;flex-wrap:wrap;gap:10px}
-.wt-title{font-size:20px;font-weight:800;color:#1e1b4b}
+.wt-title{font-size:20px;font-weight:800;color:#1e1b4b;display:flex;align-items:center}
 .wt-btn{background:#7c5cfc;color:#fff;border:none;border-radius:9px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 .wt-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .wt-card h3{margin:0 0 4px;font-size:15px;font-weight:800;color:#111827}
 .wt-card p{margin:0;font-size:12px;color:#6b7280}
 .wt-actions{display:flex;gap:8px;flex-wrap:wrap}
-.wt-actions a,.wt-actions button{font-size:12px;font-weight:700;border-radius:8px;padding:6px 12px;border:none;cursor:pointer;text-decoration:none}
+.wt-actions a,.wt-actions button{font-size:12px;font-weight:700;border-radius:8px;padding:6px 12px;border:none;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:5px}
 </style>
 @endsection
 
 @section('content')
 <div class="wt-page">
     <div class="wt-head">
-        <div class="wt-title">Weekly Plan Templates</div>
+        <div class="wt-title"><i class="fas fa-layer-group" style="color:#7c5cfc;margin-right:8px;"></i>Weekly Plan Templates</div>
         <div style="display:flex;gap:8px;">
-            <a href="{{ route('employee-todos.index') }}" class="wt-btn" style="background:#fff;color:#7c5cfc;border:1.5px solid #7c5cfc;">← Weekly Planner</a>
-            <a href="{{ route('employee-todos.templates.create') }}" class="wt-btn">+ New Template</a>
+            <a href="{{ route('employee-todos.index') }}" class="wt-btn" style="background:#fff;color:#7c5cfc;border:1.5px solid #7c5cfc;"><i class="fas fa-arrow-left"></i> Weekly Planner</a>
+            <a href="{{ route('employee-todos.templates.create') }}" class="wt-btn"><i class="fas fa-plus"></i> New Template</a>
         </div>
     </div>
 
@@ -32,9 +32,9 @@
             <p>{{ $t->items_count }} tasks @if($t->description)· {{ Str::limit($t->description, 80) }}@endif</p>
         </div>
         <div class="wt-actions">
-            <a href="{{ route('employee-todos.templates.edit', $t) }}" style="background:#ede9fe;color:#5b21b6;">Edit</a>
-            <button type="button" style="background:#dbeafe;color:#1d4ed8;" onclick="duplicateTpl({{ $t->id }})">Duplicate</button>
-            <button type="button" style="background:#fee2e2;color:#dc2626;" onclick="deleteTpl({{ $t->id }})">Delete</button>
+            <a href="{{ route('employee-todos.templates.edit', $t) }}" style="background:#ede9fe;color:#5b21b6;"><i class="fas fa-pen"></i> Edit</a>
+            <button type="button" style="background:#dbeafe;color:#1d4ed8;" onclick="duplicateTpl({{ $t->id }})"><i class="fas fa-copy"></i> Duplicate</button>
+            <button type="button" style="background:#fee2e2;color:#dc2626;" onclick="deleteTpl({{ $t->id }})"><i class="fas fa-trash"></i> Delete</button>
         </div>
     </div>
     @empty
