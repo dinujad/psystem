@@ -32,6 +32,7 @@ body.theme-admin-pro .et-bar textarea {
 .et-grid td { border-bottom: 1px solid #f3f4f6; border-right: 1px solid #f3f4f6; vertical-align: top; padding: 8px; min-width: 130px; }
 .et-grid td.et-cat-col { position: sticky; left: 0; z-index: 1; background: #fff; border-right: 1px solid #e5e7eb; }
 .et-cat { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; color: #111827; }
+.et-cat-name { flex: 1; min-width: 0; }
 .et-cat-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .et-day-head small { display: block; font-size: 10px; color: #9ca3af; font-weight: 600; margin-top: 2px; }
 .et-task { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 6px 8px; margin-bottom: 6px; font-size: 11px; }
@@ -81,7 +82,43 @@ body.theme-admin-pro .et-modal-ov textarea {
 .et-hint strong{color:#15803d}
 .et-admin-stats{font-size:12px;color:#6b7280;margin-left:8px}
 .et-done-at{color:#15803d;font-size:10px}
+.et-add-row-bar{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.et-add-row-bar select{min-width:200px;border:1px solid #d1d5db;border-radius:8px;padding:8px 12px;font-size:13px;background:#fff;color:#111827}
+.et-row-remove{border:none;background:none;color:#9ca3af;font-size:12px;cursor:pointer;margin-left:auto;padding:2px 6px}
+.et-row-remove:hover{color:#dc2626}
+.et-grid-empty{padding:28px;text-align:center;color:#9ca3af;font-size:13px}
 .et-empty{padding:40px;text-align:center;color:#9ca3af;background:#fff;border:1px dashed #e5e7eb;border-radius:14px;margin-top:12px}
+.et-status-strip{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px 16px}
+.et-status-chip{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:800;padding:8px 14px;border-radius:999px}
+.et-status-chip.green{background:#dcfce7;color:#15803d}
+.et-status-chip.yellow{background:#fef9c3;color:#a16207}
+.et-status-chip.red{background:#fee2e2;color:#dc2626}
+.et-status-dot{width:10px;height:10px;border-radius:50%;background:currentColor}
+.et-badge-pills{display:flex;flex-wrap:wrap;gap:8px}
+.et-badge-pill{font-size:11px;font-weight:800;padding:6px 10px;border-radius:999px;background:#f3f4f6;color:#374151}
+.et-badge-pill.star{background:#fef3c7;color:#b45309}
+.et-badge-pill.super{background:#dcfce7;color:#15803d}
+.et-badge-pill.great{background:#fef9c3;color:#a16207}
+.et-section{margin-bottom:16px}
+.et-section-title{font-size:13px;font-weight:800;color:#1e1b4b;margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.et-section-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.et-task.status-overdue{background:#fef2f2;border-color:#fca5a5}
+.et-task.status-in_progress{background:#eff6ff;border-color:#93c5fd}
+.et-task.status-completed.tier-super{background:#f0fdf4;border-color:#86efac}
+.et-task.status-completed.tier-great{background:#fefce8;border-color:#fde047}
+.et-task-actions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.et-btn-sm{padding:5px 10px;font-size:11px;border-radius:7px;border:none;font-weight:700;cursor:pointer}
+.et-btn-start{background:#2563eb;color:#fff}
+.et-btn-end{background:#15803d;color:#fff}
+.et-btn-sm:disabled{opacity:.5;cursor:default}
+.et-alloc{color:#5b21b6;font-weight:700}
+.et-celeb{text-align:center;padding:28px 20px}
+.et-celeb-icon{font-size:48px;margin-bottom:10px;animation:etPop .6s ease}
+.et-celeb h3{margin:0 0 8px;font-size:20px;font-weight:800;color:#1e1b4b}
+.et-celeb p{margin:0;color:#6b7280;font-size:14px}
+@keyframes etPop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
+.et-time-row{display:flex;gap:8px}
+.et-time-row .et-field{flex:1}
 @media (max-width: 768px) { .et-grid { min-width: 800px; } }
 </style>
 @endsection
@@ -143,9 +180,43 @@ body.theme-admin-pro .et-modal-ov textarea {
     </div>
 
     @if($personalOnly)
-    <div class="et-hint">
-        <strong>Tick each task</strong> when you finish it. Your manager can see your progress on the Weekly Planner.
+    <div class="et-status-strip" id="etStatusStrip">
+        <div class="et-status-chip {{ $myStatus['color'] ?? 'green' }}" id="myStatusChip">
+            <span class="et-status-dot"></span>
+            My Status: <span id="myStatusLabel">{{ $myStatus['label'] ?? 'On Track' }}</span>
+        </div>
+        <div class="et-badge-pills" id="badgePills">
+            <span class="et-badge-pill star"><i class="fas fa-star"></i> Stars <strong id="badgeStars">{{ $badgeStats['stars'] ?? 0 }}</strong></span>
+            <span class="et-badge-pill super">Super <strong id="badgeSuper">{{ $badgeStats['super'] ?? 0 }}</strong></span>
+            <span class="et-badge-pill great">Great <strong id="badgeGreat">{{ $badgeStats['great'] ?? 0 }}</strong></span>
+        </div>
     </div>
+    <div class="et-hint">
+        <strong>Start</strong> when you begin a task, then press <strong>End</strong> when finished. Finish under half the time for Super Performer; finish early on a future day for a Star.
+    </div>
+
+    @if(($todayItems ?? collect())->isNotEmpty() || ($overdueItems ?? collect())->isNotEmpty())
+    @if(($overdueItems ?? collect())->isNotEmpty())
+    <div class="et-section">
+        <h3 class="et-section-title" style="color:#dc2626;"><i class="fas fa-exclamation-circle"></i> Overdue</h3>
+        <div class="et-section-cards">
+            @foreach($overdueItems as $task)
+                @include('employee-todos.partials.task-card', ['task' => $task, 'personalOnly' => true, 'canManage' => false, 'sectionPrefix' => 'ov'])
+            @endforeach
+        </div>
+    </div>
+    @endif
+    @if(($todayItems ?? collect())->isNotEmpty())
+    <div class="et-section">
+        <h3 class="et-section-title"><i class="fas fa-sun"></i> Today</h3>
+        <div class="et-section-cards">
+            @foreach($todayItems as $task)
+                @include('employee-todos.partials.task-card', ['task' => $task, 'personalOnly' => true, 'canManage' => false, 'sectionPrefix' => 'td'])
+            @endforeach
+        </div>
+    </div>
+    @endif
+    @endif
     @endif
 
     @if($canManage && $employeeId && $selectedEmp)
@@ -192,8 +263,32 @@ body.theme-admin-pro .et-modal-ov textarea {
     <div class="et-empty">No tasks assigned for this week yet. Check back later or contact your manager.</div>
     @endif
 
-    <div class="et-grid-wrap" @if(($weekStats['total'] ?? 0) === 0 && $personalOnly) style="display:none;" @endif>
-        <table class="et-grid">
+    @if($canManage && $employeeId)
+    <div class="et-add-row-bar">
+        <label style="font-size:12px;font-weight:700;color:#374151;"><i class="fas fa-tags"></i> Category</label>
+        <select id="addRowCategory">
+            <option value="">Select category…</option>
+            @foreach($allCategories as $cat)
+            <option value="{{ $cat->id }}"
+                data-name="{{ $cat->name }}"
+                data-color="{{ $cat->color }}"
+                @if($categories->contains('id', $cat->id)) disabled @endif>
+                {{ $cat->name }}@if($categories->contains('id', $cat->id)) (added)@endif
+            </option>
+            @endforeach
+        </select>
+        <button type="button" class="et-btn" id="addCategoryRowBtn" onclick="addCategoryRow()">
+            <i class="fas fa-plus"></i> Add Row
+        </button>
+        <span style="font-size:12px;color:#6b7280;">Select a category, then add a row and assign tasks to days.</span>
+        @if($allCategories->isEmpty())
+        <a href="{{ route('employee-todos.categories.index') }}" class="et-btn outline" style="margin-left:auto;">Create Categories</a>
+        @endif
+    </div>
+    @endif
+
+    <div class="et-grid-wrap" id="etGridWrap" @if(($weekStats['total'] ?? 0) === 0 && $personalOnly) style="display:none;" @endif>
+        <table class="et-grid" id="etGrid">
             <thead>
                 <tr>
                     <th class="et-cat-col">Category</th>
@@ -206,43 +301,23 @@ body.theme-admin-pro .et-modal-ov textarea {
                     @endforeach
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="etGridBody">
                 @forelse($categories as $cat)
-                <tr>
+                <tr data-category-id="{{ $cat->id }}">
                     <td class="et-cat-col">
                         <div class="et-cat">
                             <span class="et-cat-dot" style="background:{{ $cat->color }};"></span>
-                            {{ $cat->name }}
+                            <span class="et-cat-name">{{ $cat->name }}</span>
+                            @if($canManage)
+                            <button type="button" class="et-row-remove" title="Hide empty category row" onclick="removeCategoryRow(this)" style="display:none;"><i class="fas fa-times"></i></button>
+                            @endif
                         </div>
                     </td>
                     @foreach($days as $num => $day)
                     @php $cellKey = $cat->id.'_'.$num; $cellItems = $items->get($cellKey) ?? collect(); @endphp
                     <td data-cell="{{ $cellKey }}">
                         @foreach($cellItems as $task)
-                        <div class="et-task {{ $task->is_completed ? 'done' : '' }}" id="task-{{ $task->id }}" data-id="{{ $task->id }}">
-                            <div class="et-task-row">
-                                @if($personalOnly)
-                                <input type="checkbox" {{ $task->is_completed ? 'checked' : '' }} onchange="toggleTask({{ $task->id }}, this)">
-                                @elseif($canManage)
-                                <input type="checkbox" {{ $task->is_completed ? 'checked' : '' }} disabled title="Employee marks tasks complete">
-                                @endif
-                                <div style="flex:1;">
-                                    <div class="et-task-title">{{ $task->title }}</div>
-                                    <div class="et-task-meta">
-                                        @if($task->task_time)<span><i class="far fa-clock"></i> {{ substr($task->task_time, 0, 5) }}</span>@endif
-                                        @if($task->checklist_count > 1)<span><i class="far fa-check-square"></i> {{ $task->checklist_count }}</span>@endif
-                                        @if($canManage && $task->is_completed && $task->completed_at)
-                                        <span class="et-done-at"><i class="fas fa-check"></i> Done {{ $task->completed_at->format('d M H:i') }}</span>
-                                        @elseif($personalOnly && $task->is_completed)
-                                        <span class="et-done-at"><i class="fas fa-check"></i> Completed</span>
-                                        @endif
-                                    </div>
-                                    @if($canManage)
-                                    <button type="button" class="et-task-del" onclick="deleteTask({{ $task->id }})">Remove</button>
-                                    @endif
-                                </div>
-                            </div>
-                        </div>
+                            @include('employee-todos.partials.task-card', ['task' => $task, 'personalOnly' => $personalOnly, 'canManage' => $canManage])
                         @endforeach
                         @if($canManage && $employeeId)
                         <button type="button" class="et-add"
@@ -255,9 +330,18 @@ body.theme-admin-pro .et-modal-ov textarea {
                     @endforeach
                 </tr>
                 @empty
-                <tr><td colspan="8" style="text-align:center;padding:30px;color:#9ca3af;">
-                    No categories yet. @if($canManage)<a href="{{ route('employee-todos.categories.index') }}">Add categories</a>@endif
-                </td></tr>
+                <tr id="etEmptyRow">
+                    <td colspan="{{ 1 + count($days) }}" class="et-grid-empty">
+                        @if($canManage)
+                            No category rows yet. Select a category above and click <strong>Add Row</strong>, then assign tasks to days.
+                            @if(($allCategories ?? collect())->isEmpty())
+                            <div style="margin-top:8px;"><a href="{{ route('employee-todos.categories.index') }}">Create categories first</a></div>
+                            @endif
+                        @else
+                            No tasks assigned for this week.
+                        @endif
+                    </td>
+                </tr>
                 @endforelse
             </tbody>
         </table>
@@ -280,7 +364,7 @@ body.theme-admin-pro .et-modal-ov textarea {
                 <div class="et-field" id="quickPickFields" style="display:none;">
                     <label class="et-label">Category *</label>
                     <select id="fCategoryPick" class="et-input">
-                        @foreach($categories as $cat)
+                        @foreach($allCategories as $cat)
                         <option value="{{ $cat->id }}">{{ $cat->name }}</option>
                         @endforeach
                     </select>
@@ -309,6 +393,17 @@ body.theme-admin-pro .et-modal-ov textarea {
                     <label class="et-label">Checklist count</label>
                     <input type="number" id="fChecklist" class="et-input" min="1" max="99" value="1">
                 </div>
+                <div class="et-time-row">
+                    <div class="et-field">
+                        <label class="et-label">Hours *</label>
+                        <input type="number" id="fHours" class="et-input" min="0" max="99" value="1">
+                    </div>
+                    <div class="et-field">
+                        <label class="et-label">Minutes *</label>
+                        <input type="number" id="fMinutes" class="et-input" min="0" max="59" value="0">
+                    </div>
+                </div>
+                <div style="font-size:11px;color:#6b7280;margin-top:-6px;margin-bottom:10px;">Allocated time budget for this task (required).</div>
             </div>
             <div class="et-modal-foot">
                 <button type="button" class="et-btn outline" onclick="closeModal('addModal')">Cancel</button>
@@ -354,6 +449,17 @@ body.theme-admin-pro .et-modal-ov textarea {
 @endif
 
 <div class="et-toast" id="etToast"></div>
+
+<div class="et-modal-ov" id="celebModal">
+    <div class="et-modal" style="max-width:380px;">
+        <div class="et-celeb">
+            <div class="et-celeb-icon" id="celebIcon">🎉</div>
+            <h3 id="celebTitle">Well done!</h3>
+            <p id="celebMessage"></p>
+            <button type="button" class="et-btn" style="margin-top:18px;" onclick="closeModal('celebModal')">Awesome</button>
+        </div>
+    </div>
+</div>
 @endsection
 
 @section('javascript')
@@ -366,6 +472,12 @@ const HAS_ITEMS = @json($hasItems);
 const EMPLOYEE_NAME = @json($selectedEmp ? ($selectedEmp['name'] ?? 'Employee') : 'Employee');
 const IS_EMPLOYEE_VIEW = @json($personalOnly);
 const CAN_MANAGE = @json($canManage);
+const DAYS_META = @json(collect($days)->map(fn ($d, $num) => [
+    'num' => (int) $num,
+    'label' => $d['label'],
+    'short' => $d['short'],
+    'date' => $d['date']->format('d M'),
+])->values());
 
 function toast(msg){
     const t = document.getElementById('etToast');
@@ -377,6 +489,79 @@ function toast(msg){
 
 window.closeModal = function(id){
     document.getElementById(id)?.classList.remove('show');
+};
+
+function markCategoryUsed(catId){
+    const opt = document.querySelector('#addRowCategory option[value="'+catId+'"]');
+    if(!opt) return;
+    opt.disabled = true;
+    if(!/\(added\)$/.test(opt.textContent)) opt.textContent = opt.textContent + ' (added)';
+}
+
+function unmarkCategoryUsed(catId){
+    const opt = document.querySelector('#addRowCategory option[value="'+catId+'"]');
+    if(!opt) return;
+    opt.disabled = false;
+    opt.textContent = (opt.dataset.name || opt.textContent.replace(/\s*\(added\)$/, ''));
+}
+
+window.addCategoryRow = function(){
+    if(!CAN_MANAGE || !EMPLOYEE_ID){ toast('Select an employee first'); return; }
+    const sel = document.getElementById('addRowCategory');
+    if(!sel || !sel.value){ toast('Select a category first'); return; }
+    const catId = parseInt(sel.value, 10);
+    if(document.querySelector('#etGridBody tr[data-category-id="'+catId+'"]')){
+        toast('Category row already added');
+        return;
+    }
+    const name = sel.options[sel.selectedIndex].dataset.name || sel.options[sel.selectedIndex].text;
+    const color = sel.options[sel.selectedIndex].dataset.color || '#7c5cfc';
+
+    document.getElementById('etEmptyRow')?.remove();
+
+    let cells = '';
+    DAYS_META.forEach(day => {
+        cells += `<td data-cell="${catId}_${day.num}">
+            <button type="button" class="et-add"
+                data-category-id="${catId}"
+                data-day="${day.num}"
+                data-category-name="${escapeHtml(name)}"
+                data-day-label="${escapeHtml(day.label)}"><i class="fas fa-plus"></i> Add</button>
+        </td>`;
+    });
+
+    const tr = document.createElement('tr');
+    tr.dataset.categoryId = String(catId);
+    tr.innerHTML = `<td class="et-cat-col">
+        <div class="et-cat">
+            <span class="et-cat-dot" style="background:${escapeHtml(color)};"></span>
+            <span class="et-cat-name">${escapeHtml(name)}</span>
+            <button type="button" class="et-row-remove" title="Remove empty row" onclick="removeCategoryRow(this)"><i class="fas fa-times"></i></button>
+        </div>
+    </td>${cells}`;
+    document.getElementById('etGridBody').appendChild(tr);
+    markCategoryUsed(catId);
+    sel.value = '';
+    toast('Category row added — assign tasks to days');
+};
+
+window.removeCategoryRow = function(btn){
+    const tr = btn.closest('tr');
+    if(!tr) return;
+    if(tr.querySelector('.et-task')){
+        toast('Remove all tasks in this category first, or keep the row');
+        return;
+    }
+    const catId = tr.dataset.categoryId;
+    tr.remove();
+    if(catId) unmarkCategoryUsed(catId);
+    const body = document.getElementById('etGridBody');
+    if(body && !body.querySelector('tr[data-category-id]')){
+        const empty = document.createElement('tr');
+        empty.id = 'etEmptyRow';
+        empty.innerHTML = `<td colspan="${1 + DAYS_META.length}" class="et-grid-empty">No category rows yet. Select a category above and click <strong>Add Row</strong>, then assign tasks to days.</td>`;
+        body.appendChild(empty);
+    }
 };
 
 function updateStats(stats){
@@ -391,7 +576,99 @@ function updateStats(stats){
             if(el){ el.textContent = stats.days[d].percent + '%'; el.classList.toggle('done', stats.days[d].percent >= 100); }
         });
     }
+    if(stats.badges){
+        const s = document.getElementById('badgeStars'); if(s) s.textContent = stats.badges.stars;
+        const su = document.getElementById('badgeSuper'); if(su) su.textContent = stats.badges.super;
+        const g = document.getElementById('badgeGreat'); if(g) g.textContent = stats.badges.great;
+    }
+    if(stats.status){
+        const chip = document.getElementById('myStatusChip');
+        const label = document.getElementById('myStatusLabel');
+        if(label) label.textContent = stats.status.label;
+        if(chip){
+            chip.classList.remove('green','yellow','red');
+            chip.classList.add(stats.status.color || 'green');
+        }
+    }
 }
+
+function showCelebration(popup){
+    if(!popup) return;
+    const icons = { early_start: '⚡', star_super: '⭐', super: '🏆', great: '👍' };
+    document.getElementById('celebIcon').textContent = icons[popup.type] || '🎉';
+    document.getElementById('celebTitle').textContent = popup.title || 'Well done!';
+    document.getElementById('celebMessage').textContent = popup.message || '';
+    document.getElementById('celebModal')?.classList.add('show');
+}
+
+function applyItemToDom(item){
+    document.querySelectorAll(`[data-id="${item.id}"]`).forEach(el => {
+        el.className = 'et-task status-' + (item.status || 'pending')
+            + (item.is_completed ? ' done' : '')
+            + (item.performance_tier ? ' tier-' + item.performance_tier : '');
+        const meta = el.querySelector('.et-task-meta');
+        const actions = el.querySelector('.et-task-actions');
+        if(meta){
+            const alloc = item.allocated_minutes || 60;
+            const h = Math.floor(alloc/60), m = alloc%60;
+            const allocLabel = h && m ? `${h}h ${m}m` : (h ? `${h}h` : `${m}m`);
+            let html = `<span class="et-alloc"><i class="far fa-hourglass"></i> ${allocLabel}</span>`;
+            if(item.task_time) html += `<span><i class="far fa-clock"></i> ${String(item.task_time).substring(0,5)}</span>`;
+            if(item.checklist_count > 1) html += `<span><i class="far fa-check-square"></i> ${item.checklist_count}</span>`;
+            if(item.started_at && !item.ended_at) html += `<span><i class="fas fa-play"></i> Started</span>`;
+            if(item.is_completed){
+                if(item.earned_star) html += `<span class="et-badge-pill star" style="padding:2px 6px;"><i class="fas fa-star"></i></span>`;
+                if(item.performance_tier === 'super') html += `<span class="et-badge-pill super" style="padding:2px 6px;">Super</span>`;
+                if(item.performance_tier === 'great') html += `<span class="et-badge-pill great" style="padding:2px 6px;">Great</span>`;
+                html += `<span class="et-done-at"><i class="fas fa-check"></i> ${item.ended_at || item.completed_at || 'Done'}</span>`;
+            } else if(item.status === 'overdue'){
+                html += `<span style="color:#dc2626;font-weight:700;">Overdue</span>`;
+            }
+            meta.innerHTML = html;
+        }
+        if(actions && IS_EMPLOYEE_VIEW){
+            if(!item.is_completed && !item.started_at){
+                actions.innerHTML = `<button type="button" class="et-btn-sm et-btn-start" onclick="startTask(${item.id})"><i class="fas fa-play"></i> Start</button>`;
+            } else if(!item.is_completed && item.started_at){
+                actions.innerHTML = `<button type="button" class="et-btn-sm et-btn-end" onclick="endTask(${item.id})"><i class="fas fa-stop"></i> End</button>`;
+            } else {
+                actions.innerHTML = '';
+            }
+        }
+    });
+}
+
+window.startTask = async function(id){
+    try {
+        const r = await fetch(`/employee-todos/items/${id}/start`, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }
+        });
+        const d = await r.json();
+        if(d.success && d.item){
+            applyItemToDom(d.item);
+            updateStats(d.stats);
+            if(d.popup) showCelebration(d.popup);
+            else toast('Task started');
+        } else toast(d.message || 'Could not start');
+    } catch(e){ toast('Could not start'); }
+};
+
+window.endTask = async function(id){
+    try {
+        const r = await fetch(`/employee-todos/items/${id}/end`, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }
+        });
+        const d = await r.json();
+        if(d.success && d.item){
+            applyItemToDom(d.item);
+            updateStats(d.stats);
+            if(d.popup) showCelebration(d.popup);
+            else toast('Task completed');
+        } else toast(d.message || 'Could not end');
+    } catch(e){ toast('Could not end'); }
+};
 
 window.toggleTask = async function(id, checkbox){
     checkbox.disabled = true;
@@ -401,25 +678,14 @@ window.toggleTask = async function(id, checkbox){
             headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }
         });
         const d = await r.json();
-        if(d.success){
-            const el = document.getElementById('task-'+id);
-            if(el){
-                el.classList.toggle('done', d.item.is_completed);
-                const meta = el.querySelector('.et-task-meta');
-                if(meta){
-                    let doneEl = meta.querySelector('.et-done-at');
-                    if(d.item.is_completed){
-                        const label = IS_EMPLOYEE_VIEW
-                            ? '<i class="fas fa-check"></i> Completed'
-                            : ('<i class="fas fa-check"></i> Done ' + (d.item.completed_at || ''));
-                        if(doneEl) doneEl.innerHTML = label;
-                        else { doneEl = document.createElement('span'); doneEl.className='et-done-at'; doneEl.innerHTML=label; meta.appendChild(doneEl); }
-                    } else if(doneEl) doneEl.remove();
-                }
-            }
+        if(d.success && d.item){
+            applyItemToDom(d.item);
             updateStats(d.stats);
-            if(IS_EMPLOYEE_VIEW) toast(d.item.is_completed ? 'Task marked done' : 'Task marked pending');
-        } else { checkbox.checked = !checkbox.checked; toast('Update failed'); }
+            toast('Task reset to pending');
+        } else {
+            checkbox.checked = !checkbox.checked;
+            toast(d.message || 'Update failed');
+        }
     } catch(e){ checkbox.checked = !checkbox.checked; toast('Update failed'); }
     finally { checkbox.disabled = false; }
 };
@@ -431,24 +697,28 @@ window.deleteTask = async function(id){
         headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF }
     });
     const d = await r.json();
-    if(d.success){ document.getElementById('task-'+id)?.remove(); updateStats(d.stats); }
+    if(d.success){
+        document.querySelectorAll(`[data-id="${id}"]`).forEach(el => el.remove());
+        updateStats(d.stats);
+    }
     else toast('Delete failed');
 };
 
 function taskHtml(item){
+    const alloc = item.allocated_minutes || 60;
+    const h = Math.floor(alloc/60), m = alloc%60;
+    const allocLabel = h && m ? `${h}h ${m}m` : (h ? `${h}h` : `${m}m`);
     const time = item.task_time ? `<span><i class="far fa-clock"></i> ${String(item.task_time).substring(0,5)}</span>` : '';
     const chk = item.checklist_count > 1 ? `<span><i class="far fa-check-square"></i> ${item.checklist_count}</span>` : '';
-    const done = item.is_completed && item.completed_at ? `<span class="et-done-at"><i class="fas fa-check"></i> Done ${item.completed_at}</span>` : '';
     const del = CAN_MANAGE ? `<button type="button" class="et-task-del" onclick="deleteTask(${item.id})">Remove</button>` : '';
-    const cb = IS_EMPLOYEE_VIEW
-        ? `<input type="checkbox" onchange="toggleTask(${item.id}, this)">`
-        : (CAN_MANAGE ? `<input type="checkbox" disabled title="Employee marks tasks complete">` : '');
-    return `<div class="et-task" id="task-${item.id}" data-id="${item.id}">
+    const cb = CAN_MANAGE ? `<input type="checkbox" disabled title="Employee uses Start / End">` : '';
+    const status = item.status || 'pending';
+    return `<div class="et-task status-${status}" id="task-${item.id}" data-id="${item.id}">
         <div class="et-task-row">
             ${cb}
             <div style="flex:1;">
                 <div class="et-task-title">${escapeHtml(item.title)}</div>
-                <div class="et-task-meta">${time}${chk}${done}</div>
+                <div class="et-task-meta"><span class="et-alloc"><i class="far fa-hourglass"></i> ${allocLabel}</span>${time}${chk}</div>
                 ${del}
             </div>
         </div>
@@ -462,6 +732,8 @@ function escapeHtml(str){
 async function saveTask(payload, cellEl){
     if(!EMPLOYEE_ID){ toast('Select an employee first'); return false; }
     if(!payload.title){ toast('Task title is required'); return false; }
+    const totalMins = (parseInt(payload.allocated_hours,10)||0)*60 + (parseInt(payload.allocated_minutes,10)||0);
+    if(totalMins < 1){ toast('Set allocated hours and/or minutes'); return false; }
     const r = await fetch(@json(route('employee-todos.items.store')), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
@@ -476,7 +748,7 @@ async function saveTask(payload, cellEl){
     }
     if(cellEl && d.item){
         const addBtn = cellEl.querySelector('.et-add');
-        if(!cellEl.querySelector('#task-'+d.item.id)){
+        if(!cellEl.querySelector('[data-id="'+d.item.id+'"]')){
             const wrap = document.createElement('div');
             wrap.innerHTML = taskHtml(d.item);
             cellEl.insertBefore(wrap.firstElementChild, addBtn);
@@ -516,6 +788,8 @@ window.openCellAssign = function(catId, day, catName, dayLabel){
     document.getElementById('fTitle').value = '';
     document.getElementById('fTime').value = '';
     document.getElementById('fChecklist').value = '1';
+    document.getElementById('fHours').value = '1';
+    document.getElementById('fMinutes').value = '0';
     modal.classList.add('show');
     setTimeout(() => document.getElementById('fTitle')?.focus(), 50);
 };
@@ -526,6 +800,8 @@ window.openQuickAssign = function(){
     document.getElementById('fTitle').value = '';
     document.getElementById('fTime').value = '';
     document.getElementById('fChecklist').value = '1';
+    document.getElementById('fHours').value = '1';
+    document.getElementById('fMinutes').value = '0';
 };
 
 window.openAssignModal = function(){
@@ -580,6 +856,8 @@ document.addEventListener('DOMContentLoaded', function(){
                 title: document.getElementById('fTitle').value.trim(),
                 task_time: document.getElementById('fTime').value || null,
                 checklist_count: parseInt(document.getElementById('fChecklist').value, 10) || 1,
+                allocated_hours: parseInt(document.getElementById('fHours').value, 10) || 0,
+                allocated_minutes: parseInt(document.getElementById('fMinutes').value, 10) || 0,
             };
             const cell = document.querySelector(`td[data-cell="${categoryId}_${dayOfWeek}"]`);
             const btn = document.getElementById('addSubmitBtn');
@@ -591,6 +869,8 @@ document.addEventListener('DOMContentLoaded', function(){
                 document.getElementById('fTitle').value = '';
                 document.getElementById('fTime').value = '';
                 document.getElementById('fChecklist').value = '1';
+                document.getElementById('fHours').value = '1';
+                document.getElementById('fMinutes').value = '0';
             }
         });
     }

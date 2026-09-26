@@ -710,6 +710,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::prefix('employee-todos')->name('employee-todos.')->group(function () {
         Route::get('/', [\App\Http\Controllers\EmployeeTodoController::class, 'index'])->name('index');
         Route::get('/my-week', [\App\Http\Controllers\EmployeeTodoController::class, 'myWeek'])->name('my-week');
+        Route::get('/task-view', [\App\Http\Controllers\EmployeeTodoController::class, 'taskView'])->name('task-view');
 
         Route::get('/categories', [\App\Http\Controllers\TaskCategoryController::class, 'index'])->name('categories.index');
         Route::post('/categories', [\App\Http\Controllers\TaskCategoryController::class, 'store'])->name('categories.store');
@@ -727,6 +728,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
         Route::post('/items', [\App\Http\Controllers\EmployeeTodoController::class, 'storeItem'])->name('items.store');
         Route::post('/items/{item}/toggle', [\App\Http\Controllers\EmployeeTodoController::class, 'toggleItem'])->name('items.toggle');
+        Route::post('/items/{item}/start', [\App\Http\Controllers\EmployeeTodoController::class, 'startItem'])->name('items.start');
+        Route::post('/items/{item}/end', [\App\Http\Controllers\EmployeeTodoController::class, 'endItem'])->name('items.end');
         Route::delete('/items/{item}', [\App\Http\Controllers\EmployeeTodoController::class, 'deleteItem'])->name('items.delete');
         Route::post('/assign-template', [\App\Http\Controllers\EmployeeTodoController::class, 'assignTemplate'])->name('assign-template');
         Route::post('/copy-week', [\App\Http\Controllers\EmployeeTodoController::class, 'copyWeek'])->name('copy-week');

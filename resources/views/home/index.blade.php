@@ -72,6 +72,32 @@
                     </div>{{-- end hero inner padding --}}
         </div>{{-- end hero --}}
 
+        @if(!empty($todoWidget))
+        <div class="tw-px-5 tw-pt-4">
+            <a href="{{ route('employee-todos.my-week') }}" class="tw-block tw-no-underline" style="text-decoration:none;">
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:14px 16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                        <div style="font-size:14px;font-weight:800;color:#1e1b4b;"><i class="fas fa-check-circle" style="color:#7c5cfc;"></i> My Week</div>
+                        <span style="font-size:12px;font-weight:800;padding:6px 12px;border-radius:999px;
+                            @if(($todoWidget['status']['color'] ?? '') === 'red') background:#fee2e2;color:#dc2626;
+                            @elseif(($todoWidget['status']['color'] ?? '') === 'yellow') background:#fef9c3;color:#a16207;
+                            @else background:#dcfce7;color:#15803d; @endif">
+                            {{ $todoWidget['status']['label'] ?? 'On Track' }}
+                        </span>
+                    </div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px;font-weight:700;color:#374151;">
+                        <span>Today open: {{ $todoWidget['today'] ?? 0 }}</span>
+                        <span style="color:#dc2626;">Overdue: {{ $todoWidget['overdue'] ?? 0 }}</span>
+                        <span>⭐ {{ $todoWidget['badges']['stars'] ?? 0 }}</span>
+                        <span>Super {{ $todoWidget['badges']['super'] ?? 0 }}</span>
+                        <span>Great {{ $todoWidget['badges']['great'] ?? 0 }}</span>
+                        <span>{{ $todoWidget['done'] ?? 0 }}/{{ $todoWidget['total'] ?? 0 }} done</span>
+                    </div>
+                </div>
+            </a>
+        </div>
+        @endif
+
         @if (auth()->user()->can('dashboard.data'))
             @if ($is_admin)
                 <div class="tw-px-5 pw-dash-body">

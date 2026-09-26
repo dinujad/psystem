@@ -8,7 +8,7 @@ class WeeklyPlanTemplateItem extends Model
 {
     protected $fillable = [
         'template_id', 'category_id', 'day_of_week', 'title',
-        'task_time', 'checklist_count', 'sort_order',
+        'task_time', 'checklist_count', 'allocated_minutes', 'sort_order',
     ];
 
     public function template()

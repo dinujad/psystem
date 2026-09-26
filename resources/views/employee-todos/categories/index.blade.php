@@ -22,9 +22,31 @@
 .tc-order{display:flex;flex-direction:column;gap:2px}
 .tc-order button{width:24px;height:20px;border:1px solid #e5e7eb;background:#f9fafb;border-radius:4px;font-size:11px;cursor:pointer;line-height:1;color:#6b7280;padding:0}
 .tc-order button:hover{border-color:#7c5cfc;color:#7c5cfc}
-.tc-modal-ov{position:fixed;inset:0;background:rgba(17,24,39,.5);z-index:100000;display:none;align-items:center;justify-content:center;padding:16px}
-.tc-modal-ov.show{display:flex}
-.tc-modal{background:#fff;border-radius:16px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.tc-modal-ov{
+    position:fixed !important;
+    top:0 !important; left:0 !important; right:0 !important; bottom:0 !important;
+    width:100vw !important; height:100vh !important;
+    margin:0 !important;
+    background:rgba(17,24,39,.55);
+    z-index:100000 !important;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    box-sizing:border-box;
+}
+.tc-modal-ov.show{display:flex !important;}
+.tc-modal{
+    background:#fff;
+    border-radius:16px;
+    width:100%;
+    max-width:420px;
+    max-height:calc(100vh - 32px);
+    overflow-y:auto;
+    margin:auto;
+    box-shadow:0 20px 60px rgba(0,0,0,.25);
+    position:relative;
+}
 .tc-modal-head{background:linear-gradient(135deg,#1e1b4b,#4f46e5);color:#fff;padding:16px 20px;border-radius:16px 16px 0 0;display:flex;align-items:center;justify-content:space-between}
 .tc-modal-head h3{margin:0;font-size:16px;font-weight:800;color:#fff;display:flex;align-items:center;gap:8px}
 .tc-modal-close{background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;opacity:.85}
@@ -128,26 +150,40 @@
 const CSRF = document.querySelector('meta[name="csrf-token"]')?.content || '';
 const CAT_ORDER = @json($categories->pluck('id'));
 
+function ensureModalOnBody(){
+    const modal = document.getElementById('catModal');
+    if(modal && modal.parentElement !== document.body){
+        document.body.appendChild(modal);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', ensureModalOnBody);
+
 function openAdd(){
+    ensureModalOnBody();
     document.getElementById('catId').value = '';
     document.getElementById('catName').value = '';
     document.getElementById('catColor').value = '#7c5cfc';
     document.getElementById('catModalTitle').innerHTML = '<i class="fas fa-tag"></i> Add Category';
     syncSwatches();
     document.getElementById('catModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
     setTimeout(() => document.getElementById('catName').focus(), 50);
 }
 function editCat(cat){
+    ensureModalOnBody();
     document.getElementById('catId').value = cat.id;
     document.getElementById('catName').value = cat.name || '';
     document.getElementById('catColor').value = cat.color || '#7c5cfc';
     document.getElementById('catModalTitle').innerHTML = '<i class="fas fa-pen"></i> Edit Category';
     syncSwatches();
     document.getElementById('catModal').classList.add('show');
+    document.body.style.overflow = 'hidden';
     setTimeout(() => document.getElementById('catName').focus(), 50);
 }
 function closeModal(){
     document.getElementById('catModal').classList.remove('show');
+    document.body.style.overflow = '';
 }
 function pickColor(hex){
     document.getElementById('catColor').value = hex;

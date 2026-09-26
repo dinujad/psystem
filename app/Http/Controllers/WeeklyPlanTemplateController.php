@@ -47,8 +47,9 @@ class WeeklyPlanTemplateController extends Controller
             'items.*.category_id'     => ['required_with:items', 'integer'],
             'items.*.day_of_week'     => ['required_with:items', 'integer', 'min:1', 'max:7'],
             'items.*.title'           => ['required_with:items', 'string', 'max:200'],
-            'items.*.task_time'       => ['nullable', 'string', 'max:10'],
-            'items.*.checklist_count' => ['nullable', 'integer', 'min:1', 'max:99'],
+            'items.*.task_time'         => ['nullable', 'string', 'max:10'],
+            'items.*.checklist_count'   => ['nullable', 'integer', 'min:1', 'max:99'],
+            'items.*.allocated_minutes' => ['nullable', 'integer', 'min:1', 'max:9999'],
         ]);
 
         $template = DB::transaction(function () use ($data) {
@@ -94,11 +95,12 @@ class WeeklyPlanTemplateController extends Controller
             'name'        => ['required', 'string', 'max:120'],
             'description' => ['nullable', 'string', 'max:2000'],
             'items'       => ['nullable', 'array'],
-            'items.*.category_id'     => ['required_with:items', 'integer'],
-            'items.*.day_of_week'     => ['required_with:items', 'integer', 'min:1', 'max:7'],
-            'items.*.title'           => ['required_with:items', 'string', 'max:200'],
-            'items.*.task_time'       => ['nullable', 'string', 'max:10'],
-            'items.*.checklist_count' => ['nullable', 'integer', 'min:1', 'max:99'],
+            'items.*.category_id'       => ['required_with:items', 'integer'],
+            'items.*.day_of_week'       => ['required_with:items', 'integer', 'min:1', 'max:7'],
+            'items.*.title'             => ['required_with:items', 'string', 'max:200'],
+            'items.*.task_time'         => ['nullable', 'string', 'max:10'],
+            'items.*.checklist_count'   => ['nullable', 'integer', 'min:1', 'max:99'],
+            'items.*.allocated_minutes' => ['nullable', 'integer', 'min:1', 'max:9999'],
         ]);
 
         DB::transaction(function () use ($template, $data) {
@@ -140,13 +142,14 @@ class WeeklyPlanTemplateController extends Controller
 
             foreach ($template->items as $item) {
                 WeeklyPlanTemplateItem::create([
-                    'template_id'     => $copy->id,
-                    'category_id'     => $item->category_id,
-                    'day_of_week'     => $item->day_of_week,
-                    'title'           => $item->title,
-                    'task_time'       => $item->task_time,
-                    'checklist_count' => $item->checklist_count,
-                    'sort_order'      => $item->sort_order,
+                    'template_id'       => $copy->id,
+                    'category_id'       => $item->category_id,
+                    'day_of_week'       => $item->day_of_week,
+                    'title'             => $item->title,
+                    'task_time'         => $item->task_time,
+                    'checklist_count'   => $item->checklist_count,
+                    'allocated_minutes' => max(1, (int) ($item->allocated_minutes ?: 60)),
+                    'sort_order'        => $item->sort_order,
                 ]);
             }
 
@@ -170,13 +173,14 @@ class WeeklyPlanTemplateController extends Controller
             }
 
             WeeklyPlanTemplateItem::create([
-                'template_id'     => $template->id,
-                'category_id'     => (int) $row['category_id'],
-                'day_of_week'     => (int) $row['day_of_week'],
-                'title'           => trim($row['title']),
-                'task_time'       => $row['task_time'] ?? null,
-                'checklist_count' => max(1, (int) ($row['checklist_count'] ?? 1)),
-                'sort_order'      => $idx + 1,
+                'template_id'       => $template->id,
+                'category_id'       => (int) $row['category_id'],
+                'day_of_week'       => (int) $row['day_of_week'],
+                'title'             => trim($row['title']),
+                'task_time'         => $row['task_time'] ?? null,
+                'checklist_count'   => max(1, (int) ($row['checklist_count'] ?? 1)),
+                'allocated_minutes' => max(1, (int) ($row['allocated_minutes'] ?? 60)),
+                'sort_order'        => $idx + 1,
             ]);
         }
     }
@@ -200,12 +204,13 @@ class WeeklyPlanTemplateController extends Controller
         if ($template->exists) {
             foreach ($template->items as $item) {
                 $items[] = [
-                    'category_id'     => $item->category_id,
-                    'day_of_week'     => $item->day_of_week,
-                    'title'           => $item->title,
-                    'task_time'       => $item->task_time ? substr((string) $item->task_time, 0, 5) : '',
-                    'checklist_count' => $item->checklist_count,
-                    '_key'            => 'e'.$item->id,
+                    'category_id'       => $item->category_id,
+                    'day_of_week'       => $item->day_of_week,
+                    'title'             => $item->title,
+                    'task_time'         => $item->task_time ? substr((string) $item->task_time, 0, 5) : '',
+                    'checklist_count'   => $item->checklist_count,
+                    'allocated_minutes' => (int) ($item->allocated_minutes ?: 60),
+                    '_key'              => 'e'.$item->id,
                 ];
             }
         }

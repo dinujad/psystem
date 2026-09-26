@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\BusinessLocation;
 use App\Charts\CommonChart;
 use App\Currency;
+use App\EmployeeWeeklyPlan;
 use App\Media;
 use App\ProductionJob;
 use App\ProductionStageEmployee;
+use App\Services\EmployeeTodoPerformance;
 use App\Transaction;
 use App\User;
 use App\Utils\BusinessUtil;
@@ -81,9 +83,10 @@ class HomeController extends Controller
         $business_id = request()->session()->get('user.business_id');
 
         $is_admin = $this->businessUtil->is_admin(auth()->user());
+        $todoWidget = $this->buildTodoWidget($user, (int) $business_id);
 
         if (! auth()->user()->can('dashboard.data')) {
-            return view('home.index');
+            return view('home.index', compact('is_admin', 'todoWidget'));
         }
 
         $fy = $this->businessUtil->getCurrentFinancialYear($business_id);
@@ -260,8 +263,50 @@ class HomeController extends Controller
         return view('home.index', compact(
             'sells_chart_1', 'sells_chart_2', 'widgets', 'all_locations',
             'common_settings', 'is_admin', 'showProduction', 'productionStages',
-            'activeJobs', 'stageCounts'
+            'activeJobs', 'stageCounts', 'todoWidget'
         ));
+    }
+
+    private function buildTodoWidget($user, int $businessId): ?array
+    {
+        if (! $user || $user->user_type !== 'user' || $user->is_cmmsn_agnt) {
+            return null;
+        }
+        if ((int) $user->business_id !== $businessId) {
+            return null;
+        }
+
+        $weekStart = EmployeeWeeklyPlan::normalizeWeekStart();
+        $plan = EmployeeWeeklyPlan::where('business_id', $businessId)
+            ->where('employee_id', $user->id)
+            ->where('week_start_date', $weekStart->toDateString())
+            ->with('items')
+            ->first();
+
+        if (! $plan) {
+            return [
+                'today'   => 0,
+                'overdue' => 0,
+                'badges'  => ['stars' => 0, 'super' => 0, 'great' => 0],
+                'status'  => ['color' => 'green', 'label' => 'On Track', 'key' => 'on_track'],
+                'total'   => 0,
+                'done'    => 0,
+            ];
+        }
+
+        $perf = app(EmployeeTodoPerformance::class);
+        $perf->refreshOverdueForPlan($plan);
+        $items = $plan->items()->get();
+        $todayDow = (int) now()->dayOfWeekIso;
+
+        return [
+            'today'   => $items->where('day_of_week', $todayDow)->where('is_completed', false)->count(),
+            'overdue' => $items->where('status', 'overdue')->count(),
+            'badges'  => $perf->weekBadgeStats($items),
+            'status'  => $perf->myStatus($items),
+            'total'   => $items->count(),
+            'done'    => $items->where('is_completed', true)->count(),
+        ];
     }
 
     private function canViewProductionDashboard(): bool

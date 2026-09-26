@@ -69,6 +69,7 @@
                                         <div class="te-item-row">
                                             <input type="time" x-model="item.task_time" title="Time">
                                             <input type="number" x-model.number="item.checklist_count" min="1" max="99" title="Checklist count" style="width:50px;">
+                                            <input type="number" x-model.number="item.allocated_minutes" min="1" max="9999" title="Allocated minutes" style="width:58px;" placeholder="mins">
                                         </div>
                                         <button type="button" style="font-size:10px;color:#dc2626;border:none;background:none;cursor:pointer;padding:0;" @click="removeItem(cat.id, day.num, idx)">Remove</button>
                                     </div>
@@ -116,7 +117,8 @@ function templateBuilder(){
                 day_of_week: day,
                 title: '',
                 task_time: '',
-                checklist_count: 1
+                checklist_count: 1,
+                allocated_minutes: 60
             });
         },
         removeItem(catId, day, idx){
@@ -130,7 +132,8 @@ function templateBuilder(){
                 day_of_week: i.day_of_week,
                 title: i.title.trim(),
                 task_time: i.task_time || null,
-                checklist_count: i.checklist_count || 1
+                checklist_count: i.checklist_count || 1,
+                allocated_minutes: Math.max(1, parseInt(i.allocated_minutes, 10) || 60)
             }));
         },
         async save(closeAfter){

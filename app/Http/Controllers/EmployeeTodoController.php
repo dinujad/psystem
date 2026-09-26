@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\EmployeeWeeklyPlan;
 use App\EmployeeWeeklyPlanItem;
 use App\Services\EmployeeTodoNotifier;
+use App\Services\EmployeeTodoPerformance;
 use App\TaskCategory;
 use App\User;
 use App\WeeklyPlanTemplate;
@@ -77,18 +78,28 @@ class EmployeeTodoController extends Controller
             $employeeId = $allEmployees->first()['id'] ?? null;
         }
 
-        $categories = TaskCategory::forBusiness($this->businessId())
+        $allCategories = TaskCategory::forBusiness($this->businessId())
             ->where('is_active', true)
             ->orderBy('sort_order')
+            ->orderBy('name')
             ->get();
 
         $plan  = null;
         $items = collect();
         $dayStats = [];
         $weekStats = ['total' => 0, 'completed' => 0, 'percent' => 0];
+        $visibleCategoryIds = [];
+
+        $perf = app(EmployeeTodoPerformance::class);
+        $badgeStats = ['stars' => 0, 'super' => 0, 'great' => 0, 'done' => 0, 'total' => 0, 'overdue' => 0];
+        $myStatus = ['color' => 'green', 'label' => 'On Track', 'key' => 'on_track'];
+        $todayItems = collect();
+        $overdueItems = collect();
+        $todayDow = (int) Carbon::today()->dayOfWeekIso;
 
         if ($employeeId) {
             $plan = $this->getOrCreateEmployeePlan((int) $employeeId, $weekStart);
+            $perf->refreshOverdueForPlan($plan);
             $flatItems = $plan->items()
                 ->with('category')
                 ->orderBy('sort_order')
@@ -97,7 +108,15 @@ class EmployeeTodoController extends Controller
             $plan->setRelation('items', $flatItems);
             $items = $flatItems->groupBy(fn ($i) => $i->category_id.'_'.$i->day_of_week);
 
+            // Only show category rows that already have tasks for this employee/week
+            $visibleCategoryIds = $flatItems->pluck('category_id')->unique()->filter()->values()->all();
+
             $weekStats = $plan->completionStats();
+            $badgeStats = $perf->weekBadgeStats($flatItems);
+            $myStatus = $perf->myStatus($flatItems);
+            $todayItems = $flatItems->where('day_of_week', $todayDow)->values();
+            $overdueItems = $flatItems->where('status', 'overdue')->values();
+
             foreach (EmployeeWeeklyPlan::dayLabels() as $d => $label) {
                 $dayItems = $flatItems->where('day_of_week', $d);
                 $total    = $dayItems->count();
@@ -109,6 +128,8 @@ class EmployeeTodoController extends Controller
                 ];
             }
         }
+
+        $categories = $allCategories->whereIn('id', $visibleCategoryIds)->values();
 
         $templates = $canManage
             ? WeeklyPlanTemplate::where('business_id', $this->businessId())->orderBy('name')->get(['id', 'name'])
@@ -133,8 +154,9 @@ class EmployeeTodoController extends Controller
 
         return view('employee-todos.index', compact(
             'plan', 'weekStart', 'weekEnd', 'prevWeek', 'nextWeek',
-            'allEmployees', 'categories', 'items', 'days', 'dayStats', 'weekStats',
-            'canManage', 'employeeId', 'personalOnly', 'templates', 'selectedEmp'
+            'allEmployees', 'categories', 'allCategories', 'items', 'days', 'dayStats', 'weekStats',
+            'canManage', 'employeeId', 'personalOnly', 'templates', 'selectedEmp',
+            'badgeStats', 'myStatus', 'todayItems', 'overdueItems', 'todayDow'
         ));
     }
 
@@ -153,14 +175,24 @@ class EmployeeTodoController extends Controller
         $this->authorizeManage();
 
         $data = $request->validate([
-            'week'            => ['required', 'date'],
-            'employee_id'     => ['required', 'integer', 'exists:users,id'],
-            'category_id'     => ['required', 'integer'],
-            'day_of_week'     => ['required', 'integer', 'min:1', 'max:7'],
-            'title'           => ['required', 'string', 'max:200'],
-            'task_time'       => ['nullable', 'string', 'max:10'],
-            'checklist_count' => ['nullable', 'integer', 'min:1', 'max:99'],
+            'week'              => ['required', 'date'],
+            'employee_id'       => ['required', 'integer', 'exists:users,id'],
+            'category_id'       => ['required', 'integer'],
+            'day_of_week'       => ['required', 'integer', 'min:1', 'max:7'],
+            'title'             => ['required', 'string', 'max:200'],
+            'task_time'         => ['nullable', 'string', 'max:10'],
+            'checklist_count'   => ['nullable', 'integer', 'min:1', 'max:99'],
+            'allocated_hours'   => ['nullable', 'integer', 'min:0', 'max:99'],
+            'allocated_minutes' => ['nullable', 'integer', 'min:0', 'max:59'],
         ]);
+
+        $allocated = ((int) ($data['allocated_hours'] ?? 0) * 60) + (int) ($data['allocated_minutes'] ?? 0);
+        if ($allocated < 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Allocated time is required (hours and/or minutes).',
+            ], 422);
+        }
 
         $weekStart = EmployeeWeeklyPlan::normalizeWeekStart($data['week']);
         $plan      = $this->getOrCreateEmployeePlan((int) $data['employee_id'], $weekStart);
@@ -178,8 +210,10 @@ class EmployeeTodoController extends Controller
             'title'                   => trim($data['title']),
             'task_time'               => $data['task_time'] ?? null,
             'checklist_count'         => max(1, (int) ($data['checklist_count'] ?? 1)),
+            'allocated_minutes'       => $allocated,
             'completed_count'         => 0,
             'is_completed'            => false,
+            'status'                  => 'pending',
             'source'                  => 'manual',
             'sort_order'              => ($maxSort ?? 0) + 1,
         ]);
@@ -198,7 +232,7 @@ class EmployeeTodoController extends Controller
 
         return response()->json([
             'success'  => true,
-            'item'     => $this->itemPayload($item, $plan),
+            'item'     => $this->itemPayload($item->load('category'), $plan),
             'stats'    => $this->statsPayload($plan),
             'whatsapp' => $whatsapp,
         ]);
@@ -213,14 +247,194 @@ class EmployeeTodoController extends Controller
             abort(403, 'Only the assigned employee can mark tasks complete.');
         }
 
-        $completed = ! $item->is_completed;
-        $item->markCompleted($completed);
+        // Timed workflow: End completes; toggle only allows un-complete for corrections
+        if (! $item->is_completed) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Use Start / End to complete timed tasks.',
+            ], 422);
+        }
+
+        $item->markCompleted(false);
+        $item->update([
+            'started_at'       => null,
+            'ended_at'         => null,
+            'status'           => 'pending',
+            'performance_tier' => null,
+            'earned_star'      => false,
+            'early_start'      => false,
+        ]);
 
         return response()->json([
             'success' => true,
-            'item'    => $this->itemPayload($item->fresh('category'), $item->plan),
+            'item'    => $this->itemPayload($item->fresh(['category', 'plan']), $item->plan),
             'stats'   => $this->statsPayload($item->plan->fresh()),
         ]);
+    }
+
+    public function startItem(EmployeeWeeklyPlanItem $item)
+    {
+        $this->authorizeItem($item);
+        $item->load('plan');
+
+        if ((int) $item->plan->employee_id !== auth()->id()) {
+            abort(403, 'Only the assigned employee can start this task.');
+        }
+
+        $result = app(EmployeeTodoPerformance::class)->start($item);
+
+        return response()->json([
+            'success'     => $result['success'],
+            'message'     => $result['message'] ?? null,
+            'early_start' => $result['early_start'] ?? false,
+            'popup'       => $result['popup'] ?? null,
+            'item'        => isset($result['item'])
+                ? $this->itemPayload($result['item'], $item->plan)
+                : null,
+            'stats'       => $this->statsPayload($item->plan->fresh()),
+        ], $result['success'] ? 200 : 422);
+    }
+
+    public function endItem(EmployeeWeeklyPlanItem $item)
+    {
+        $this->authorizeItem($item);
+        $item->load('plan');
+
+        if ((int) $item->plan->employee_id !== auth()->id()) {
+            abort(403, 'Only the assigned employee can end this task.');
+        }
+
+        $result = app(EmployeeTodoPerformance::class)->end($item);
+
+        return response()->json([
+            'success' => $result['success'],
+            'message' => $result['message'] ?? null,
+            'popup'   => $result['popup'] ?? null,
+            'result'  => $result['result'] ?? null,
+            'item'    => isset($result['item'])
+                ? $this->itemPayload($result['item'], $item->plan)
+                : null,
+            'stats'   => $this->statsPayload($item->plan->fresh()),
+        ], $result['success'] ? 200 : 422);
+    }
+
+    public function taskView(Request $request)
+    {
+        $this->authorizeManage();
+
+        $weekStart = EmployeeWeeklyPlan::normalizeWeekStart($request->get('week'));
+        $weekEnd   = $weekStart->copy()->addDays(6);
+        $prevWeek  = $weekStart->copy()->subWeek()->toDateString();
+        $nextWeek  = $weekStart->copy()->addWeek()->toDateString();
+        $tab       = in_array($request->get('tab'), ['overview', 'performance', 'charts'], true)
+            ? $request->get('tab')
+            : 'overview';
+
+        $perf = app(EmployeeTodoPerformance::class);
+        $perf->refreshOverdueForBusiness($this->businessId());
+
+        $employees = $this->employees();
+        $plans = EmployeeWeeklyPlan::where('business_id', $this->businessId())
+            ->where('week_start_date', $weekStart->toDateString())
+            ->with(['items.category', 'employee'])
+            ->get()
+            ->keyBy('employee_id');
+
+        $todayDow = (int) Carbon::today()->dayOfWeekIso;
+        $rows = [];
+        $chart = [
+            'names'     => [],
+            'completed' => [],
+            'overdue'   => [],
+            'super'     => [],
+            'great'     => [],
+            'stars'     => [],
+        ];
+        $overview = [
+            'working'   => 0,
+            'overdue'   => 0,
+            'completed' => 0,
+            'pending'   => 0,
+        ];
+
+        foreach ($employees as $emp) {
+            $plan = $plans->get($emp['id']);
+            $items = $plan ? $plan->items : collect();
+            $badges = $perf->weekBadgeStats($items);
+            $status = $perf->myStatus($items);
+            $todayDone = $items->where('day_of_week', $todayDow)->where('is_completed', true)->count();
+            $todayTotal = $items->where('day_of_week', $todayDow)->count();
+            $inProgress = $items->where('status', 'in_progress')->count();
+
+            if ($inProgress > 0) {
+                $overview['working']++;
+            }
+            if ($badges['overdue'] > 0) {
+                $overview['overdue']++;
+            }
+            $overview['completed'] += $badges['done'];
+            $overview['pending'] += max(0, $badges['total'] - $badges['done']);
+
+            $taskCards = $items->map(fn ($i) => $perf->itemToArray($i))->values()->all();
+
+            $avgRatio = null;
+            $completedTimed = $items->filter(fn ($i) => $i->started_at && $i->ended_at && $i->allocated_minutes);
+            if ($completedTimed->isNotEmpty()) {
+                $ratios = $completedTimed->map(function ($i) {
+                    $actual = max(1, (int) ceil(Carbon::parse($i->started_at)->diffInSeconds(Carbon::parse($i->ended_at)) / 60));
+
+                    return $actual / max(1, (int) $i->allocated_minutes);
+                });
+                $avgRatio = round($ratios->avg(), 2);
+            }
+
+            $rows[] = [
+                'employee'   => $emp,
+                'badges'     => $badges,
+                'status'     => $status,
+                'today_done' => $todayDone,
+                'today_total'=> $todayTotal,
+                'in_progress'=> $inProgress,
+                'avg_ratio'  => $avgRatio,
+                'tasks'      => $taskCards,
+                'score'      => ($badges['stars'] * 3) + ($badges['super'] * 2) + $badges['great'],
+            ];
+
+            $chart['names'][] = $emp['name'];
+            $chart['completed'][] = $badges['done'];
+            $chart['overdue'][] = $badges['overdue'];
+            $chart['super'][] = $badges['super'];
+            $chart['great'][] = $badges['great'];
+            $chart['stars'][] = $badges['stars'];
+        }
+
+        usort($rows, function ($a, $b) {
+            if ($a['score'] === $b['score']) {
+                return ($a['badges']['done'] <=> $b['badges']['done']) * -1;
+            }
+
+            return $b['score'] <=> $a['score'];
+        });
+
+        $rank = 1;
+        foreach ($rows as &$row) {
+            $row['rank'] = $rank++;
+        }
+        unset($row);
+
+        $days = [];
+        foreach (EmployeeWeeklyPlan::dayLabels() as $num => $label) {
+            $days[$num] = [
+                'label' => $label,
+                'short' => EmployeeWeeklyPlan::dayShortLabels()[$num],
+                'date'  => $weekStart->copy()->addDays($num - 1),
+            ];
+        }
+
+        return view('employee-todos.task-view', compact(
+            'weekStart', 'weekEnd', 'prevWeek', 'nextWeek', 'tab',
+            'rows', 'overview', 'chart', 'days', 'todayDow'
+        ));
     }
 
     public function deleteItem(EmployeeWeeklyPlanItem $item)
@@ -282,8 +496,10 @@ class EmployeeTodoController extends Controller
                     'title'                   => $src->title,
                     'task_time'               => $src->task_time,
                     'checklist_count'         => $src->checklist_count,
+                    'allocated_minutes'       => max(1, (int) ($src->allocated_minutes ?: 60)),
                     'completed_count'         => 0,
                     'is_completed'            => false,
+                    'status'                  => 'pending',
                     'source'                  => 'template',
                     'sort_order'              => $src->sort_order,
                 ]);
@@ -351,9 +567,16 @@ class EmployeeTodoController extends Controller
                     'title'                   => $src->title,
                     'task_time'               => $src->task_time,
                     'checklist_count'         => $src->checklist_count,
+                    'allocated_minutes'       => max(1, (int) ($src->allocated_minutes ?: 60)),
                     'completed_count'         => 0,
                     'is_completed'            => false,
                     'completed_at'            => null,
+                    'started_at'              => null,
+                    'ended_at'                => null,
+                    'status'                  => 'pending',
+                    'performance_tier'        => null,
+                    'earned_star'             => false,
+                    'early_start'             => false,
                     'source'                  => $src->source,
                     'sort_order'              => $src->sort_order,
                 ]);
@@ -426,23 +649,15 @@ class EmployeeTodoController extends Controller
 
     private function itemPayload(EmployeeWeeklyPlanItem $item, EmployeeWeeklyPlan $plan): array
     {
-        return [
-            'id'              => $item->id,
-            'title'           => $item->title,
-            'task_time'       => $item->task_time,
-            'checklist_count' => $item->checklist_count,
-            'is_completed'    => $item->is_completed,
-            'completed_at'    => $item->completed_at?->format('d M H:i'),
-            'source'          => $item->source,
-            'category_id'     => $item->category_id,
-            'day_of_week'     => $item->day_of_week,
-            'category_color'  => $item->category?->color,
-        ];
+        $item->setRelation('plan', $plan);
+
+        return app(EmployeeTodoPerformance::class)->itemToArray($item);
     }
 
     private function statsPayload(EmployeeWeeklyPlan $plan): array
     {
         $plan->load('items');
+        $perf = app(EmployeeTodoPerformance::class);
         $week = $plan->completionStats();
         $days = [];
         foreach (EmployeeWeeklyPlan::dayLabels() as $d => $label) {
@@ -456,6 +671,11 @@ class EmployeeTodoController extends Controller
             ];
         }
 
-        return ['week' => $week, 'days' => $days];
+        return [
+            'week'   => $week,
+            'days'   => $days,
+            'badges' => $perf->weekBadgeStats($plan->items),
+            'status' => $perf->myStatus($plan->items),
+        ];
     }
 }
