@@ -474,7 +474,7 @@ class EmployeeTodoController extends Controller
 
         usort($rows, function ($a, $b) {
             if ($a['score'] === $b['score']) {
-                return ($a['badges']['done'] <=> $b['badges']['done']) * -1;
+                return ($b['badges']['done'] <=> $a['badges']['done']);
             }
 
             return $b['score'] <=> $a['score'];
@@ -482,9 +482,13 @@ class EmployeeTodoController extends Controller
 
         $rank = 1;
         foreach ($rows as &$row) {
-            $row['rank'] = $rank++;
+            $hasWork = ($row['score'] > 0) || (($row['badges']['done'] ?? 0) > 0);
+            $row['rank'] = $hasWork ? $rank++ : null;
+            $row['has_work'] = $hasWork;
         }
         unset($row);
+
+        $rankedRows = array_values(array_filter($rows, fn ($row) => ! empty($row['has_work'])));
 
         $days = [];
         foreach (EmployeeWeeklyPlan::dayLabels() as $num => $label) {
@@ -497,7 +501,7 @@ class EmployeeTodoController extends Controller
 
         return view('employee-todos.task-view', compact(
             'weekStart', 'weekEnd', 'prevWeek', 'nextWeek', 'tab',
-            'rows', 'overview', 'chart', 'days', 'todayDow'
+            'rows', 'rankedRows', 'overview', 'chart', 'days', 'todayDow'
         ));
     }
 

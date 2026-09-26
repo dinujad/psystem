@@ -112,7 +112,7 @@
     @if($tab === 'performance')
     <div class="tv-panel">
         <h3 style="margin:0 0 12px;font-size:15px;font-weight:800;">Week rankings</h3>
-        @foreach($rows as $row)
+        @forelse(($rankedRows ?? []) as $row)
         <div class="tv-rank">
             <div class="tv-rank-num {{ $row['rank'] <= 3 ? 'top' : '' }}">{{ $row['rank'] }}</div>
             <div style="flex:1;">
@@ -124,7 +124,11 @@
             </div>
             <span class="tv-status {{ $row['status']['color'] }}">{{ $row['status']['label'] }}</span>
         </div>
-        @endforeach
+        @empty
+        <div style="color:#9ca3af;padding:24px;text-align:center;font-size:13px;">
+            No rankings yet. Ranks appear after employees start completing tasks this week.
+        </div>
+        @endforelse
     </div>
     @endif
 
