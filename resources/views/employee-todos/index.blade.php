@@ -483,7 +483,17 @@ function toast(msg){
 }
 
 window.closeModal = function(id){
-    document.getElementById(id)?.classList.remove('show');
+    const el = document.getElementById(id);
+    if(el){
+        el.classList.remove('show');
+        if(id === 'addModal'){
+            document.getElementById('fTitle').value = '';
+            document.getElementById('fTime').value = '';
+            document.getElementById('fChecklist').value = '1';
+            document.getElementById('fHours').value = '1';
+            document.getElementById('fMinutes').value = '0';
+        }
+    }
 };
 
 function markCategoryUsed(catId){
@@ -871,9 +881,23 @@ document.addEventListener('DOMContentLoaded', function(){
     }
 });
 
-// Admin: refresh task states every 45s when viewing an employee
+// Admin: refresh task states every 45s when viewing an employee (only if idle)
 if(CAN_MANAGE && EMPLOYEE_ID){
-    setInterval(() => { if(!document.hidden) location.reload(); }, 45000);
+    setInterval(() => {
+        if(document.hidden) return;
+        // Do not reload if any modal (Add Task, Assign Template, Celeb) is open
+        if(document.querySelector('.et-modal-ov.show')) return;
+        // Do not reload if user is currently interacting with an input / textarea / select
+        const active = document.activeElement;
+        if(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) return;
+        // Do not reload if Add Task form has text typed in
+        if(document.getElementById('fTitle')?.value?.trim()) return;
+        // Do not reload if week notes textarea has unsaved changes
+        const notes = document.querySelector('textarea[name="notes"]');
+        if(notes && notes.value !== notes.defaultValue) return;
+
+        location.reload();
+    }, 45000);
 }
 })();
 </script>
