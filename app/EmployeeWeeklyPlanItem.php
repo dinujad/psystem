@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class EmployeeWeeklyPlanItem extends Model
 {
     protected $fillable = [
-        'employee_weekly_plan_id', 'category_id', 'day_of_week', 'title', 'task_time',
+        'employee_weekly_plan_id', 'category_id', 'day_of_week', 'title', 'description', 'task_time',
         'checklist_count', 'allocated_minutes', 'completed_count', 'is_completed', 'completed_at',
         'started_at', 'ended_at', 'status', 'performance_tier', 'earned_star', 'early_start',
         'source', 'sort_order',

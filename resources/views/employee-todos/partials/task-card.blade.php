@@ -18,6 +18,19 @@
         @endif
         <div style="flex:1;">
             <div class="et-task-title">{{ $task->title }}</div>
+            @if(!empty($task->description))
+            <div class="et-task-desc" onclick="openTaskDetailModal(this)"
+                 data-title="{{ $task->title }}"
+                 data-desc="{{ $task->description }}"
+                 data-cat="{{ $task->category?->name ?? 'General' }}"
+                 data-time="{{ $task->task_time ? substr($task->task_time, 0, 5) : '' }}"
+                 data-alloc="{{ $allocLabel }}"
+                 data-status="{{ $status }}"
+                 title="Click to view full job description">
+                <i class="fas fa-align-left et-desc-icon"></i>
+                <span class="et-desc-text">{{ $task->description }}</span>
+            </div>
+            @endif
             <div class="et-task-meta">
                 <span class="et-alloc"><i class="far fa-hourglass"></i> {{ $allocLabel }}</span>
                 @if($task->task_time)<span><i class="far fa-clock"></i> {{ substr($task->task_time, 0, 5) }}</span>@endif

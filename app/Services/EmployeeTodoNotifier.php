@@ -35,6 +35,10 @@ class EmployeeTodoNotifier
             '*'.($item->category?->name ?? 'General').':* '.$item->title,
         ];
 
+        if (! empty($item->description)) {
+            $lines[] = '📝 *Description:* '.trim($item->description);
+        }
+
         if ($item->task_time) {
             $lines[] = 'Time: '.substr((string) $item->task_time, 0, 5);
         }

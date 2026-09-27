@@ -119,6 +119,9 @@
                 <div class="tv-task {{ $t['status'] }}">
                     <strong>{{ $t['title'] }}</strong>
                     <div>{{ $t['category_name'] ?? '—' }} · Day {{ $t['day_of_week'] }}</div>
+                    @if(!empty($t['description']))
+                    <div style="font-size:11px;color:#4b5563;background:#f3f4f6;border-left:2px solid #7c5cfc;padding:3px 6px;margin:4px 0;border-radius:4px;white-space:pre-wrap;line-height:1.35;"><i class="fas fa-align-left" style="color:#7c5cfc;font-size:9px;margin-right:3px;"></i>{{ $t['description'] }}</div>
+                    @endif
                     <div>
                         Budget {{ $t['allocated_minutes'] }}m
                         {{ !empty($t['started_at']) ? '· Start '.$t['started_at'] : '' }}
@@ -274,6 +277,9 @@
             <div class="tv-task {{ $t['status'] }}">
                 <strong>{{ $t['title'] }}</strong>
                 <div>{{ $t['category_name'] ?? '—' }} · Day {{ $t['day_of_week'] }}</div>
+                @if(!empty($t['description']))
+                <div style="font-size:11px;color:#4b5563;background:#f3f4f6;border-left:2px solid #7c5cfc;padding:3px 6px;margin:4px 0;border-radius:4px;white-space:pre-wrap;line-height:1.35;"><i class="fas fa-align-left" style="color:#7c5cfc;font-size:9px;margin-right:3px;"></i>{{ $t['description'] }}</div>
+                @endif
                 <div>
                     Budget {{ $t['allocated_minutes'] }}m
                     {{ !empty($t['started_at']) ? '· Start '.$t['started_at'] : '' }}

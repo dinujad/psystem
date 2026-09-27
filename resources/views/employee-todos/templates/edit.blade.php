@@ -66,6 +66,7 @@
                                 <template x-for="(item, idx) in cellItems(cat.id, day.num)" :key="item._key">
                                     <div class="te-item">
                                         <input type="text" x-model="item.title" placeholder="Task title">
+                                        <input type="text" x-model="item.description" placeholder="Description (optional)" style="font-size:10px;margin-bottom:4px;">
                                         <div class="te-item-row">
                                             <input type="time" x-model="item.task_time" title="Time">
                                             <input type="number" x-model.number="item.checklist_count" min="1" max="99" title="Checklist count" style="width:50px;">
@@ -116,6 +117,7 @@ function templateBuilder(){
                 category_id: catId,
                 day_of_week: day,
                 title: '',
+                description: '',
                 task_time: '',
                 checklist_count: 1,
                 allocated_minutes: 60
@@ -131,6 +133,7 @@ function templateBuilder(){
                 category_id: i.category_id,
                 day_of_week: i.day_of_week,
                 title: i.title.trim(),
+                description: (i.description || '').trim() || null,
                 task_time: i.task_time || null,
                 checklist_count: i.checklist_count || 1,
                 allocated_minutes: Math.max(1, parseInt(i.allocated_minutes, 10) || 60)

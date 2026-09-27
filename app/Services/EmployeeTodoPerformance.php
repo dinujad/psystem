@@ -257,6 +257,7 @@ class EmployeeTodoPerformance
         return [
             'id'                 => $item->id,
             'title'              => $item->title,
+            'description'        => $item->description,
             'task_time'          => $item->task_time,
             'checklist_count'    => $item->checklist_count,
             'allocated_minutes'  => (int) ($item->allocated_minutes ?: 60),

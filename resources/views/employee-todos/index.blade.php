@@ -119,6 +119,11 @@ body.theme-admin-pro .et-modal-ov textarea {
 @keyframes etPop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.15)}100%{transform:scale(1);opacity:1}}
 .et-time-row{display:flex;gap:8px}
 .et-time-row .et-field{flex:1}
+.et-task-desc{margin:4px 0 3px;font-size:11px;line-height:1.35;color:#4b5563;background:#f1f5f9;border-left:3px solid #7c5cfc;border-radius:4px;padding:3px 6px;cursor:pointer;display:flex;align-items:flex-start;gap:4px;transition:all .15s ease;word-break:break-word}
+.et-task-desc:hover{background:#ede9fe;color:#3730a3;border-left-color:#5b21b6}
+.et-task-desc .et-desc-icon{color:#7c5cfc;font-size:9px;margin-top:2px;flex-shrink:0}
+.et-task-desc .et-desc-text{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.et-detail-desc-box{font-size:13px;color:#374151;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px 14px;line-height:1.55;white-space:pre-wrap;word-break:break-word;max-height:280px;overflow-y:auto}
 @media (max-width: 768px) { .et-grid { min-width: 800px; } }
 </style>
 @endsection
@@ -386,6 +391,10 @@ body.theme-admin-pro .et-modal-ov textarea {
                     <input type="text" id="fTitle" class="et-input" required maxlength="200" placeholder="What needs to be done?">
                 </div>
                 <div class="et-field">
+                    <label class="et-label">Job Description (optional)</label>
+                    <textarea id="fDescription" class="et-input" rows="3" placeholder="Describe the job instructions, specifications, client requirements..."></textarea>
+                </div>
+                <div class="et-field">
                     <label class="et-label">Time (optional)</label>
                     <input type="time" id="fTime" class="et-input">
                 </div>
@@ -410,6 +419,26 @@ body.theme-admin-pro .et-modal-ov textarea {
                 <button type="submit" class="et-btn" id="addSubmitBtn">Save Task</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div class="et-modal-ov" id="taskDetailModal">
+    <div class="et-modal" style="max-width:480px;">
+        <div class="et-modal-head" style="display:flex;align-items:center;justify-content:space-between;">
+            <h3 style="margin:0;"><i class="fas fa-clipboard-list" style="margin-right:6px;"></i> Task Details</h3>
+            <button type="button" onclick="closeModal('taskDetailModal')" style="background:none;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;padding:0;">&times;</button>
+        </div>
+        <div class="et-modal-body">
+            <div style="font-size:16px;font-weight:800;color:#1e1b4b;margin-bottom:8px;line-height:1.35;" id="tdModalTitle"></div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;" id="tdModalBadges"></div>
+            <div class="et-field" style="margin-bottom:0;">
+                <span class="et-label"><i class="fas fa-align-left" style="color:#7c5cfc;margin-right:4px;"></i> Job Description</span>
+                <div id="tdModalDesc" class="et-detail-desc-box"></div>
+            </div>
+        </div>
+        <div class="et-modal-foot">
+            <button type="button" class="et-btn outline" onclick="closeModal('taskDetailModal')">Close</button>
+        </div>
     </div>
 </div>
 
@@ -488,12 +517,44 @@ window.closeModal = function(id){
         el.classList.remove('show');
         if(id === 'addModal'){
             document.getElementById('fTitle').value = '';
+            const descEl = document.getElementById('fDescription');
+            if(descEl) descEl.value = '';
             document.getElementById('fTime').value = '';
             document.getElementById('fChecklist').value = '1';
             document.getElementById('fHours').value = '1';
             document.getElementById('fMinutes').value = '0';
         }
     }
+};
+
+window.openTaskDetailModal = function(el){
+    const title = el.dataset.title || '';
+    const desc = el.dataset.desc || '';
+    const cat = el.dataset.cat || '';
+    const time = el.dataset.time || '';
+    const alloc = el.dataset.alloc || '';
+    const status = el.dataset.status || '';
+
+    const titleEl = document.getElementById('tdModalTitle');
+    const descEl = document.getElementById('tdModalDesc');
+    const badgesEl = document.getElementById('tdModalBadges');
+    if(titleEl) titleEl.textContent = title;
+    if(descEl) descEl.textContent = desc || 'No description provided.';
+
+    if(badgesEl){
+        let badgesHtml = '';
+        if(cat) badgesHtml += `<span class="et-badge-pill" style="background:#ede9fe;color:#5b21b6;font-size:11px;font-weight:700;"><i class="fas fa-tag"></i> ${escapeHtml(cat)}</span>`;
+        if(alloc) badgesHtml += `<span class="et-badge-pill" style="font-size:11px;font-weight:700;"><i class="far fa-hourglass"></i> ${escapeHtml(alloc)}</span>`;
+        if(time) badgesHtml += `<span class="et-badge-pill" style="font-size:11px;font-weight:700;"><i class="far fa-clock"></i> ${escapeHtml(time)}</span>`;
+        if(status) {
+            let statusColor = status === 'completed' ? '#15803d' : (status === 'overdue' ? '#dc2626' : (status === 'in_progress' ? '#2563eb' : '#6b7280'));
+            let statusBg = status === 'completed' ? '#dcfce7' : (status === 'overdue' ? '#fee2e2' : (status === 'in_progress' ? '#dbeafe' : '#f3f4f6'));
+            badgesHtml += `<span class="et-badge-pill" style="background:${statusBg};color:${statusColor};font-size:11px;font-weight:700;text-transform:capitalize;">${escapeHtml(status.replace('_',' '))}</span>`;
+        }
+        badgesEl.innerHTML = badgesHtml;
+    }
+
+    document.getElementById('taskDetailModal')?.classList.add('show');
 };
 
 function markCategoryUsed(catId){
@@ -718,11 +779,24 @@ function taskHtml(item){
     const del = CAN_MANAGE ? `<button type="button" class="et-task-del" onclick="deleteTask(${item.id})">Remove</button>` : '';
     const cb = CAN_MANAGE ? `<input type="checkbox" disabled title="Employee uses Start / End">` : '';
     const status = item.status || 'pending';
+    const desc = item.description ? `<div class="et-task-desc" onclick="openTaskDetailModal(this)"
+        data-title="${escapeHtml(item.title)}"
+        data-desc="${escapeHtml(item.description)}"
+        data-cat="${escapeHtml(item.category_name || '')}"
+        data-time="${escapeHtml(item.task_time ? String(item.task_time).substring(0,5) : '')}"
+        data-alloc="${escapeHtml(allocLabel)}"
+        data-status="${escapeHtml(status)}"
+        title="Click to view full job description">
+        <i class="fas fa-align-left et-desc-icon"></i>
+        <span class="et-desc-text">${escapeHtml(item.description)}</span>
+    </div>` : '';
+
     return `<div class="et-task status-${status}" id="task-${item.id}" data-id="${item.id}">
         <div class="et-task-row">
             ${cb}
             <div style="flex:1;">
                 <div class="et-task-title">${escapeHtml(item.title)}</div>
+                ${desc}
                 <div class="et-task-meta"><span class="et-alloc"><i class="far fa-hourglass"></i> ${allocLabel}</span>${time}${chk}</div>
                 ${del}
             </div>
@@ -791,6 +865,7 @@ window.openCellAssign = function(catId, day, catName, dayLabel){
     document.getElementById('fDay').value = day;
     document.getElementById('fCellLabel').textContent = catName + ' · ' + dayLabel;
     document.getElementById('fTitle').value = '';
+    const descEl = document.getElementById('fDescription'); if(descEl) descEl.value = '';
     document.getElementById('fTime').value = '';
     document.getElementById('fChecklist').value = '1';
     document.getElementById('fHours').value = '1';
@@ -803,6 +878,7 @@ window.openQuickAssign = function(){
     setAddModalMode('quick');
     document.getElementById('addModal')?.classList.add('show');
     document.getElementById('fTitle').value = '';
+    const descEl = document.getElementById('fDescription'); if(descEl) descEl.value = '';
     document.getElementById('fTime').value = '';
     document.getElementById('fChecklist').value = '1';
     document.getElementById('fHours').value = '1';
@@ -828,7 +904,12 @@ window.doAssign = async function(){
 };
 
 document.addEventListener('DOMContentLoaded', function(){
-    document.querySelectorAll('.et-modal-ov').forEach(el => document.body.appendChild(el));
+    document.querySelectorAll('.et-modal-ov').forEach(el => {
+        document.body.appendChild(el);
+        el.addEventListener('click', function(e){
+            if(e.target === el) el.classList.remove('show');
+        });
+    });
     const toastEl = document.getElementById('etToast');
     if(toastEl) document.body.appendChild(toastEl);
 
@@ -859,6 +940,7 @@ document.addEventListener('DOMContentLoaded', function(){
                 category_id: categoryId,
                 day_of_week: dayOfWeek,
                 title: document.getElementById('fTitle').value.trim(),
+                description: document.getElementById('fDescription')?.value?.trim() || null,
                 task_time: document.getElementById('fTime').value || null,
                 checklist_count: parseInt(document.getElementById('fChecklist').value, 10) || 1,
                 allocated_hours: parseInt(document.getElementById('fHours').value, 10) || 0,
@@ -872,6 +954,7 @@ document.addEventListener('DOMContentLoaded', function(){
             if(ok){
                 closeModal('addModal');
                 document.getElementById('fTitle').value = '';
+                const descEl = document.getElementById('fDescription'); if(descEl) descEl.value = '';
                 document.getElementById('fTime').value = '';
                 document.getElementById('fChecklist').value = '1';
                 document.getElementById('fHours').value = '1';
@@ -892,6 +975,7 @@ if(CAN_MANAGE && EMPLOYEE_ID){
         if(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT')) return;
         // Do not reload if Add Task form has text typed in
         if(document.getElementById('fTitle')?.value?.trim()) return;
+        if(document.getElementById('fDescription')?.value?.trim()) return;
         // Do not reload if week notes textarea has unsaved changes
         const notes = document.querySelector('textarea[name="notes"]');
         if(notes && notes.value !== notes.defaultValue) return;

@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class WeeklyPlanTemplateItem extends Model
 {
     protected $fillable = [
-        'template_id', 'category_id', 'day_of_week', 'title',
+        'template_id', 'category_id', 'day_of_week', 'title', 'description',
         'task_time', 'checklist_count', 'allocated_minutes', 'sort_order',
     ];
 
