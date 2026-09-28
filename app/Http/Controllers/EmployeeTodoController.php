@@ -255,49 +255,65 @@ class EmployeeTodoController extends Controller
             ], 422);
         }
 
-        $weekStart = EmployeeWeeklyPlan::normalizeWeekStart($data['week']);
-        $plan      = $this->getOrCreateEmployeePlan((int) $data['employee_id'], $weekStart);
-        $this->assertCategory($data['category_id']);
+        try {
+            $weekStart = EmployeeWeeklyPlan::normalizeWeekStart($data['week']);
+            $plan      = $this->getOrCreateEmployeePlan((int) $data['employee_id'], $weekStart);
+            $this->assertCategory($data['category_id']);
 
-        $maxSort = $plan->items()
-            ->where('category_id', $data['category_id'])
-            ->where('day_of_week', $data['day_of_week'])
-            ->max('sort_order');
+            $maxSort = $plan->items()
+                ->where('category_id', $data['category_id'])
+                ->where('day_of_week', $data['day_of_week'])
+                ->max('sort_order');
 
-        $item = EmployeeWeeklyPlanItem::create([
-            'employee_weekly_plan_id' => $plan->id,
-            'category_id'             => $data['category_id'],
-            'day_of_week'             => $data['day_of_week'],
-            'title'                   => trim($data['title']),
-            'description'             => !empty($data['description']) ? trim($data['description']) : null,
-            'task_time'               => $data['task_time'] ?? null,
-            'checklist_count'         => max(1, (int) ($data['checklist_count'] ?? 1)),
-            'allocated_minutes'       => $allocated,
-            'completed_count'         => 0,
-            'is_completed'            => false,
-            'status'                  => 'pending',
-            'source'                  => 'manual',
-            'sort_order'              => ($maxSort ?? 0) + 1,
-        ]);
+            $item = EmployeeWeeklyPlanItem::create([
+                'employee_weekly_plan_id' => $plan->id,
+                'category_id'             => $data['category_id'],
+                'day_of_week'             => $data['day_of_week'],
+                'title'                   => trim($data['title']),
+                'description'             => !empty($data['description']) ? trim($data['description']) : null,
+                'task_time'               => $data['task_time'] ?? null,
+                'checklist_count'         => max(1, (int) ($data['checklist_count'] ?? 1)),
+                'allocated_minutes'       => $allocated,
+                'completed_count'         => 0,
+                'is_completed'            => false,
+                'status'                  => 'pending',
+                'source'                  => 'manual',
+                'sort_order'              => ($maxSort ?? 0) + 1,
+            ]);
 
-        $whatsapp = null;
-        if ($this->canManage() && (int) $data['employee_id'] !== auth()->id()) {
-            $employee = User::find((int) $data['employee_id']);
-            if ($employee) {
-                $whatsapp = app(EmployeeTodoNotifier::class)->notifyNewTask(
-                    $employee,
-                    $item->load('category'),
-                    $weekStart
-                );
+            $whatsapp = null;
+            if ($this->canManage() && (int) $data['employee_id'] !== auth()->id()) {
+                $employee = User::find((int) $data['employee_id']);
+                if ($employee) {
+                    try {
+                        $whatsapp = app(EmployeeTodoNotifier::class)->notifyNewTask(
+                            $employee,
+                            $item->load('category'),
+                            $weekStart
+                        );
+                    } catch (\Throwable $we) {
+                        \Log::warning('EmployeeTodo storeItem WhatsApp notification failed: '.$we->getMessage());
+                        $whatsapp = ['success' => false, 'message' => 'WhatsApp not sent (service error)'];
+                    }
+                }
             }
-        }
 
-        return response()->json([
-            'success'  => true,
-            'item'     => $this->itemPayload($item->load('category'), $plan),
-            'stats'    => $this->statsPayload($plan),
-            'whatsapp' => $whatsapp,
-        ]);
+            return response()->json([
+                'success'  => true,
+                'item'     => $this->itemPayload($item->load('category'), $plan),
+                'stats'    => $this->statsPayload($plan),
+                'whatsapp' => $whatsapp,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('EmployeeTodo storeItem failed: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to save task: '.$e->getMessage(),
+            ], 500);
+        }
     }
 
     public function toggleItem(EmployeeWeeklyPlanItem $item)
@@ -748,12 +764,17 @@ class EmployeeTodoController extends Controller
         if ($addedCount > 0) {
             $employee = User::find((int) $data['employee_id']);
             if ($employee) {
-                $whatsapp = app(EmployeeTodoNotifier::class)->notifyTemplateAssigned(
-                    $employee,
-                    $weekStart,
-                    $addedCount,
-                    $template->name
-                );
+                try {
+                    $whatsapp = app(EmployeeTodoNotifier::class)->notifyTemplateAssigned(
+                        $employee,
+                        $weekStart,
+                        $addedCount,
+                        $template->name
+                    );
+                } catch (\Throwable $we) {
+                    \Log::warning('EmployeeTodo assignTemplate WhatsApp notification failed: '.$we->getMessage());
+                    $whatsapp = ['success' => false, 'message' => 'WhatsApp not sent (service error)'];
+                }
             }
         }
 
