@@ -72,6 +72,49 @@
                     </div>{{-- end hero inner padding --}}
         </div>{{-- end hero --}}
 
+        @if(!empty($myWork))
+        <div class="tw-px-5 tw-pt-4" id="home_my_work"
+            data-status="{{ $myWork['status'] }}"
+            data-clock-in="{{ $myWork['clock_in'] }}"
+            data-clock-out="{{ $myWork['clock_out'] }}"
+            data-week="{{ $myWork['week_closed_seconds'] }}"
+            data-month="{{ $myWork['month_closed_seconds'] }}"
+            data-require="{{ $myWork['require_location'] }}"
+            data-user="{{ auth()->user()->id }}">
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:16px;">
+                <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+                    <div>
+                        <div style="font-size:13px;font-weight:800;color:#6b7280;">Today my working time</div>
+                        <div id="home_today_timer" style="font-size:32px;font-weight:800;color:#1e1b4b;letter-spacing:0.5px;">00:00:00</div>
+                        <div id="home_arrived_label" style="font-size:12px;color:#6b7280;">
+                            @if($myWork['status'] === 'absent')
+                                Not marked yet
+                            @else
+                                Marked at {{ $myWork['arrived_label'] }}
+                            @endif
+                        </div>
+                    </div>
+                    @if(!empty($myWork['can_self_mark']))
+                        <div>
+                            @if($myWork['status'] === 'absent')
+                                <button type="button" class="btn btn-success" id="home_attend_btn">Attend mark</button>
+                            @elseif($myWork['status'] === 'in')
+                                <button type="button" class="btn btn-warning" id="home_out_btn">Out</button>
+                            @else
+                                <span class="label label-success">Done for today</span>
+                            @endif
+                        </div>
+                    @endif
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+                    <span style="background:#eff6ff;color:#1d4ed8;font-weight:800;border-radius:999px;padding:6px 12px;font-size:13px;">This week <span id="home_week_time">0h 0m</span></span>
+                    <span style="background:#f5f3ff;color:#6d28d9;font-weight:800;border-radius:999px;padding:6px 12px;font-size:13px;">This month <span id="home_month_time">0h 0m</span></span>
+                    <span style="background:#fef2f2;color:#b91c1c;font-weight:800;border-radius:999px;padding:6px 12px;font-size:13px;">Leaves {{ $myWork['leaves'] }} days</span>
+                </div>
+            </div>
+        </div>
+        @endif
+
         @if(!empty($todoWidget))
         <div class="tw-px-5 tw-pt-4">
             <a href="{{ route('employee-todos.my-week') }}" class="tw-block tw-no-underline" style="text-decoration:none;">
@@ -95,6 +138,34 @@
                     </div>
                 </div>
             </a>
+        </div>
+        @endif
+
+        @if(!empty($attendanceToday))
+        <div class="tw-px-5 tw-pt-4" id="home_attendance_widget" data-url="{{ url('hrm/attendance/today-board') }}">
+            <a href="{{ action([\Modules\Essentials\Http\Controllers\AttendanceController::class, 'index']) }}" class="tw-block tw-no-underline" style="text-decoration:none;">
+                <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:14px 16px;">
+                    <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:10px;"><i class="fas fa-user-check" style="color:#2563eb;"></i> Today attendance</div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <span id="home_att_present" style="background:#ecfdf5;color:#047857;font-weight:800;border-radius:999px;padding:6px 12px;font-size:13px;">Present {{ $attendanceToday['present'] }}</span>
+                        <span id="home_att_absent" style="background:#fef2f2;color:#b91c1c;font-weight:800;border-radius:999px;padding:6px 12px;font-size:13px;">Absent {{ $attendanceToday['absent'] }}</span>
+                        <span id="home_att_late" style="background:#fffbeb;color:#b45309;font-weight:800;border-radius:999px;padding:6px 12px;font-size:13px;">Late {{ $attendanceToday['late'] }}</span>
+                    </div>
+                </div>
+            </a>
+        </div>
+        @endif
+
+        @if(!empty($myOt))
+        <div class="tw-px-5 tw-pt-4">
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:14px 16px;">
+                <div style="font-size:14px;font-weight:800;color:#1e1b4b;margin-bottom:8px;"><i class="fas fa-clock" style="color:#7c3aed;"></i> My OT — {{ $myOt['month_label'] }}</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <span id="my_ot_hours" style="background:#f5f3ff;color:#6d28d9;font-weight:800;border-radius:999px;padding:6px 12px;font-size:13px;">{{ $myOt['hours'] }} hours</span>
+                    <span id="my_ot_amount" style="background:#ecfdf5;color:#047857;font-weight:800;border-radius:999px;padding:6px 12px;font-size:13px;">{{ $myOt['amount_label'] }}</span>
+                    <span id="my_ot_today" style="background:#fffbeb;color:#b45309;font-weight:800;border-radius:999px;padding:6px 12px;font-size:13px;">Today {{ $myOt['today_hours'] }} h · {{ $myOt['today_amount_label'] }}</span>
+                </div>
+            </div>
         </div>
         @endif
 
@@ -1365,6 +1436,108 @@
 
 @section('javascript')
     <script src="{{ asset('js/home.js?v=' . $asset_v) }}"></script>
+    @if(!empty($myWork))
+    <script type="text/javascript">
+        (function () {
+            var box = document.getElementById('home_my_work');
+            if (!box) { return; }
+            function pad(n) { return n < 10 ? '0' + n : '' + n; }
+            function clock(seconds) {
+                if (seconds < 0) { seconds = 0; }
+                return pad(Math.floor(seconds / 3600)) + ':' + pad(Math.floor((seconds % 3600) / 60)) + ':' + pad(seconds % 60);
+            }
+            function hours(seconds) {
+                if (seconds < 0) { seconds = 0; }
+                var h = Math.floor(seconds / 3600);
+                var m = Math.floor((seconds % 3600) / 60);
+                return h + 'h ' + m + 'm';
+            }
+            function tick() {
+                var status = box.getAttribute('data-status');
+                var startRaw = box.getAttribute('data-clock-in');
+                var endRaw = box.getAttribute('data-clock-out');
+                var weekClosed = parseInt(box.getAttribute('data-week') || '0', 10);
+                var monthClosed = parseInt(box.getAttribute('data-month') || '0', 10);
+                var todaySeconds = 0;
+                if (startRaw) {
+                    var start = new Date(String(startRaw).replace(' ', 'T'));
+                    var end = status === 'in' ? new Date() : (endRaw ? new Date(String(endRaw).replace(' ', 'T')) : new Date());
+                    todaySeconds = Math.floor((end.getTime() - start.getTime()) / 1000);
+                }
+                var live = status === 'in' ? todaySeconds : 0;
+                document.getElementById('home_today_timer').textContent = clock(todaySeconds);
+                document.getElementById('home_week_time').textContent = hours(weekClosed + live);
+                document.getElementById('home_month_time').textContent = hours(monthClosed + live);
+            }
+            tick();
+            setInterval(tick, 1000);
+
+            function mark(url, btn) {
+                btn.prop('disabled', true);
+                function send(extra) {
+                    $.post(url, $.extend({
+                        user_id: box.getAttribute('data-user'),
+                        _token: '{{ csrf_token() }}'
+                    }, extra), function (result) {
+                        if (result.success) {
+                            toastr.success(result.msg);
+                            window.location.reload();
+                        } else {
+                            toastr.error(result.msg);
+                            btn.prop('disabled', false);
+                        }
+                    }).fail(function () {
+                        toastr.error('Could not mark attendance.');
+                        btn.prop('disabled', false);
+                    });
+                }
+                if (box.getAttribute('data-require') !== '1') {
+                    send({});
+                    return;
+                }
+                if (!navigator.geolocation) {
+                    toastr.error('This browser cannot read your location.');
+                    btn.prop('disabled', false);
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    send({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+                }, function () {
+                    toastr.error('Allow location. You can mark attendance only within 100m of the office.');
+                    btn.prop('disabled', false);
+                }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+            }
+            $('#home_attend_btn').on('click', function () {
+                mark("{{ url('hrm/attendance/today-arrive') }}", $(this));
+            });
+            $('#home_out_btn').on('click', function () {
+                mark("{{ url('hrm/attendance/today-out') }}", $(this));
+            });
+        })();
+    </script>
+    @endif
+    @if(!empty($attendanceToday))
+    <script type="text/javascript">
+        setInterval(function () {
+            $.get("{{ url('hrm/attendance/today-summary') }}", function (data) {
+                $('#home_att_present').text('Present ' + data.present);
+                $('#home_att_absent').text('Absent ' + data.absent);
+                $('#home_att_late').text('Late ' + data.late);
+            });
+        }, 20000);
+    </script>
+    @endif
+    @if(!empty($myOt))
+    <script type="text/javascript">
+        setInterval(function () {
+            $.get("{{ url('hrm/my-ot') }}", function (data) {
+                $('#my_ot_hours').text(data.hours + ' hours');
+                $('#my_ot_amount').text(data.amount_label);
+                $('#my_ot_today').text('Today ' + data.today_hours + ' h · ' + data.today_amount_label);
+            });
+        }, 30000);
+    </script>
+    @endif
     <script src="{{ asset('js/payment.js?v=' . $asset_v) }}"></script>
     @includeIf('sales_order.common_js')
     @includeIf('purchase_order.common_js')

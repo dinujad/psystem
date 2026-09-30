@@ -22,7 +22,10 @@
                         <li @if(request()->segment(2) == 'leave') class="active" @endif><a href="{{action([\Modules\Essentials\Http\Controllers\EssentialsLeaveController::class, 'index'])}}">@lang('essentials::lang.leave')</a></li>
                     @endif
                     @if(auth()->user()->can('essentials.crud_all_attendance') || auth()->user()->can('essentials.view_own_attendance'))
-                    <li @if(request()->segment(2) == 'attendance') class="active" @endif><a href="{{action([\Modules\Essentials\Http\Controllers\AttendanceController::class, 'index'])}}">@lang('essentials::lang.attendance')</a></li>
+                    <li @if(request()->segment(2) == 'attendance' && request()->segment(3) != 'report' && request()->segment(2) != 'attendance-report') class="active" @endif><a href="{{action([\Modules\Essentials\Http\Controllers\AttendanceController::class, 'index'])}}">@lang('essentials::lang.attendance')</a></li>
+                    @endif
+                    @if(auth()->user()->can('essentials.crud_all_attendance'))
+                    <li @if(request()->segment(2) == 'attendance-report') class="active" @endif><a href="{{ route('hrm.attendance.report') }}">Attendance Report</a></li>
                     @endif
                     <li @if(request()->segment(2) == 'payroll') class="active" @endif><a href="{{action([\Modules\Essentials\Http\Controllers\PayrollController::class, 'index'])}}">@lang('essentials::lang.payroll')</a></li>
 

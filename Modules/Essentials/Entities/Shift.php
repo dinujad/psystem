@@ -27,6 +27,7 @@ class Shift extends Model
      */
     protected $casts = [
         'holidays' => 'array',
+        'working_days' => 'array',
     ];
 
     public function user_shifts($value = '')

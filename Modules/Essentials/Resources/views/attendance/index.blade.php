@@ -9,6 +9,29 @@
 </section>
 <!-- Main content -->
 <section class="content">
+    <div class="box box-primary">
+        <div class="box-header with-border">
+            <h3 class="box-title">Today attendance <small id="today_date_label"></small></h3>
+        </div>
+        <div class="box-body" id="today_board">
+            <p class="text-muted">Loading today's attendance...</p>
+        </div>
+    </div>
+
+    <div class="modal fade" id="end_day_modal" tabindex="-1" role="dialog">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
+                    <h4 class="modal-title">Today finished</h4>
+                </div>
+                <div class="modal-body" id="end_day_summary"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
     @if (session('notification') || !empty($notification))
         <div class="row">
             <div class="col-sm-12">
@@ -22,39 +45,6 @@
                 </div>
             </div>  
         </div>     
-    @endif
-    @if($is_employee_allowed)
-        <div class="row">
-            <div class="col-md-12 text-center">
-                <button 
-                    type="button" 
-                    class="btn btn-app bg-blue clock_in_btn
-                        @if(!empty($clock_in))
-                            hide
-                        @endif
-                    "
-                    data-type="clock_in"
-                    >
-                    <i class="fas fa-arrow-circle-down"></i> @lang('essentials::lang.clock_in')
-                </button>
-            &nbsp;&nbsp;&nbsp;
-                <button 
-                    type="button" 
-                    class="btn btn-app bg-yellow clock_out_btn
-                        @if(empty($clock_in))
-                            hide
-                        @endif
-                    "  
-                    data-type="clock_out"
-                    >
-                    <i class="fas fa-hourglass-half fa-spin"></i> @lang('essentials::lang.clock_out')
-                </button>
-                @if(!empty($clock_in))
-                    <br>
-                    <small class="text-muted">@lang('essentials::lang.clocked_in_at'): {{@format_datetime($clock_in->clock_in_time)}}</small>
-                @endif
-            </div>
-        </div>
     @endif
     <div class="row">
         <div class="col-md-12">
@@ -99,6 +89,8 @@
                                             <th>@lang( 'essentials::lang.shift_type' )</th>
                                             <th>@lang( 'restaurant.start_time' )</th>
                                             <th>@lang( 'restaurant.end_time' )</th>
+                                            <th>OT / hour</th>
+                                            <th>Working days</th>
                                             <th>@lang( 'essentials::lang.holiday' )</th>
                                             <th>@lang( 'messages.action' )</th>
                                         </tr>
@@ -195,6 +187,109 @@
 @section('javascript')
     <script type="text/javascript">
         $(document).ready(function() {
+            function pad(n) { return n < 10 ? '0' + n : '' + n; }
+            function formatDuration(seconds) {
+                if (seconds < 0) { seconds = 0; }
+                var h = Math.floor(seconds / 3600);
+                var m = Math.floor((seconds % 3600) / 60);
+                var s = seconds % 60;
+                return pad(h) + ':' + pad(m) + ':' + pad(s);
+            }
+            function tickTodayTimers() {
+                $('.today-timer').each(function () {
+                    var started = $(this).data('started');
+                    if (!started) { return; }
+                    var start = new Date(String(started).replace(' ', 'T'));
+                    var endRaw = $(this).data('ended');
+                    var end = endRaw ? new Date(String(endRaw).replace(' ', 'T')) : new Date();
+                    var seconds = Math.floor((end.getTime() - start.getTime()) / 1000);
+                    $(this).text(formatDuration(seconds));
+                });
+            }
+            function loadTodayBoard() {
+                $.get("{{ url('hrm/attendance/today-board') }}", function (html) {
+                    $('#today_board').html(html);
+                    tickTodayTimers();
+                });
+            }
+            loadTodayBoard();
+            setInterval(tickTodayTimers, 1000);
+
+            function postTodayMark(url, userId, btn) {
+                function send(extra) {
+                    $.post(url, $.extend({
+                        user_id: userId,
+                        _token: '{{ csrf_token() }}'
+                    }, extra), function (result) {
+                        if (result.success) {
+                            toastr.success(result.msg);
+                            loadTodayBoard();
+                        } else {
+                            toastr.error(result.msg);
+                            btn.prop('disabled', false);
+                        }
+                    }).fail(function () {
+                        toastr.error('Could not mark attendance.');
+                        btn.prop('disabled', false);
+                    });
+                }
+                var requireLocation = String($('#today_location_rule').data('require')) === '1';
+                if (!requireLocation) {
+                    send({});
+                    return;
+                }
+                if (!navigator.geolocation) {
+                    toastr.error('This browser cannot read your location.');
+                    btn.prop('disabled', false);
+                    return;
+                }
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    send({
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude
+                    });
+                }, function () {
+                    toastr.error('Allow location. You can mark attendance only within 100m of the office.');
+                    btn.prop('disabled', false);
+                }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+            }
+
+            $(document).on('click', '.today-arrive', function () {
+                var btn = $(this);
+                btn.prop('disabled', true);
+                postTodayMark("{{ url('hrm/attendance/today-arrive') }}", btn.data('user'), btn);
+            });
+            $(document).on('click', '.today-out', function () {
+                var btn = $(this);
+                btn.prop('disabled', true);
+                postTodayMark("{{ url('hrm/attendance/today-out') }}", btn.data('user'), btn);
+            });
+            $(document).on('click', '#end_day_btn', function () {
+                if (!confirm('Finish today for everyone still working?')) { return; }
+                $.post("{{ url('hrm/attendance/end-day') }}", { _token: '{{ csrf_token() }}' }, function (result) {
+                    if (!result.success) {
+                        toastr.error(result.msg || 'Could not finish the day');
+                        return;
+                    }
+                    var html = '<p><strong>Present:</strong> ' + result.present + '</p>'
+                        + '<p><strong>Absent:</strong> ' + result.absent + '</p>'
+                        + '<p><strong>Late:</strong> ' + result.late + '</p>';
+                    var i;
+                    html += '<ul>';
+                    for (i = 0; i < result.rows.length; i++) {
+                        var row = result.rows[i];
+                        if (!row.expected && row.status === 'absent') { continue; }
+                        html += '<li>' + row.name + ' — ' + row.status;
+                        if (row.late_minutes > 0) { html += ' (late ' + row.late_minutes + ' min)'; }
+                        html += '</li>';
+                    }
+                    html += '</ul>';
+                    $('#end_day_summary').html(html);
+                    $('#end_day_modal').modal('show');
+                    loadTodayBoard();
+                });
+            });
+
             attendance_table = $('#attendance_table').DataTable({
                 processing: true,
                 serverSide: true,
@@ -281,7 +376,7 @@
                 },
                 columnDefs: [
                     {
-                        targets: 4,
+                        targets: [5, 6, 7],
                         orderable: false,
                         searchable: false,
                     },
@@ -291,6 +386,8 @@
                     { data: 'type', name: 'type' },
                     { data: 'start_time', name: 'start_time'},
                     { data: 'end_time', name: 'end_time' },
+                    { data: 'ot_rate_per_hour', name: 'ot_rate_per_hour' },
+                    { data: 'working_days', name: 'working_days' },
                     { data: 'holidays', name: 'holidays'},
                     { data: 'action', name: 'action' },
                 ],

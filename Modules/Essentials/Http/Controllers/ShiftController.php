@@ -52,6 +52,8 @@ class ShiftController extends Controller
                             'type',
                             'start_time',
                             'end_time',
+                            'ot_rate_per_hour',
+                            'working_days',
                             'holidays',
                         ]);
 
@@ -66,8 +68,26 @@ class ShiftController extends Controller
 
                     return $end_time_formated;
                 })
+                ->editColumn('ot_rate_per_hour', function ($row) {
+                    if ($row->type !== 'fixed_shift') {
+                        return '—';
+                    }
+
+                    return $this->moduleUtil->num_f($row->ot_rate_per_hour, true);
+                })
                 ->editColumn('type', function ($row) {
                     return __('essentials::lang.'.$row->type);
+                })
+                ->editColumn('working_days', function ($row) {
+                    if (empty($row->working_days)) {
+                        return 'Every day';
+                    }
+
+                    $days = array_map(function ($item) {
+                        return __('lang_v1.'.$item);
+                    }, $row->working_days);
+
+                    return implode(', ', $days);
                 })
                 ->editColumn('holidays', function ($row) {
                     if (! empty($row->holidays)) {
@@ -116,13 +136,16 @@ class ShiftController extends Controller
 
         try {
             $input = $request->only(['name', 'type', 'holidays']);
+            $input['working_days'] = $request->input('working_days') ?: null;
 
             if ($input['type'] != 'flexible_shift') {
                 $input['start_time'] = $this->moduleUtil->uf_time($request->input('start_time'));
                 $input['end_time'] = $this->moduleUtil->uf_time($request->input('end_time'));
+                $input['ot_rate_per_hour'] = max(0, (float) $request->input('ot_rate_per_hour', 0));
             } else {
                 $input['start_time'] = null;
                 $input['end_time'] = null;
+                $input['ot_rate_per_hour'] = 0;
             }
 
             $input['is_allowed_auto_clockout'] = ! empty($request->input('is_allowed_auto_clockout')) ? 1 : 0;
@@ -201,13 +224,17 @@ class ShiftController extends Controller
             }
 
             $input = $request->only(['name', 'type', 'holidays']);
+            $working_days = $request->input('working_days');
+            $input['working_days'] = ! empty($working_days) ? json_encode(array_values($working_days)) : null;
 
             if ($input['type'] != 'flexible_shift') {
                 $input['start_time'] = $this->moduleUtil->uf_time($request->input('start_time'));
                 $input['end_time'] = $this->moduleUtil->uf_time($request->input('end_time'));
+                $input['ot_rate_per_hour'] = max(0, (float) $request->input('ot_rate_per_hour', 0));
             } else {
                 $input['start_time'] = null;
                 $input['end_time'] = null;
+                $input['ot_rate_per_hour'] = 0;
             }
 
             $input['is_allowed_auto_clockout'] = ! empty($request->input('is_allowed_auto_clockout')) ? 1 : 0;

@@ -25,15 +25,16 @@
 
 	$(document).on('submit', 'form#clock_in_clock_out_form', function(e) {
         e.preventDefault();
-        $(this).find('button[type="submit"]').attr('disabled', true);
-        var data = $(this).serialize();
+        var form = $(this);
+        form.find('button[type="submit"]').attr('disabled', true);
 
-        $.ajax({
-            method: $(this).attr('method'),
-            url: $(this).attr('action'),
-            dataType: 'json',
-            data: data,
-            success: function(result) {
+        function sendClockForm() {
+            $.ajax({
+                method: form.attr('method'),
+                url: form.attr('action'),
+                dataType: 'json',
+                data: form.serialize(),
+                success: function(result) {
                 if (result.success == true) {
                     $('div#clock_in_clock_out_modal').modal('hide');
 
@@ -74,6 +75,29 @@
                 $('#clock_in_clock_out_form').find('button[type="submit"]').removeAttr('disabled');
             },
         });
+        }
+
+        if ($('#office_fence_required').val() == '1' && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function (position) {
+                $('#office_latitude').val(position.coords.latitude);
+                $('#office_longitude').val(position.coords.longitude);
+                sendClockForm();
+            }, function () {
+                form.find('button[type="submit"]').removeAttr('disabled');
+                swal({
+                    title: 'Allow location. You can mark attendance only within 100m of the office.',
+                    icon: 'error'
+                });
+            }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
+        } else if ($('#office_fence_required').val() == '1') {
+            form.find('button[type="submit"]').removeAttr('disabled');
+            swal({
+                title: 'This browser cannot read your location.',
+                icon: 'error'
+            });
+        } else {
+            sendClockForm();
+        }
     });
     
     $(document).on('click', '#get_current_location', function(){

@@ -71,8 +71,13 @@ class EssentialsServiceProvider extends ServiceProvider
                 $settings = session()->get('business.essentials_settings');
                 $settings = ! empty($settings) ? json_decode($settings, true) : [];
                 $is_location_required = ! empty($settings['is_location_required']) ? true : false;
+                $module_util = new ModuleUtil();
+                $business_id = session()->get('user.business_id');
+                $office_fence_required = auth()->check()
+                    && ! auth()->user()->can('essentials.crud_all_attendance')
+                    && ! $module_util->is_admin(auth()->user(), $business_id);
 
-                $view->with(compact('ip_address', 'is_location_required'));
+                $view->with(compact('ip_address', 'is_location_required', 'office_fence_required'));
             });
 
         $this->registerScheduleCommands();

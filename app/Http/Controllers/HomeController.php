@@ -89,9 +89,34 @@ class HomeController extends Controller
         } catch (\Throwable $e) {
             \Log::warning('home todo widget failed: '.$e->getMessage());
         }
+        $attendanceToday = null;
+        if ($is_admin) {
+            try {
+                $attendanceToday = app(\Modules\Essentials\Utils\EssentialsUtil::class)->todayAttendanceBoard((int) $business_id);
+            } catch (\Throwable $e) {
+                \Log::warning('home attendance widget failed: '.$e->getMessage());
+            }
+        }
+        $myOt = null;
+        try {
+            $myOt = app(\Modules\Essentials\Utils\EssentialsUtil::class)->myOvertimeSummary((int) $user->id, (int) $business_id);
+        } catch (\Throwable $e) {
+            \Log::warning('home ot widget failed: '.$e->getMessage());
+        }
+        $myWork = null;
+        try {
+            $myWork = app(\Modules\Essentials\Utils\EssentialsUtil::class)->myHomeAttendance((int) $user->id, (int) $business_id);
+            $myWork['require_location'] = (! $user->can('essentials.crud_all_attendance') && ! $is_admin) ? 1 : 0;
+            $myWork['can_self_mark'] = $is_admin
+                || $user->can('essentials.crud_all_attendance')
+                || $user->can('essentials.view_own_attendance')
+                || $user->can('essentials.allow_users_for_attendance_from_web');
+        } catch (\Throwable $e) {
+            \Log::warning('home work widget failed: '.$e->getMessage());
+        }
 
         if (! auth()->user()->can('dashboard.data')) {
-            return view('home.index', compact('is_admin', 'todoWidget'));
+            return view('home.index', compact('is_admin', 'todoWidget', 'attendanceToday', 'myOt', 'myWork'));
         }
 
         $fy = $this->businessUtil->getCurrentFinancialYear($business_id);
@@ -268,7 +293,7 @@ class HomeController extends Controller
         return view('home.index', compact(
             'sells_chart_1', 'sells_chart_2', 'widgets', 'all_locations',
             'common_settings', 'is_admin', 'showProduction', 'productionStages',
-            'activeJobs', 'stageCounts', 'todoWidget'
+            'activeJobs', 'stageCounts', 'todoWidget', 'attendanceToday', 'myOt', 'myWork'
         ));
     }
 

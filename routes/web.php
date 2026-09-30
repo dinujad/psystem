@@ -727,6 +727,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::post('/templates/{template}/duplicate', [\App\Http\Controllers\WeeklyPlanTemplateController::class, 'duplicate'])->name('templates.duplicate');
 
         Route::post('/items', [\App\Http\Controllers\EmployeeTodoController::class, 'storeItem'])->name('items.store');
+        Route::put('/items/{item}', [\App\Http\Controllers\EmployeeTodoController::class, 'updateItem'])->name('items.update');
         Route::post('/items/{item}/toggle', [\App\Http\Controllers\EmployeeTodoController::class, 'toggleItem'])->name('items.toggle');
         Route::post('/items/{item}/start', [\App\Http\Controllers\EmployeeTodoController::class, 'startItem'])->name('items.start');
         Route::post('/items/{item}/end', [\App\Http\Controllers\EmployeeTodoController::class, 'endItem'])->name('items.end');

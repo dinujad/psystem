@@ -357,11 +357,20 @@ class AttendanceController extends Controller
             return ['success' => false,
                 'msg' => __('essentials::lang.not_allowed'),
             ];
-        } elseif ((! empty($settings['is_location_required']) && $settings['is_location_required']) && empty($request->input('clock_in_out_location'))) {
+        }
+
+        $fence = $this->officeFenceError($request);
+        if ($fence) {
+            return $fence;
+        }
+
+        if ((! empty($settings['is_location_required']) && $settings['is_location_required']) && empty($request->input('clock_in_out_location')) && empty($request->input('latitude'))) {
             return ['success' => false,
                 'msg' => __('essentials::lang.you_must_enable_location'),
             ];
         }
+
+        $location = $request->input('clock_in_out_location') ?: $this->locationLabel($request);
 
         try {
             $type = $request->input('type');
@@ -373,7 +382,7 @@ class AttendanceController extends Controller
                     'clock_in_time' => \Carbon::now(),
                     'clock_in_note' => $request->input('clock_in_note'),
                     'ip_address' => $this->moduleUtil->getUserIpAddr(),
-                    'clock_in_location' => $request->input('clock_in_out_location'),
+                    'clock_in_location' => $location,
                 ];
 
                 $output = $this->essentialsUtil->clockin($data, $settings);
@@ -383,7 +392,7 @@ class AttendanceController extends Controller
                     'user_id' => auth()->user()->id,
                     'clock_out_time' => \Carbon::now(),
                     'clock_out_note' => $request->input('clock_out_note'),
-                    'clock_out_location' => $request->input('clock_in_out_location'),
+                    'clock_out_location' => $location,
                 ];
 
                 $output = $this->essentialsUtil->clockout($data, $settings);
@@ -718,5 +727,203 @@ class AttendanceController extends Controller
                     ->pluck('essentials_shifts.name', 'essentials_shifts.id');
 
         return view('essentials::attendance.attendance_row')->with(compact('attendance', 'shifts', 'user'));
+    }
+
+    public function todayBoard()
+    {
+        $business_id = request()->session()->get('user.business_id');
+        if (! auth()->user()->can('essentials.crud_all_attendance')
+            && ! auth()->user()->can('essentials.view_own_attendance')
+            && ! auth()->user()->can('essentials.allow_users_for_attendance_from_web')) {
+            abort(403, 'Unauthorized action.');
+        }
+        $only_user_id = $this->canManageAllAttendance() ? null : auth()->user()->id;
+        $board = $this->essentialsUtil->todayAttendanceBoard($business_id, $only_user_id);
+        $can_manage = $this->canManageAllAttendance();
+
+        return view('essentials::attendance.today_board')->with(compact('board', 'can_manage'));
+    }
+
+    public function todaySummary()
+    {
+        $business_id = request()->session()->get('user.business_id');
+        if (! $this->canManageAllAttendance()) {
+            abort(403, 'Unauthorized action.');
+        }
+        $board = $this->essentialsUtil->todayAttendanceBoard($business_id);
+
+        return [
+            'present' => $board['present'],
+            'absent' => $board['absent'],
+            'late' => $board['late'],
+        ];
+    }
+
+    public function myOt()
+    {
+        $business_id = request()->session()->get('user.business_id');
+
+        return $this->essentialsUtil->myOvertimeSummary(auth()->user()->id, $business_id);
+    }
+
+    public function todayArrive(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $user_id = (int) $request->input('user_id');
+        if (! $this->canMarkUser($user_id)) {
+            abort(403, 'Unauthorized action.');
+        }
+        if ((int) $user_id === (int) auth()->user()->id) {
+            $fence = $this->officeFenceError($request);
+            if ($fence) {
+                return $fence;
+            }
+        }
+
+        return $this->essentialsUtil->markArrivalNow($business_id, $user_id, $this->locationLabel($request));
+    }
+
+    public function todayOut(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        $user_id = (int) $request->input('user_id');
+        if (! $this->canMarkUser($user_id)) {
+            abort(403, 'Unauthorized action.');
+        }
+        if ((int) $user_id === (int) auth()->user()->id) {
+            $fence = $this->officeFenceError($request);
+            if ($fence) {
+                return $fence;
+            }
+        }
+
+        return $this->essentialsUtil->markOutNow($business_id, $user_id, $this->locationLabel($request));
+    }
+
+    public function endDay()
+    {
+        $business_id = request()->session()->get('user.business_id');
+        if (! $this->canManageAllAttendance()) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        return $this->essentialsUtil->endToday($business_id);
+    }
+
+    public function report(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        if (! $this->canManageAllAttendance()) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $preset = $request->input('preset', 'today');
+        $today = \Carbon::today();
+        if ($preset === 'yesterday') {
+            $start = $today->copy()->subDay();
+            $end = $start->copy();
+        } elseif ($preset === 'week') {
+            $start = $today->copy()->startOfWeek();
+            $end = $today->copy()->endOfWeek();
+        } elseif ($preset === 'month') {
+            $start = $today->copy()->startOfMonth();
+            $end = $today->copy()->endOfMonth();
+        } elseif ($preset === 'year') {
+            $start = $today->copy()->startOfYear();
+            $end = $today->copy()->endOfYear();
+        } elseif ($preset === 'range') {
+            $start = \Carbon::parse($request->input('start_date', $today->toDateString()));
+            $end = \Carbon::parse($request->input('end_date', $today->toDateString()));
+        } else {
+            $preset = 'today';
+            $start = $today->copy();
+            $end = $today->copy();
+        }
+
+        $employee_id = $request->input('employee_id');
+        $report = $this->essentialsUtil->attendanceReportRows(
+            $business_id,
+            $start->toDateString(),
+            $end->toDateString(),
+            $employee_id
+        );
+        $employees = User::forDropdown($business_id, false);
+        $start_date = $start->toDateString();
+        $end_date = $end->toDateString();
+
+        return view('essentials::attendance.report')->with(compact(
+            'report',
+            'employees',
+            'preset',
+            'employee_id',
+            'start_date',
+            'end_date'
+        ));
+    }
+
+    private function canManageAllAttendance()
+    {
+        $business_id = request()->session()->get('user.business_id');
+
+        return auth()->user()->can('essentials.crud_all_attendance')
+            || $this->moduleUtil->is_admin(auth()->user(), $business_id);
+    }
+
+    private function canMarkUser($user_id)
+    {
+        if ($this->canManageAllAttendance()) {
+            return true;
+        }
+
+        return (int) $user_id === (int) auth()->user()->id
+            && (auth()->user()->can('essentials.view_own_attendance') || auth()->user()->can('essentials.allow_users_for_attendance_from_web'));
+    }
+
+    /**
+     * Employees marking themselves must be within 100m of Print Works.lk.
+     * Admin and HR marking someone else are not limited.
+     */
+    private function officeFenceError(Request $request)
+    {
+        if ($this->canManageAllAttendance()) {
+            return null;
+        }
+
+        $lat = $request->input('latitude');
+        $lng = $request->input('longitude');
+        if (! is_numeric($lat) || ! is_numeric($lng)) {
+            return ['success' => false, 'msg' => 'Turn on location. You can mark attendance only within 100m of the office.'];
+        }
+
+        $meters = $this->metersFromOffice((float) $lat, (float) $lng);
+        if ($meters > 100) {
+            return ['success' => false, 'msg' => 'You are '.round($meters).'m from the office. Mark attendance within 100m.'];
+        }
+
+        return null;
+    }
+
+    private function locationLabel(Request $request)
+    {
+        $lat = $request->input('latitude');
+        $lng = $request->input('longitude');
+        if (! is_numeric($lat) || ! is_numeric($lng)) {
+            return null;
+        }
+
+        return round((float) $lat, 6).', '.round((float) $lng, 6);
+    }
+
+    private function metersFromOffice($lat, $lng)
+    {
+        $officeLat = 6.9438347;
+        $officeLng = 79.99078;
+        $earth = 6371000;
+        $dLat = deg2rad($officeLat - $lat);
+        $dLng = deg2rad($officeLng - $lng);
+        $a = sin($dLat / 2) * sin($dLat / 2)
+            + cos(deg2rad($lat)) * cos(deg2rad($officeLat)) * sin($dLng / 2) * sin($dLng / 2);
+
+        return 2 * $earth * asin(min(1, sqrt($a)));
     }
 }

@@ -117,6 +117,11 @@
                                     {{
                                         __('essentials::lang.work_duration_hour', ['duration' => $payroll['total_work_duration']])
                                     }}
+                                    @if(isset($payroll['ot_hours']))
+                                        <br>
+                                        <b>OT:</b>
+                                        {{ __('essentials::lang.work_duration_hour', ['duration' => $payroll['ot_hours']]) }}
+                                    @endif
                                     <br><br>
                                     <b>
                                         {{__('essentials::lang.attendance')}}:

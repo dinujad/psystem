@@ -24,6 +24,9 @@
 		        	{!! Form::textarea('clock_out_note', null, ['class' => 'form-control', 'placeholder' => __( 'essentials::lang.clock_out_note'), 'rows' => 3 ]); !!}
 		      	</div>
 		      	<input type="hidden" name="clock_in_out_location" id="clock_in_out_location" value="">
+		      	<input type="hidden" name="latitude" id="office_latitude" value="">
+		      	<input type="hidden" name="longitude" id="office_longitude" value="">
+		      	<input type="hidden" id="office_fence_required" value="{{ !empty($office_fence_required) ? 1 : 0 }}">
 	    	</div>
 	    	@if($is_location_required)
 		    	<div class="row">

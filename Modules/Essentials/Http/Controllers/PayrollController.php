@@ -226,6 +226,15 @@ class PayrollController extends Controller
                 //get total work duration of employee(attendance)
                 $payrolls[$employee->id]['total_work_duration'] = $this->essentialsUtil->getTotalWorkDuration('hour', $employee->id, $business_id, $start_date, $end_date->format('Y-m-d'));
 
+                $overtime = $this->essentialsUtil->getOvertimeForPeriod($employee->id, $business_id, $start_date, $end_date->format('Y-m-d'));
+                $payrolls[$employee->id]['ot_hours'] = $overtime['hours'];
+                if ($overtime['amount'] > 0) {
+                    $payrolls[$employee->id]['allowances']['allowance_names'][] = 'OT';
+                    $payrolls[$employee->id]['allowances']['allowance_amounts'][] = $overtime['amount'];
+                    $payrolls[$employee->id]['allowances']['allowance_types'][] = 'fixed';
+                    $payrolls[$employee->id]['allowances']['allowance_percents'][] = 0;
+                }
+
                 //get total earned commission for employee
                 $business_details = $this->businessUtil->getDetails($business_id);
                 $pos_settings = empty($business_details->pos_settings) ? $this->businessUtil->defaultPosSettings() : json_decode($business_details->pos_settings, true);

@@ -28,6 +28,16 @@
 	        		<span class="input-group-addon"><i class="fas fa-clock"></i></span>
 	        	</div>
 	      	</div>
+	      	<div class="form-group time_div">
+	        	{!! Form::label('ot_rate_per_hour', 'OT rate per hour:') !!}
+	        	{!! Form::number('ot_rate_per_hour', !empty($shift->ot_rate_per_hour) ? $shift->ot_rate_per_hour : 0, ['class' => 'form-control', 'placeholder' => '0.00', 'step' => '0.01', 'min' => '0']); !!}
+	        	<p class="help-block">Pay for each hour worked after this shift ends.</p>
+	      	</div>
+	      	<div class="form-group">
+	        	{!! Form::label('working_days', 'Working days:') !!}
+	        	{!! Form::select('working_days[]', $days, !empty($shift->working_days) ? $shift->working_days : null, ['class' => 'form-control select2', 'multiple']); !!}
+	        	<p class="help-block">Leave empty to use this shift every day. For Saturday only, select Saturday. Assign both shifts to the same employees.</p>
+	      	</div>
 	      	<div class="form-group">
 	        	{!! Form::label('holidays', __( 'essentials::lang.holiday' ) . ':') !!}
 	        	{!! Form::select('holidays[]', $days,  !empty($shift->holidays) ? $shift->holidays : null, ['class' => 'form-control select2', 'multiple' ]); !!}

@@ -11,7 +11,14 @@
     $startedLabel = $task->started_at ? \Carbon\Carbon::parse($task->started_at)->format('H:i') : null;
     $endedLabel = $task->ended_at ? \Carbon\Carbon::parse($task->ended_at)->format('d M H:i') : null;
 @endphp
-<div class="{{ $classes }}" id="task-{{ $task->id }}{{ !empty($sectionPrefix) ? '-'.$sectionPrefix : '' }}" data-id="{{ $task->id }}">
+<div class="{{ $classes }}" id="task-{{ $task->id }}{{ !empty($sectionPrefix) ? '-'.$sectionPrefix : '' }}" data-id="{{ $task->id }}"
+    data-title="{{ $task->title }}"
+    data-description="{{ $task->description }}"
+    data-time="{{ $task->task_time ? substr((string) $task->task_time, 0, 5) : '' }}"
+    data-checklist="{{ (int) $task->checklist_count }}"
+    data-allocated="{{ $alloc }}"
+    data-category="{{ (int) $task->category_id }}"
+    data-day="{{ (int) $task->day_of_week }}">
     <div class="et-task-row">
         @if($canManage ?? false)
         <input type="checkbox" {{ $task->is_completed ? 'checked' : '' }} disabled title="Employee uses Start / End">
@@ -57,7 +64,10 @@
             </div>
             @endif
             @if($canManage ?? false)
-            <button type="button" class="et-task-del" onclick="deleteTask({{ $task->id }})">Remove</button>
+            <div class="et-task-admin-actions">
+                <button type="button" class="et-task-edit" onclick="openEditTask(this)">Edit</button>
+                <button type="button" class="et-task-del" onclick="deleteTask({{ $task->id }})">Remove</button>
+            </div>
             @endif
         </div>
     </div>

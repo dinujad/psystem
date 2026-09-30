@@ -316,6 +316,49 @@ class EmployeeTodoController extends Controller
         }
     }
 
+    public function updateItem(Request $request, EmployeeWeeklyPlanItem $item)
+    {
+        $this->authorizeItem($item, true);
+
+        $data = $request->validate([
+            'category_id'       => ['required', 'integer'],
+            'day_of_week'       => ['required', 'integer', 'min:1', 'max:7'],
+            'title'             => ['required', 'string', 'max:200'],
+            'description'       => ['nullable', 'string', 'max:5000'],
+            'task_time'         => ['nullable', 'string', 'max:10'],
+            'checklist_count'   => ['nullable', 'integer', 'min:1', 'max:99'],
+            'allocated_hours'   => ['nullable', 'integer', 'min:0', 'max:99'],
+            'allocated_minutes' => ['nullable', 'integer', 'min:0', 'max:59'],
+        ]);
+
+        $allocated = ((int) ($data['allocated_hours'] ?? 0) * 60) + (int) ($data['allocated_minutes'] ?? 0);
+        if ($allocated < 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Allocated time is required (hours and/or minutes).',
+            ], 422);
+        }
+
+        $this->assertCategory($data['category_id']);
+        $item->load('plan', 'category');
+
+        $item->update([
+            'category_id'       => (int) $data['category_id'],
+            'day_of_week'       => (int) $data['day_of_week'],
+            'title'             => trim($data['title']),
+            'description'       => ! empty($data['description']) ? trim($data['description']) : null,
+            'task_time'         => $data['task_time'] ?: null,
+            'checklist_count'   => max(1, (int) ($data['checklist_count'] ?? 1)),
+            'allocated_minutes' => $allocated,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'item'    => $this->itemPayload($item->fresh(['category', 'plan']), $item->plan),
+            'stats'   => $this->statsPayload($item->plan->fresh()),
+        ]);
+    }
+
     public function toggleItem(EmployeeWeeklyPlanItem $item)
     {
         $this->authorizeItem($item);

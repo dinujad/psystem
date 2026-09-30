@@ -55,6 +55,13 @@ Route::middleware('web', 'authh', 'auth', 'SetSessionData', 'language', 'timezon
         Route::post('/settings', [Modules\Essentials\Http\Controllers\EssentialsSettingsController::class, 'update']);
 
         Route::post('/import-attendance', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'importAttendance']);
+        Route::get('/attendance/today-board', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'todayBoard']);
+        Route::get('/attendance/today-summary', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'todaySummary']);
+        Route::get('/my-ot', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'myOt']);
+        Route::post('/attendance/today-arrive', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'todayArrive']);
+        Route::post('/attendance/today-out', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'todayOut']);
+        Route::post('/attendance/end-day', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'endDay']);
+        Route::get('/attendance-report', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'report'])->name('hrm.attendance.report');
         Route::resource('/attendance', 'Modules\Essentials\Http\Controllers\AttendanceController');
         Route::post('/clock-in-clock-out', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'clockInClockOut']);
 

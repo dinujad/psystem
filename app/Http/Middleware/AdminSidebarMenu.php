@@ -808,6 +808,13 @@ class AdminSidebarMenu
                                 ['icon' => '', 'active' => request()->segment(2) == 'production-report']
                             );
                         }
+                        if ($is_admin || auth()->user()->can('essentials.crud_all_attendance')) {
+                            $sub->url(
+                                route('hrm.attendance.report'),
+                                'Attendance Report',
+                                ['icon' => '', 'active' => request()->segment(1) == 'hrm' && request()->segment(2) == 'attendance-report']
+                            );
+                        }
                         if (config('constants.show_report_606') == true) {
                             $sub->url(
                                 action([\App\Http\Controllers\ReportController::class, 'purchaseReport']),

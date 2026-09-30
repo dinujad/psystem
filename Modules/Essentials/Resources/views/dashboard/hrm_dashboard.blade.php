@@ -5,6 +5,18 @@
 @include('essentials::layouts.nav_hrm')
 <!-- Main content -->
 <section class="content">
+	<div class="row">
+		<div class="col-md-12">
+			<div class="box box-solid" style="border-top:3px solid #7c3aed;">
+				<div class="box-body">
+					<strong>My OT — {{ $myOt['month_label'] }}</strong>
+					<span class="label" style="background:#f5f3ff;color:#6d28d9;margin-left:8px;">{{ $myOt['hours'] }} hours</span>
+					<span class="label" style="background:#ecfdf5;color:#047857;">{{ $myOt['amount_label'] }}</span>
+					<span class="text-muted" style="margin-left:8px;">Today {{ $myOt['today_hours'] }} h · {{ $myOt['today_amount_label'] }}</span>
+				</div>
+			</div>
+		</div>
+	</div>
 	<div class="row row-custom">
 		<div class="col-md-4 col-sm-6 col-xs-12 col-custom">
 			<div class="box box-solid">

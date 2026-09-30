@@ -43,7 +43,9 @@ body.theme-admin-pro .et-bar textarea {
 .et-task-title { font-weight: 700; color: #111827; line-height: 1.35; flex: 1; }
 .et-task.done .et-task-title { text-decoration: line-through; color: #6b7280; }
 .et-task-meta { font-size: 10px; color: #9ca3af; margin-top: 3px; display: flex; gap: 6px; flex-wrap: wrap; }
-.et-task-del { border: none; background: none; color: #dc2626; font-size: 10px; cursor: pointer; padding: 0; margin-top: 3px; }
+.et-task-admin-actions{display:flex;gap:8px;margin-top:4px}
+.et-task-del { border: none; background: none; color: #dc2626; font-size: 10px; cursor: pointer; padding: 0; font-weight:700; }
+.et-task-edit { border: none; background: none; color: #5b21b6; font-size: 10px; cursor: pointer; padding: 0; font-weight:700; }
 .et-add { width: 100%; border: 1px dashed #d1d5db; background: transparent; border-radius: 8px; padding: 5px; font-size: 10px; font-weight: 700; color: #9ca3af; cursor: pointer; }
 .et-add:hover { border-color: #7c5cfc; color: #7c5cfc; background: #faf5ff; }
 .et-modal-ov { position: fixed; inset: 0; width: 100vw; height: 100vh; background: rgba(17,24,39,.5); z-index: 100000; display: none; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
@@ -360,6 +362,7 @@ body.theme-admin-pro .et-modal-ov textarea {
             <div class="et-modal-body">
                 <input type="hidden" id="fCategoryId">
                 <input type="hidden" id="fDay">
+                <input type="hidden" id="fItemId" value="">
                 @if($canManage && $selectedEmp)
                 <div class="et-field">
                     <span class="et-label">Employee</span>
@@ -776,7 +779,7 @@ function taskHtml(item){
     const allocLabel = h && m ? `${h}h ${m}m` : (h ? `${h}h` : `${m}m`);
     const time = item.task_time ? `<span><i class="far fa-clock"></i> ${String(item.task_time).substring(0,5)}</span>` : '';
     const chk = item.checklist_count > 1 ? `<span><i class="far fa-check-square"></i> ${item.checklist_count}</span>` : '';
-    const del = CAN_MANAGE ? `<button type="button" class="et-task-del" onclick="deleteTask(${item.id})">Remove</button>` : '';
+    const del = CAN_MANAGE ? `<div class="et-task-admin-actions"><button type="button" class="et-task-edit" onclick="openEditTask(this)">Edit</button><button type="button" class="et-task-del" onclick="deleteTask(${item.id})">Remove</button></div>` : '';
     const cb = CAN_MANAGE ? `<input type="checkbox" disabled title="Employee uses Start / End">` : '';
     const status = item.status || 'pending';
     const desc = item.description ? `<div class="et-task-desc" onclick="openTaskDetailModal(this)"
@@ -791,7 +794,14 @@ function taskHtml(item){
         <span class="et-desc-text">${escapeHtml(item.description)}</span>
     </div>` : '';
 
-    return `<div class="et-task status-${status}" id="task-${item.id}" data-id="${item.id}">
+    return `<div class="et-task status-${status}" id="task-${item.id}" data-id="${item.id}"
+        data-title="${escapeHtml(item.title)}"
+        data-description="${escapeHtml(item.description || '')}"
+        data-time="${escapeHtml(item.task_time ? String(item.task_time).substring(0,5) : '')}"
+        data-checklist="${item.checklist_count || 1}"
+        data-allocated="${alloc}"
+        data-category="${item.category_id || ''}"
+        data-day="${item.day_of_week || ''}">
         <div class="et-task-row">
             ${cb}
             <div style="flex:1;">
@@ -813,17 +823,35 @@ async function saveTask(payload, cellEl){
     if(!payload.title){ toast('Task title is required'); return false; }
     const totalMins = (parseInt(payload.allocated_hours,10)||0)*60 + (parseInt(payload.allocated_minutes,10)||0);
     if(totalMins < 1){ toast('Set allocated hours and/or minutes'); return false; }
-    const r = await fetch(@json(route('employee-todos.items.store')), {
-        method: 'POST',
+    const itemId = document.getElementById('fItemId')?.value;
+    const isEdit = !!itemId;
+    const url = isEdit ? `/employee-todos/items/${itemId}` : @json(route('employee-todos.items.store'));
+    const r = await fetch(url, {
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': CSRF },
-        body: JSON.stringify({ week: WEEK, employee_id: EMPLOYEE_ID, ...payload })
+        body: JSON.stringify(isEdit ? payload : { week: WEEK, employee_id: EMPLOYEE_ID, ...payload })
     });
     let d;
-    try { d = await r.json(); } catch(e){ toast('Could not save task'); return false; }
+    try { d = await r.json(); } catch(e){ toast(isEdit ? 'Could not update task' : 'Could not save task'); return false; }
     if(!r.ok || !d.success){
-        const msg = d.message || (d.errors && Object.values(d.errors)[0]?.[0]) || 'Could not save task';
+        const msg = d.message || (d.errors && Object.values(d.errors)[0]?.[0]) || (isEdit ? 'Could not update task' : 'Could not save task');
         toast(msg);
         return false;
+    }
+    if(isEdit && d.item){
+        document.querySelectorAll(`[data-id="${d.item.id}"]`).forEach(el => el.remove());
+        const cell = document.querySelector(`td[data-cell="${d.item.category_id}_${d.item.day_of_week}"]`);
+        if(cell){
+            const addBtn = cell.querySelector('.et-add');
+            const wrap = document.createElement('div');
+            wrap.innerHTML = taskHtml(d.item);
+            cell.insertBefore(wrap.firstElementChild, addBtn);
+        } else {
+            location.reload();
+        }
+        updateStats(d.stats);
+        toast('Task updated');
+        return true;
     }
     if(cellEl && d.item){
         const addBtn = cellEl.querySelector('.et-add');
@@ -861,6 +889,8 @@ window.openCellAssign = function(catId, day, catName, dayLabel){
     setAddModalMode('cell');
     const modal = document.getElementById('addModal');
     if(!modal){ toast('Form not loaded — refresh the page'); return; }
+    document.getElementById('fItemId').value = '';
+    document.getElementById('addSubmitBtn').textContent = 'Save Task';
     document.getElementById('fCategoryId').value = catId;
     document.getElementById('fDay').value = day;
     document.getElementById('fCellLabel').textContent = catName + ' · ' + dayLabel;
@@ -871,6 +901,28 @@ window.openCellAssign = function(catId, day, catName, dayLabel){
     document.getElementById('fHours').value = '1';
     document.getElementById('fMinutes').value = '0';
     modal.classList.add('show');
+    setTimeout(() => document.getElementById('fTitle')?.focus(), 50);
+};
+
+window.openEditTask = function(btn){
+    const card = btn.closest('.et-task');
+    if(!card) return;
+    setAddModalMode('cell');
+    const mins = parseInt(card.dataset.allocated, 10) || 60;
+    document.getElementById('fItemId').value = card.dataset.id || '';
+    document.getElementById('fCategoryId').value = card.dataset.category || '';
+    document.getElementById('fDay').value = card.dataset.day || '';
+    document.getElementById('fCellLabel').textContent = 'Edit this task';
+    document.getElementById('fTitle').value = card.dataset.title || '';
+    const descEl = document.getElementById('fDescription');
+    if(descEl) descEl.value = card.dataset.description || '';
+    document.getElementById('fTime').value = card.dataset.time || '';
+    document.getElementById('fChecklist').value = card.dataset.checklist || '1';
+    document.getElementById('fHours').value = String(Math.floor(mins / 60));
+    document.getElementById('fMinutes').value = String(mins % 60);
+    document.getElementById('addModalTitle').textContent = 'Edit Task';
+    document.getElementById('addSubmitBtn').textContent = 'Update Task';
+    document.getElementById('addModal')?.classList.add('show');
     setTimeout(() => document.getElementById('fTitle')?.focus(), 50);
 };
 
@@ -953,6 +1005,8 @@ document.addEventListener('DOMContentLoaded', function(){
             if(btn) btn.disabled = false;
             if(ok){
                 closeModal('addModal');
+                document.getElementById('fItemId').value = '';
+                document.getElementById('addSubmitBtn').textContent = 'Save Task';
                 document.getElementById('fTitle').value = '';
                 const descEl = document.getElementById('fDescription'); if(descEl) descEl.value = '';
                 document.getElementById('fTime').value = '';
