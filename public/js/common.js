@@ -286,7 +286,10 @@ $(document).ready(function () {
             [25, 50, 100, 200, 500, 1000, -1],
             [25, 50, 100, 200, 500, 1000, LANG.all],
         ],
-        iDisplayLength: __default_datatable_page_entries,
+        iDisplayLength: (function () {
+            var pageLength = parseInt(__default_datatable_page_entries, 10);
+            return isNaN(pageLength) ? 25 : pageLength;
+        })(),
         language: {
             searchPlaceholder: LANG.search + ' ...',
             search: '',

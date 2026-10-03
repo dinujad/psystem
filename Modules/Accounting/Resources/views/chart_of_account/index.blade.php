@@ -200,7 +200,9 @@
 @section('javascript')
     <script>
         $(document).ready(function() {
-            $('#data-table').DataTable();
+            $('#data-table').DataTable({
+                pageLength: -1
+            });
         });
     </script>
 
