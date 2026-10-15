@@ -60,7 +60,7 @@
                         </li>
                     @endcan
                     <li @if(!auth()->user()->can('essentials.crud_all_attendance')) class="active" @endif>
-                        <a href="#attendance_tab" data-toggle="tab" aria-expanded="true"><i class="fas fa-check-square" aria-hidden="true"></i> @lang( 'essentials::lang.all_attendance' )</a>
+                        <a href="#attendance_tab" data-toggle="tab" aria-expanded="true"><i class="fas fa-check-square" aria-hidden="true"></i> @if(auth()->user()->can('essentials.crud_all_attendance')) @lang( 'essentials::lang.all_attendance' ) @else My attendance @endif</a>
                     </li>
                     @can('essentials.crud_all_attendance')
                     <li>
@@ -293,6 +293,7 @@
             attendance_table = $('#attendance_table').DataTable({
                 processing: true,
                 serverSide: true,
+                pageLength: 25,
                 ajax: {
                     "url": "{{action([\Modules\Essentials\Http\Controllers\AttendanceController::class, 'index'])}}",
                     "data" : function(d) {

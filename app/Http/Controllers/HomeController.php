@@ -107,10 +107,7 @@ class HomeController extends Controller
         try {
             $myWork = app(\Modules\Essentials\Utils\EssentialsUtil::class)->myHomeAttendance((int) $user->id, (int) $business_id);
             $myWork['require_location'] = (! $user->can('essentials.crud_all_attendance') && ! $is_admin) ? 1 : 0;
-            $myWork['can_self_mark'] = $is_admin
-                || $user->can('essentials.crud_all_attendance')
-                || $user->can('essentials.view_own_attendance')
-                || $user->can('essentials.allow_users_for_attendance_from_web');
+            $myWork['can_self_mark'] = true;
         } catch (\Throwable $e) {
             \Log::warning('home work widget failed: '.$e->getMessage());
         }

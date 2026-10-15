@@ -205,6 +205,8 @@ body.theme-admin-pro #scrollable-container .sec-head-info * {
         @endif
     </div>
 
+    @include('partials.my_attendance_card')
+
     @if(count($myStages) > 1)
     <div class="sec-nav">
         @foreach($myStages as $sk)
@@ -396,6 +398,7 @@ body.theme-admin-pro #scrollable-container .sec-head-info * {
 @endsection
 
 @section('javascript')
+@include('partials.my_attendance_script')
 <script>
 const CSRF = '{{ csrf_token() }}';
 const TASK_START = '{{ url('production') }}';

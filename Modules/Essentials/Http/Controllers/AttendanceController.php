@@ -47,12 +47,7 @@ class AttendanceController extends Controller
         if (! (auth()->user()->can('superadmin') || $this->moduleUtil->hasThePermissionInSubscription($business_id, 'essentials_module'))) {
             abort(403, 'Unauthorized action.');
         }
-        $can_crud_all_attendance = auth()->user()->can('essentials.crud_all_attendance');
-        $can_view_own_attendance = auth()->user()->can('essentials.view_own_attendance');
-
-        if (! $can_crud_all_attendance && ! $can_view_own_attendance) {
-            abort(403, 'Unauthorized action.');
-        }
+        $can_see_all = $this->canManageAllAttendance();
 
         if (request()->ajax()) {
             $attendance = EssentialsAttendance::where('essentials_attendances.business_id', $business_id)
@@ -68,34 +63,37 @@ class AttendanceController extends Controller
                                 DB::raw('DATE(clock_in_time) as date'),
                                 DB::raw("CONCAT(COALESCE(u.surname, ''), ' ', COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as user"),
                                 'es.name as shift_name', 'clock_in_location', 'clock_out_location',
-                            ])->groupBy('essentials_attendances.id');
+                            ]);
 
-            $permitted_locations = auth()->user()->permitted_locations();
+            if ($can_see_all) {
+                $permitted_locations = auth()->user()->permitted_locations();
 
-            if ($permitted_locations != 'all') {
-                $permitted_locations_array = [];
+                if ($permitted_locations != 'all') {
+                    $permitted_locations_array = [];
 
-                foreach ($permitted_locations as $loc_id) {
-                    $permitted_locations_array[] = 'location.'.$loc_id;
+                    foreach ($permitted_locations as $loc_id) {
+                        $permitted_locations_array[] = 'location.'.$loc_id;
+                    }
+                    $permission_ids = Permission::whereIn('name', $permitted_locations_array)
+                                            ->pluck('id');
+
+                    $attendance->join('model_has_permissions as mhp', 'mhp.model_id', '=', 'u.id')
+                        ->whereIn('mhp.permission_id', $permission_ids)
+                        ->groupBy('essentials_attendances.id');
                 }
-                $permission_ids = Permission::whereIn('name', $permitted_locations_array)
-                                        ->pluck('id');
 
-                $attendance->join('model_has_permissions as mhp', 'mhp.model_id', '=', 'u.id')->whereIn('mhp.permission_id', $permission_ids);
+                if (! empty(request()->input('employee_id'))) {
+                    $attendance->where('essentials_attendances.user_id', request()->input('employee_id'));
+                }
+            } else {
+                $attendance->where('essentials_attendances.user_id', auth()->user()->id);
             }
 
-            if (! empty(request()->input('employee_id'))) {
-                $attendance->where('essentials_attendances.user_id', request()->input('employee_id'));
-            }
             if (! empty(request()->start_date) && ! empty(request()->end_date)) {
                 $start = request()->start_date;
                 $end = request()->end_date;
                 $attendance->whereDate('clock_in_time', '>=', $start)
                             ->whereDate('clock_in_time', '<=', $end);
-            }
-
-            if (! $can_crud_all_attendance && $can_view_own_attendance) {
-                $attendance->where('essentials_attendances.user_id', auth()->user()->id);
             }
 
             return Datatables::of($attendance)
@@ -158,7 +156,7 @@ class AttendanceController extends Controller
                                 ->whereNull('clock_out_time')
                                 ->first();
         $employees = [];
-        if ($can_crud_all_attendance) {
+        if ($can_see_all) {
             $employees = User::forDropdown($business_id, false);
         }
 
@@ -732,11 +730,6 @@ class AttendanceController extends Controller
     public function todayBoard()
     {
         $business_id = request()->session()->get('user.business_id');
-        if (! auth()->user()->can('essentials.crud_all_attendance')
-            && ! auth()->user()->can('essentials.view_own_attendance')
-            && ! auth()->user()->can('essentials.allow_users_for_attendance_from_web')) {
-            abort(403, 'Unauthorized action.');
-        }
         $only_user_id = $this->canManageAllAttendance() ? null : auth()->user()->id;
         $board = $this->essentialsUtil->todayAttendanceBoard($business_id, $only_user_id);
         $can_manage = $this->canManageAllAttendance();
@@ -875,8 +868,7 @@ class AttendanceController extends Controller
             return true;
         }
 
-        return (int) $user_id === (int) auth()->user()->id
-            && (auth()->user()->can('essentials.view_own_attendance') || auth()->user()->can('essentials.allow_users_for_attendance_from_web'));
+        return (int) $user_id === (int) auth()->user()->id;
     }
 
     /**

@@ -178,7 +178,7 @@ class EssentialsLeaveController extends Controller
 
         $employees = [];
         if (auth()->user()->can('essentials.crud_all_leave')) {
-            $employees = User::forDropdown($business_id, false, false, false, true);
+            $employees = User::forDropdown($business_id, false);
         }
 
         return view('essentials::leave.create')->with(compact('leave_types', 'instructions', 'employees'));

@@ -110,6 +110,7 @@
             <section class="invoice print_section" id="receipt_section">
             </section>
         </main>
+    </div>
 
         @include('home.todays_profit_modal')
         <!-- /.content-wrapper -->
@@ -187,6 +188,24 @@
 
     #scrollable-container{
         position:relative;
+    }
+
+    /*
+     * Closed Bootstrap modals must not sit in the page as a right-hand column.
+     * They only appear after Bootstrap adds .in.
+     */
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 1050;
+        overflow: hidden;
+    }
+    .modal.in {
+        display: block;
     }
     
 

@@ -369,11 +369,23 @@ class ProductionController extends Controller
 
         $isProductionManager = $this->isProductionManager();
 
+        $myWork = null;
+        try {
+            $businessId = (int) $request->session()->get('user.business_id');
+            $user = auth()->user();
+            $myWork = app(\Modules\Essentials\Utils\EssentialsUtil::class)->myHomeAttendance((int) $user->id, $businessId);
+            $isBusinessAdmin = app(\App\Utils\Util::class)->is_admin($user, $businessId);
+            $myWork['require_location'] = (! $user->can('essentials.crud_all_attendance') && ! $isBusinessAdmin) ? 1 : 0;
+            $myWork['can_self_mark'] = true;
+        } catch (\Throwable $e) {
+            \Log::warning('section attendance widget failed: '.$e->getMessage());
+        }
+
         return view('production.section', compact(
             'stage', 'stageLabel', 'stageColor', 'jobs', 'openStages', 'stats',
             'search', 'filter', 'nextStage', 'nextStageLabel', 'isAdmin',
             'myStages', 'stages', 'sectionHead', 'prevStage', 'prevStageLabel',
-            'prevStageEmployees', 'pendingApprovals', 'isProductionManager'
+            'prevStageEmployees', 'pendingApprovals', 'isProductionManager', 'myWork'
         ));
     }
 
