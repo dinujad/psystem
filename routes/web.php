@@ -647,8 +647,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         // Raw material purchases (stock → inventory_materials, not products)
         Route::get('/purchases', [\App\Http\Controllers\InventoryPurchaseController::class, 'index'])->name('purchases.index');
         Route::get('/purchases/create', [\App\Http\Controllers\InventoryPurchaseController::class, 'create'])->name('purchases.create');
+        Route::post('/purchases/materials', [\App\Http\Controllers\InventoryPurchaseController::class, 'storeMaterial'])->name('purchases.materials.store');
         Route::post('/purchases', [\App\Http\Controllers\InventoryPurchaseController::class, 'store'])->name('purchases.store');
         Route::get('/purchases/{purchase}', [\App\Http\Controllers\InventoryPurchaseController::class, 'show'])->name('purchases.show');
+        Route::get('/purchases/{purchase}/payments', [\App\Http\Controllers\InventoryPurchaseController::class, 'payments'])->name('purchases.payments');
+        Route::post('/purchases/{purchase}/payments', [\App\Http\Controllers\InventoryPurchaseController::class, 'storePayment'])->name('purchases.payments.store');
         Route::post('/purchases/{purchase}/receive', [\App\Http\Controllers\InventoryPurchaseController::class, 'markReceived'])->name('purchases.receive');
     });
 

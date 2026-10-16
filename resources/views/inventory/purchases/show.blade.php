@@ -10,8 +10,16 @@
 .rmp-table { width:100%; border-collapse:collapse; font-size:13px; margin-top:12px; }
 .rmp-table th, .rmp-table td { padding:10px 8px; border-bottom:1px solid #f3f4f6; text-align:left; }
 .rmp-badge { font-size:11px; font-weight:800; padding:3px 10px; border-radius:20px; text-transform:uppercase; }
-.rmp-badge.received { background:#dcfce7; color:#15803d; }
-.rmp-badge.ordered { background:#fef3c7; color:#b45309; }
+.rmp-badge.received, .rmp-badge.pay-paid { background:#dcfce7; color:#15803d; }
+.rmp-badge.ordered, .rmp-badge.pay-partial { background:#fef3c7; color:#b45309; }
+.rmp-badge.pay-due { background:#fee2e2; color:#b91c1c; }
+body #scrollable-container .rmp-page input,
+body #scrollable-container .rmp-page select {
+    color-scheme: light !important;
+    background: #fff !important;
+    color: #111827 !important;
+    -webkit-text-fill-color: #111827 !important;
+}
 </style>
 @endsection
 
@@ -69,9 +77,67 @@
                 @endforeach
             </tbody>
         </table>
-        <div style="text-align:right;margin-top:12px;font-size:16px;font-weight:800;">
-            Total: Rs. {{ number_format((float) $purchase->total_amount, 2) }}
+        @php
+            $paid = $purchase->amountPaid();
+            $due = $purchase->amountDue();
+        @endphp
+        <div style="text-align:right;margin-top:12px;font-size:15px;font-weight:800;line-height:1.7;">
+            Total: Rs. {{ number_format((float) $purchase->total_amount, 2) }}<br>
+            Paid: Rs. {{ number_format($paid, 2) }}<br>
+            Due: Rs. {{ number_format($due, 2) }}
+            <span class="rmp-badge pay-{{ $purchase->payment_status ?: 'due' }}">{{ $purchase->payment_status ?: 'due' }}</span>
         </div>
+
+        <h3 style="margin:18px 0 8px;font-size:15px;font-weight:800;">Payments</h3>
+        <table class="rmp-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Method</th>
+                    <th>Amount</th>
+                    <th>Note</th>
+                </tr>
+            </thead>
+            <tbody>
+                @forelse($purchase->payments as $payment)
+                <tr>
+                    <td>{{ $payment->paid_on?->format('d M Y') }}</td>
+                    <td>{{ $payment->method }}</td>
+                    <td>Rs. {{ number_format((float) $payment->amount, 2) }}</td>
+                    <td>{{ $payment->note ?: '—' }}</td>
+                </tr>
+                @empty
+                <tr><td colspan="4">No payment recorded yet.</td></tr>
+                @endforelse
+            </tbody>
+        </table>
+
+        @if($due > 0.009)
+        <form method="POST" action="{{ route('inventory.purchases.payments.store', $purchase) }}" style="margin-top:14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:end;">
+            @csrf
+            <div>
+                <label style="font-size:11px;font-weight:700;color:#6b7280;">Amount</label>
+                <input type="number" name="amount" min="0.01" max="{{ $due }}" step="0.01" value="{{ number_format($due, 2, '.', '') }}" required style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;">
+            </div>
+            <div>
+                <label style="font-size:11px;font-weight:700;color:#6b7280;">Date</label>
+                <input type="date" name="paid_on" value="{{ date('Y-m-d') }}" required style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;">
+            </div>
+            <div>
+                <label style="font-size:11px;font-weight:700;color:#6b7280;">Method</label>
+                <select name="method" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;">
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="bank">Bank transfer</option>
+                    <option value="cheque">Cheque</option>
+                </select>
+            </div>
+            <button type="submit" class="rmp-btn">Add payment</button>
+        </form>
+        @error('amount')
+            <p style="color:#b91c1c;font-weight:700;">{{ $message }}</p>
+        @enderror
+        @endif
     </div>
 </div>
 @endsection
