@@ -14,9 +14,9 @@
 .rmp-badge.received, .rmp-badge.pay-paid { background:#dcfce7; color:#15803d; }
 .rmp-badge.ordered, .rmp-badge.pay-partial { background:#fef3c7; color:#b45309; }
 .rmp-badge.pay-due { background:#fee2e2; color:#b91c1c; }
-.rmp-modal-ov { position:fixed; inset:0; background:rgba(17,24,39,.5); z-index:100000; display:none; align-items:center; justify-content:center; padding:16px; }
-.rmp-modal-ov.show { display:flex; }
-.rmp-modal { background:#fff; border-radius:16px; width:100%; max-width:480px; padding:18px 20px; color:#111827; }
+.rmp-modal-ov { position:fixed; inset:0; background:rgba(17,24,39,.5); z-index:100000; display:none; }
+.rmp-modal-ov.show { display:block !important; }
+.rmp-modal { background:#fff; border-radius:16px; width:calc(100% - 32px); max-width:480px; padding:18px 20px; color:#111827; position:fixed; left:50%; top:50%; transform:translate(-50%, -50%); margin:0; z-index:100001; }
 .rmp-modal h3 { margin:0 0 8px; font-size:17px; font-weight:800; }
 .rmp-field { margin-bottom:10px; }
 .rmp-field label { display:block; font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase; margin-bottom:4px; }

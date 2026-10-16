@@ -46,9 +46,14 @@ body .rmp-modal textarea::placeholder {
     color: #6b7280 !important;
     -webkit-text-fill-color: #6b7280 !important;
 }
-.rmp-modal-ov { position: fixed; inset: 0; background: rgba(17,24,39,.5); z-index: 100000; display: none; align-items: center; justify-content: center; padding: 16px; }
-.rmp-modal-ov.show { display: flex; }
-.rmp-modal { background: #fff; border-radius: 16px; width: 100%; max-width: 520px; max-height: calc(100vh - 32px); overflow-y: auto; padding: 18px 20px; }
+.rmp-modal-ov { position: fixed; inset: 0; background: rgba(17,24,39,.5); z-index: 100000; display: none; }
+.rmp-modal-ov.show { display: block !important; }
+.rmp-modal {
+    background: #fff; border-radius: 16px; width: calc(100% - 32px); max-width: 520px;
+    max-height: calc(100vh - 32px); overflow-y: auto; padding: 18px 20px;
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    margin: 0; z-index: 100001;
+}
 .rmp-modal h3 { margin: 0 0 4px; font-size: 17px; font-weight: 800; color: #111827; }
 .rmp-modal p { margin: 0 0 14px; font-size: 12px; color: #6b7280; }
 .rmp-err { color: #b91c1c; font-size: 12px; font-weight: 700; min-height: 16px; margin: 8px 0 0; }
