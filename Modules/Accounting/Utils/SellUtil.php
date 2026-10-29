@@ -882,6 +882,15 @@ class SellUtil
                             </button>';
                 }
             })
+            ->addColumn('refund_action', function ($row) {
+                if ($row->type !== 'sell') {
+                    return '';
+                }
+
+                $url = action([\App\Http\Controllers\SellReturnController::class, 'add'], [$row->id]);
+
+                return '<a class="btn btn-xs btn-warning" href="'.$url.'"><i class="fas fa-undo"></i> Refund</a>';
+            })
             ->addColumn('chart_of_account', function ($row) {
                 if (!empty($row->journal_entry_id)) {
                     return '<a href="' . url("accounting/chart_of_account/" . $row->journal_entry->chart_of_account->id . "/show") . '">
@@ -1022,7 +1031,7 @@ class SellUtil
                 }
             ]);
 
-        $rawColumns = ['final_total', 'mapping', 'total_paid', 'total_remaining', 'payment_status', 'invoice_no', 'discount_amount', 'tax_amount', 'total_before_tax', 'types_of_service_name', 'payment_methods', 'return_due', 'contact_name', 'status', 'chart_of_account', 'checkbox'];
+        $rawColumns = ['final_total', 'mapping', 'refund_action', 'total_paid', 'total_remaining', 'payment_status', 'invoice_no', 'discount_amount', 'tax_amount', 'total_before_tax', 'types_of_service_name', 'payment_methods', 'return_due', 'contact_name', 'status', 'chart_of_account', 'checkbox'];
 
         return $datatable->rawColumns($rawColumns)->make(true);
     }
@@ -1407,6 +1416,15 @@ class SellUtil
                             </button>';
                 }
             })
+            ->addColumn('refund_action', function ($row) {
+                if ($row->type !== 'sell') {
+                    return '';
+                }
+
+                $url = action([\App\Http\Controllers\SellReturnController::class, 'add'], [$row->id]);
+
+                return '<a class="btn btn-xs btn-warning" href="'.$url.'"><i class="fas fa-undo"></i> Refund</a>';
+            })
             ->addColumn('chart_of_account', function ($row) {
                 if (!empty($row->journal_entry_id)) {
                     return '<a href="' . url("accounting/chart_of_account/" . $row->journal_entry->chart_of_account->id . "/show") . '">
@@ -1547,7 +1565,7 @@ class SellUtil
                 }
             ]);
 
-        $rawColumns = ['final_total', 'mapping', 'total_paid', 'total_remaining', 'payment_status', 'invoice_no', 'discount_amount', 'tax_amount', 'total_before_tax', 'types_of_service_name', 'payment_methods', 'return_due', 'contact_name', 'status', 'chart_of_account', 'checkbox'];
+        $rawColumns = ['final_total', 'mapping', 'refund_action', 'total_paid', 'total_remaining', 'payment_status', 'invoice_no', 'discount_amount', 'tax_amount', 'total_before_tax', 'types_of_service_name', 'payment_methods', 'return_due', 'contact_name', 'status', 'chart_of_account', 'checkbox'];
 
         return $datatable->rawColumns($rawColumns)->make(true);
     }

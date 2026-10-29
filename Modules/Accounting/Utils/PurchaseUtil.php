@@ -242,6 +242,7 @@ class PurchaseUtil
                 DB::raw('SUM(pl.quantity - pl.po_quantity_purchased) as po_qty_remaining')
             )
             ->groupBy('transactions.id');
+        $purchase_orders->getModel()->setAppends([]);
 
         $permitted_locations = auth()->user()->permitted_locations();
         if ($permitted_locations != 'all') {
@@ -682,6 +683,8 @@ class PurchaseUtil
                 DB::raw("CONCAT(COALESCE(u.surname, ''),' ',COALESCE(u.first_name, ''),' ',COALESCE(u.last_name,'')) as added_by")
             )
             ->groupBy('transactions.id');
+
+        $purchases->getModel()->setAppends([]);
 
         return $purchases;
     }

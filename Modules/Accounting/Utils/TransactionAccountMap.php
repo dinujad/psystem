@@ -206,6 +206,70 @@ class TransactionAccountMap
         return $settings['transaction_map'][$category];
     }
 
+    public function mapRefund($sellReturn): void
+    {
+        if (empty($sellReturn) || $sellReturn->type !== 'sell_return' || empty($sellReturn->business_id)) {
+            return;
+        }
+
+        $accountId = null;
+        $saleSide = 'credit';
+        $default = $this->defaultFor((int) $sellReturn->business_id, 'sale');
+        if (! empty($default['chart_of_account_id'])) {
+            $accountId = (int) $default['chart_of_account_id'];
+            $saleSide = ($default['map_type'] ?? 'credit') === 'debit' ? 'debit' : 'credit';
+        }
+
+        if (empty($accountId) && ! empty($sellReturn->return_parent_id)) {
+            $parent = DB::table('transactions')
+                ->where('id', $sellReturn->return_parent_id)
+                ->value('journal_entry_id');
+            if (! empty($parent)) {
+                $entry = DB::table('journal_entries')->where('id', $parent)->first();
+                if (! empty($entry->chart_of_account_id)) {
+                    $accountId = (int) $entry->chart_of_account_id;
+                    $saleSide = ((float) $entry->debit > 0 && (float) $entry->credit <= 0) ? 'debit' : 'credit';
+                }
+            }
+        }
+
+        if (empty($accountId)) {
+            return;
+        }
+
+        $refundSide = $saleSide === 'credit' ? 'debit' : 'credit';
+        $note = trim('Refund '.($sellReturn->invoice_no ?: ''));
+
+        if (! empty($sellReturn->journal_entry_id)) {
+            $entry = JournalEntry::find($sellReturn->journal_entry_id);
+            if (! empty($entry)) {
+                $entry->chart_of_account_id = $accountId;
+                $entry->debit = $refundSide === 'debit' ? $sellReturn->final_total : 0;
+                $entry->credit = $refundSide === 'credit' ? $sellReturn->final_total : 0;
+                $entry->notes = $note;
+                $entry->reversed = 0;
+                $entry->save();
+            }
+
+            return;
+        }
+
+        $this->mapOne($sellReturn, $accountId, $refundSide, $note, 'sale_refund');
+    }
+
+    public function unmapRefund($sellReturn): void
+    {
+        if (empty($sellReturn->journal_entry_id)) {
+            return;
+        }
+
+        $entry = JournalEntry::find($sellReturn->journal_entry_id);
+        if (! empty($entry)) {
+            $entry->reversed = 1;
+            $entry->save();
+        }
+    }
+
     private function unmappedQuery(int $businessId, string $category)
     {
         $query = Transaction::where('business_id', $businessId)

@@ -34,9 +34,13 @@ class Transaction extends AppTransaction
 
     public function getDaysPassedAttribute()
     {
-        $earlier = new \DateTime($this->transaction_date);
+        try {
+            $earlier = new \DateTime($this->transaction_date ?: 'now');
+        } catch (\Exception $e) {
+            return 'one_to_thirty_past_due';
+        }
         $now = new \DateTime();
-        $abs_diff = $now->diff($earlier)->format("%a");
+        $abs_diff = $now->diff($earlier)->format('%a');
 
         if ($abs_diff <= 30) {
             return 'one_to_thirty_past_due';
@@ -71,8 +75,15 @@ class Transaction extends AppTransaction
 
     public function getTransactionDateAttribute($value)
     {
+        if (empty($value)) {
+            return $value;
+        }
         $date = date_create($value);
-        return  date_format($date, "Y-m-d");
+        if (! $date) {
+            return $value;
+        }
+
+        return date_format($date, 'Y-m-d');
     }
 
     public static function getPayrollGroups()

@@ -26,7 +26,7 @@
                                 $nav_items = [
                                     'accounting/transactions/sales?type=payment' => trans_choice('accounting::general.sales', 2),
                                     'accounting/transactions/expenses' => trans_choice('accounting::general.expense', 2),
-                                    'accounting/transactions/purchases?type=purchase_order' => trans_choice('accounting::general.purchase', 2),
+                                    'accounting/transactions/purchases?type=purchase_payment' => trans_choice('accounting::general.purchase', 2),
                                 ];
                                 
                                 function isActiveTab($url)

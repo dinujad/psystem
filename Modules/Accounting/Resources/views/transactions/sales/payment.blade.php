@@ -46,6 +46,7 @@
                                 <th>@lang('sale.staff_note')</th>
                                 <th>@lang('restaurant.table')</th>
                                 <th>@lang('restaurant.service_staff')</th>
+                                <th>@lang('messages.action')</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -60,7 +61,7 @@
                                 <td class="footer_total_sell_return_due"></td>
                                 <td colspan="2"></td>
                                 <td class="service_type_count"></td>
-                                <td colspan="7"></td>
+                                <td colspan="8"></td>
                             </tr>
                         </tfoot>
                     </table>

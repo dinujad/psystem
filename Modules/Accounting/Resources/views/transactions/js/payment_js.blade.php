@@ -169,6 +169,12 @@
                         visible: false
                     @endif
                 },
+                {
+                    data: 'refund_action',
+                    name: 'refund_action',
+                    orderable: false,
+                    searchable: false
+                },
             ],
             "fnDrawCallback": function(oSettings) {
                 __currency_convert_recursively($('#sell_table'));

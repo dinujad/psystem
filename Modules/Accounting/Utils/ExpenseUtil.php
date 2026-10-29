@@ -10,6 +10,7 @@ use Modules\Accounting\Entities\User;
 use App\Utils\ModuleUtil;
 use App\Utils\TransactionUtil;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Yajra\DataTables\Facades\DataTables;
 
 class ExpenseUtil
@@ -299,6 +300,7 @@ BLADE
             )
             ->with(['recurring_parent'])
             ->groupBy('transactions.id');
+        $expenses->getModel()->setAppends([]);
 
         //Add condition for expense for,used in sales representative expense report & list of expense
         if (request()->has('expense_for')) {
@@ -380,11 +382,16 @@ BLADE
                 }
             })
             ->addColumn('chart_of_account', function ($row) {
-                if (!empty($row->journal_entry_id)) {
-                    return '<a href="' . url("accounting/chart_of_account/" . $row->journal_entry->chart_of_account->id . "/show") . '">
-                    <span>' . $row->journal_entry->chart_of_account->name . '</span> <i class="fas fa-external-link-alt"></i>
+                try {
+                    $account = ! empty($row->journal_entry_id) ? $row->journal_entry->chart_of_account : null;
+                    if (empty($account) || empty($account->id)) {
+                        return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
+                    }
+
+                    return '<a href="' . url('accounting/chart_of_account/' . $account->id . '/show') . '">
+                    <span>' . e($account->name) . '</span> <i class="fas fa-external-link-alt"></i>
                 </a>';
-                } else {
+                } catch (\Throwable $e) {
                     return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
                 }
             })

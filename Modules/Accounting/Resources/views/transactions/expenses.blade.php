@@ -108,7 +108,67 @@
 @section('tab-javascript')
     {{-- For the mapping_modal --}}
     <script src="{{ Module::asset('accounting:js/accounting_transactions.js') }}"></script>
-    {{-- For Datatable --}}
-    <script src="{{ Module::asset('accounting:js/expense_transactions.js') }}"></script>
     <script src="{{ asset('js/payment.js?v=' . $asset_v) }}"></script>
+    <script type="text/javascript">
+        $(document).ready(function() {
+            if ($('#expense_date_range').length && $.fn.daterangepicker) {
+                $('#expense_date_range').daterangepicker(
+                    $.extend({}, dateRangeSettings, {autoUpdateInput: false}),
+                    function(start, end) {
+                        $('#expense_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
+                        expense_transactions_table.ajax.reload();
+                    }
+                );
+                $('#expense_date_range').on('cancel.daterangepicker', function() {
+                    $('#expense_date_range').val('');
+                    expense_transactions_table.ajax.reload();
+                });
+            }
+
+            expense_transactions_table = $('#expense_transactions_table').DataTable({
+                processing: true,
+                serverSide: true,
+                aaSorting: [[2, 'desc']],
+                ajax: {
+                    url: '/accounting/transactions/expenses',
+                    data: function(d) {
+                        d.expense_for = $('select#expense_for').val();
+                        d.location_id = $('select#location_id').val();
+                        d.expense_category_id = $('select#expense_category_id').val();
+                        d.payment_status = $('select#expense_payment_status').val();
+                        var range = $('#expense_date_range').val();
+                        var picker = $('#expense_date_range').data('daterangepicker');
+                        if (range && picker) {
+                            d.start_date = picker.startDate.format('YYYY-MM-DD');
+                            d.end_date = picker.endDate.format('YYYY-MM-DD');
+                        }
+                    }
+                },
+                columns: [
+                    { data: 'mapping', name: 'mapping', orderable: false, searchable: false },
+                    { data: 'chart_of_account', name: 'chart_of_account', orderable: false, searchable: false },
+                    { data: 'transaction_date', name: 'transactions.transaction_date' },
+                    { data: 'ref_no', name: 'ref_no' },
+                    { data: 'recur_details', name: 'recur_details', orderable: false, searchable: false },
+                    { data: 'category', name: 'ec.name' },
+                    { data: 'location_name', name: 'bl.name' },
+                    { data: 'payment_status', name: 'payment_status', orderable: false },
+                    { data: 'tax', name: 'tr.name', visible: false },
+                    { data: 'final_total', name: 'final_total' },
+                    { data: 'payment_due', name: 'payment_due', orderable: false, searchable: false },
+                    { data: 'expense_for', name: 'expense_for', orderable: false, searchable: false },
+                    { data: 'contact_name', name: 'c.name', visible: false },
+                    { data: 'additional_notes', name: 'additional_notes' },
+                    { data: 'added_by', name: 'usr.first_name' }
+                ],
+                fnDrawCallback: function() {
+                    __currency_convert_recursively($('#expense_transactions_table'));
+                }
+            });
+
+            $('select#location_id, select#expense_for, select#expense_category_id, select#expense_payment_status').on('change', function() {
+                expense_transactions_table.ajax.reload();
+            });
+        });
+    </script>
 @endsection

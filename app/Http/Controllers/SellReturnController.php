@@ -397,6 +397,12 @@ class SellReturnController extends Controller
 
                 DB::commit();
 
+                try {
+                    (new \Modules\Accounting\Utils\TransactionAccountMap())->mapRefund($sell_return);
+                } catch (\Throwable $e) {
+                    \Log::emergency('File:'.$e->getFile().'Line:'.$e->getLine().'Message:'.$e->getMessage());
+                }
+
                 $output = ['success' => 1,
                     'msg' => __('lang_v1.success'),
                     'receipt' => $receipt,
@@ -543,6 +549,7 @@ class SellReturnController extends Controller
                         }
                     }
 
+                    (new \Modules\Accounting\Utils\TransactionAccountMap())->unmapRefund($sell_return);
                     $sell_return->delete();
                     foreach ($transaction_payments as $payment) {
                         event(new TransactionPaymentDeleted($payment));
