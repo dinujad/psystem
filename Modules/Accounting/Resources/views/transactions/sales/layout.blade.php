@@ -5,6 +5,8 @@
 
 @section('tab-content')
 
+    @include('accounting::transactions.partials.map_all_bar')
+
     <div class="row">
         <div class="col-md-12">
             <div class="nav-tabs-custom">

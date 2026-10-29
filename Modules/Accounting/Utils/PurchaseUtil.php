@@ -332,6 +332,12 @@ class PurchaseUtil
                     return  action([\App\Http\Controllers\PurchaseOrderController::class, 'show'], [$row->id]);
                 }
             ])
+            ->orderColumn('chart_of_account', 'transactions.transaction_date $1')
+            ->orderColumn('mapping', 'transactions.transaction_date $1')
+            ->filterColumn('chart_of_account', function ($query, $keyword) {
+            })
+            ->filterColumn('mapping', function ($query, $keyword) {
+            })
             ->rawColumns(['final_total', 'mapping', 'ref_no', 'name', 'status', 'shipping_status', 'chart_of_account'])
             ->make(true);
     }
@@ -602,6 +608,12 @@ class PurchaseUtil
                     }
                 }
             ])
+            ->orderColumn('chart_of_account', 'transactions.transaction_date $1')
+            ->orderColumn('mapping', 'transactions.transaction_date $1')
+            ->filterColumn('chart_of_account', function ($query, $keyword) {
+            })
+            ->filterColumn('mapping', function ($query, $keyword) {
+            })
             ->rawColumns(['final_total', 'mapping', 'payment_due', 'payment_status', 'status', 'ref_no', 'name', 'chart_of_account'])
             ->make(true);
     }

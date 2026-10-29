@@ -228,7 +228,10 @@
 @section('javascript')
     <script>
         $(document).ready(function() {
-            $('#data-table').DataTable();
+            $('#data-table').DataTable({
+                order: [[3, 'desc'], [1, 'desc']],
+                pageLength: 25
+            });
         });
     </script>
 

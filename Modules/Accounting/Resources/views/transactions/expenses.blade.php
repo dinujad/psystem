@@ -11,6 +11,7 @@
 @endsection
 
 @section('tab-content')
+    @include('accounting::transactions.partials.map_all_bar')
     <!-- Main content -->
     <section class="content">
         <div class="row">
@@ -71,7 +72,7 @@
                                     <th>@lang('sale.payment_status')</th>
                                     <th class="d-none">@lang('product.tax')</th>
                                     <th>@lang('sale.total_amount')</th>
-                                    <th>@lang('purchase.payment_due')
+                                    <th>@lang('purchase.payment_due')</th>
                                     <th>@lang('expense.expense_for')</th>
                                     <th>@lang('contact.contact')</th>
                                     <th>@lang('expense.expense_note')</th>

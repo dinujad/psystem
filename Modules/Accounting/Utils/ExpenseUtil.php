@@ -444,6 +444,12 @@ BLADE
 
                 return $ref_no;
             })
+            ->orderColumn('chart_of_account', 'transactions.transaction_date $1')
+            ->orderColumn('mapping', 'transactions.transaction_date $1')
+            ->filterColumn('chart_of_account', function ($query, $keyword) {
+            })
+            ->filterColumn('mapping', function ($query, $keyword) {
+            })
             ->rawColumns(['final_total', 'mapping', 'payment_status', 'payment_due', 'ref_no', 'recur_details', 'chart_of_account'])
             ->make(true);
     }

@@ -1398,7 +1398,7 @@ $(document).ready(function() {
     expense_transactions_table = $('#expense_transactions_table').DataTable({
         processing: true,
         serverSide: true,
-        aaSorting: [[1, 'desc']],
+        aaSorting: [[2, 'desc']],
         ajax: {
             url: '/accounting/transactions/expenses',
             data: function(d) {
@@ -1407,17 +1407,19 @@ $(document).ready(function() {
                 d.location_id = $('select#location_id').val();
                 d.expense_category_id = $('select#expense_category_id').val();
                 d.payment_status = $('select#expense_payment_status').val();
-                d.start_date = $('input#expense_date_range')
-                    .data('daterangepicker')
-                    .startDate.format('YYYY-MM-DD');
-                d.end_date = $('input#expense_date_range')
-                    .data('daterangepicker')
-                    .endDate.format('YYYY-MM-DD');
+                if ($('input#expense_date_range').data('daterangepicker')) {
+                    d.start_date = $('input#expense_date_range')
+                        .data('daterangepicker')
+                        .startDate.format('YYYY-MM-DD');
+                    d.end_date = $('input#expense_date_range')
+                        .data('daterangepicker')
+                        .endDate.format('YYYY-MM-DD');
+                }
             },
         },
         columns: [
             { data: 'mapping', name: 'mapping', orderable: false, searchable: false },
-            { data: 'chart_of_account', name: 'chart_of_account' },
+            { data: 'chart_of_account', name: 'chart_of_account', orderable: false, searchable: false },
             { data: 'transaction_date', name: 'transaction_date' },
             { data: 'ref_no', name: 'ref_no' },
             { data: 'recur_details', name: 'recur_details', orderable: false, searchable: false },

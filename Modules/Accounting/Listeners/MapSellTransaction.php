@@ -15,6 +15,8 @@ class MapSellTransaction
             return;
         }
 
+        (new \Modules\Accounting\Utils\TransactionAccountMap())->mapNew($event->transaction);
+
         $userId = request()->session()->get('user.id') ?: $event->transaction->created_by;
         $accountingUtil->mapTransaction($event->transaction, 'sell', $userId);
     }

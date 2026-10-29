@@ -534,10 +534,10 @@ $(document).ready(function() {
                 d = __datatable_ajax_callback(d);
             },
         },
-        aaSorting: [[1, 'desc']],
+        aaSorting: [[2, 'desc']],
         columns: [
             { data: 'mapping', name: 'mapping', orderable: false, searchable: false },
-            { data: 'chart_of_account', name: 'chart_of_account' },
+            { data: 'chart_of_account', name: 'chart_of_account', orderable: false, searchable: false },
             { data: 'transaction_date', name: 'transaction_date' },
             { data: 'ref_no', name: 'ref_no' },
             { data: 'location_name', name: 'BS.name' },

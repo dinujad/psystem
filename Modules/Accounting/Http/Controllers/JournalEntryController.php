@@ -49,6 +49,9 @@ class JournalEntryController extends Controller
             ->leftJoin("users", "users.id", "journal_entries.created_by_id")
             ->when($orderBy, function (Builder $query) use ($orderBy, $orderByDir) {
                 $query->orderBy($orderBy, $orderByDir);
+            }, function (Builder $query) {
+                $query->orderBy('journal_entries.date', 'desc')
+                    ->orderBy('journal_entries.id', 'desc');
             })
             ->when($end_date, function ($query) use ($start_date, $end_date) {
                 $query->whereBetween("journal_entries.date", [$start_date, $end_date]);
