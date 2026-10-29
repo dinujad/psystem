@@ -50,7 +50,8 @@ class EssentialsUtil extends Util
     }
 
     /**
-     * Overtime after a fixed shift's end time, priced at each shift's hourly OT rate.
+     * Overtime before a fixed shift starts and after it ends, priced at that shift's hourly OT rate.
+     * Weekday and Saturday start at 09:00, so time worked before 09:00 counts as OT.
      * Flexible shifts and shifts with no OT rate contribute nothing.
      *
      * @param  int  $user_id
@@ -105,13 +106,25 @@ class EssentialsUtil extends Util
             }
 
             $clock_out = ! empty($row->clock_out_time) ? \Carbon::parse($row->clock_out_time) : \Carbon::now();
+            $shift_start = $this->shiftStartDateTime($clock_in, $shift->start_time);
             $shift_end = $this->shiftEndDateTime($clock_in, $shift->start_time, $shift->end_time);
+            $ot_minutes = 0;
 
-            if ($clock_out->lte($shift_end)) {
+            if ($clock_in->lt($shift_start)) {
+                $early_until = $clock_out->lt($shift_start) ? $clock_out : $shift_start;
+                if ($early_until->gt($clock_in)) {
+                    $ot_minutes += $clock_in->diffInMinutes($early_until);
+                }
+            }
+
+            if ($clock_out->gt($shift_end)) {
+                $ot_minutes += $shift_end->diffInMinutes($clock_out);
+            }
+
+            if ($ot_minutes <= 0) {
                 continue;
             }
 
-            $ot_minutes = $shift_end->diffInMinutes($clock_out);
             $minutes += $ot_minutes;
             $amount += ($ot_minutes / 60) * $rate;
         }
@@ -123,7 +136,7 @@ class EssentialsUtil extends Util
     }
 
     /**
-     * This month's OT for one employee, including time still running after today's shift end.
+     * This month's OT for one employee, including time before today's shift start and after its end.
      */
     public function myOvertimeSummary($user_id, $business_id)
     {
@@ -219,6 +232,16 @@ class EssentialsUtil extends Util
         }
 
         return $days;
+    }
+
+    /**
+     * Shift start on the attendance day. Time worked before this counts as OT.
+     */
+    private function shiftStartDateTime($clock_in, $start_time)
+    {
+        $day = $clock_in->format('Y-m-d');
+
+        return \Carbon::parse($day.' '.\Carbon::parse($start_time)->format('H:i:s'));
     }
 
     /**

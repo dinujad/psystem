@@ -68,6 +68,7 @@
 						<hr />
 
 						<h3>@lang('accounting::lang.map_transactions') @show_tooltip(__('accounting::lang.map_transactions_help'))</h3>
+						<p class="help-block">Pick the chart of account for each type. New sales, purchases, raw material purchases, expenses, and payroll use these accounts automatically. Deposit to is debited. Payment account is credited. You can still pick different accounts when adding an expense, purchase, or payroll.</p>
 
 						@foreach($business_locations as $business_location)
 						@component('components.widget', ['title' => $business_location->name])
@@ -88,9 +89,13 @@
 
 						$purchases_deposit_to = isset($default_map['purchases']['deposit_to']) ? \Modules\Accounting\Entities\AccountingAccount::find($default_map['purchases']['deposit_to']) : null;
 
-						$purchase_payments_payment_account = isset($default_map['purchase_payments']['payment_account']) ? \Modules\Accounting\Entities\AccountingAccount::find($default_map['purchase_payments']['payment_account']) : null;
+						$purchase_payments_payment_account = isset($default_map['purchase_payment']['payment_account']) ? \Modules\Accounting\Entities\AccountingAccount::find($default_map['purchase_payment']['payment_account']) : null;
 
-						$purchase_payments_deposit_to = isset($default_map['purchase_payments']['deposit_to']) ? \Modules\Accounting\Entities\AccountingAccount::find($default_map['purchase_payments']['deposit_to']) : null;
+						$purchase_payments_deposit_to = isset($default_map['purchase_payment']['deposit_to']) ? \Modules\Accounting\Entities\AccountingAccount::find($default_map['purchase_payment']['deposit_to']) : null;
+
+						$payroll_payment_account = isset($default_map['payroll']['payment_account']) ? \Modules\Accounting\Entities\AccountingAccount::find($default_map['payroll']['payment_account']) : null;
+
+						$payroll_deposit_to = isset($default_map['payroll']['deposit_to']) ? \Modules\Accounting\Entities\AccountingAccount::find($default_map['payroll']['deposit_to']) : null;
 
 
 						$expense_payment_account = isset($default_map['expense']['payment_account']) ? \Modules\Accounting\Entities\AccountingAccount::find($default_map['expense']['payment_account']) : null;
@@ -232,6 +237,27 @@
 							</div>
 						@endforeach
 						</div>
+
+							<hr>
+							<strong>Payroll</strong>
+							<p class="help-block">Deposit to is the salary expense account. Payment account is cash or salaries payable.</p>
+							<div class="row m-2">
+								<div class="col-md-6">
+									<div class="form-group">
+										{!! Form::label('payment_account', __('accounting::lang.payment_account') . ':' ) !!}
+										{!! Form::select('payment_account', !is_null($payroll_payment_account) ? [$payroll_payment_account->id => $payroll_payment_account->name] : [], $payroll_payment_account->id ?? null, ['class' => 'form-control accounts-dropdown width-100','placeholder' => __('accounting::lang.payment_account'), 'name' => "accounting_default_map[$business_location->id][payroll][payment_account]",
+										'id' => $business_location->id . 'payroll_payment_account']); !!}
+									</div>
+								</div>
+								<div class="col-md-6">
+									<div class="form-group">
+										{!! Form::label('deposit_to', __('accounting::lang.deposit_to') . ':' ) !!}
+										{!! Form::select('deposit_to', !is_null($payroll_deposit_to) ?
+										[$payroll_deposit_to->id => $payroll_deposit_to->name] : [], $payroll_deposit_to->id ?? null, ['class' => 'form-control accounts-dropdown width-100','placeholder' => __('accounting::lang.deposit_to'), 'name' => "accounting_default_map[$business_location->id][payroll][deposit_to]",
+										'id' => $business_location->id . '_payroll_deposit_to']); !!}
+									</div>
+								</div>
+							</div>
 						@endcomponent
 						@endforeach
 

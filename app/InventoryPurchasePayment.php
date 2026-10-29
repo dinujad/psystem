@@ -13,8 +13,12 @@ class InventoryPurchasePayment extends Model
         'amount',
         'paid_on',
         'method',
+        'cheque_number',
+        'reference_no',
+        'attachment',
         'note',
         'created_by',
+        'transaction_payment_id',
     ];
 
     protected $casts = [

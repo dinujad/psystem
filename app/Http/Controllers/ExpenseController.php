@@ -375,6 +375,8 @@ class ExpenseController extends Controller
             //Validate document size
             $request->validate([
                 'document' => 'file|max:'.(config('constants.document_size_limit') / 1000),
+                'accounting_deposit_to' => 'nullable|integer',
+                'accounting_payment_account' => 'nullable|integer',
             ]);
 
             $user_id = $request->session()->get('user.id');

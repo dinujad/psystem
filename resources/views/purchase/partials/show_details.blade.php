@@ -6,6 +6,13 @@
     @endphp
     <h4 class="modal-title" id="modalTitle"> {{$title}} (<b>@lang('purchase.ref_no'):</b> #{{ e($purchase->ref_no) }})
     </h4>
+    @if(!empty($purchase->sub_type) && $purchase->sub_type === 'raw_material')
+      <p class="text-muted" style="margin:8px 0 0;">Raw material purchase. Stock is updated in Raw Materials.
+        @if(!empty($raw_material_purchase))
+          <a href="{{ route('inventory.purchases.show', $raw_material_purchase) }}">Open the raw material purchase</a>
+        @endif
+      </p>
+    @endif
 </div>
 <div class="modal-body">
   <div class="row">
@@ -17,6 +24,7 @@
     <div class="col-sm-4 invoice-col">
       @lang('purchase.supplier'):
       <address>
+        @if(!empty($purchase->contact))
         {!! $purchase->contact->contact_address !!}
         @if(!empty($purchase->contact->tax_number))
           <br>@lang('contact.tax_no'): {{$purchase->contact->tax_number}}
@@ -26,6 +34,9 @@
         @endif
         @if(!empty($purchase->contact->email))
           <br>@lang('business.email'): {{$purchase->contact->email}}
+        @endif
+        @else
+          —
         @endif
       </address>
       @if($purchase->document_path)

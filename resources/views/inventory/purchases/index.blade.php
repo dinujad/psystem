@@ -129,10 +129,24 @@ body #scrollable-container .rmp-page select option {
             <label>Method</label>
             <select id="rmpPayMethod">
                 <option value="cash">Cash</option>
-                <option value="card">Card</option>
-                <option value="bank">Bank transfer</option>
                 <option value="cheque">Cheque</option>
+                <option value="bank">Bank transfer</option>
+                <option value="card">Card</option>
             </select>
+        </div>
+        <div class="rmp-field" id="rmpPayCheque" style="display:none;">
+            <label>Cheque number</label>
+            <input type="text" id="rmpPayChequeNo" placeholder="Cheque number">
+        </div>
+        <div id="rmpPayBank" style="display:none;">
+            <div class="rmp-field">
+                <label>Transfer id / reference</label>
+                <input type="text" id="rmpPayRefNo" placeholder="Bank reference or transfer id">
+            </div>
+            <div class="rmp-field">
+                <label>Transfer slip (PDF, JPG, or PNG)</label>
+                <input type="file" id="rmpPayFile" accept=".pdf,.jpg,.jpeg,.png">
+            </div>
         </div>
         <div class="rmp-field">
             <label>Note</label>
@@ -218,19 +232,31 @@ $(document).on('click', '.rmp-add-pay', function (e) {
     $('#rmpPayModal').addClass('show');
 });
 
+$('#rmpPayMethod').on('change', function () {
+    $('#rmpPayCheque').toggle($(this).val() === 'cheque');
+    $('#rmpPayBank').toggle($(this).val() === 'bank');
+});
+
 $('#rmpPaySave').on('click', function () {
     var btn = $(this);
+    var form = new FormData();
+    form.append('_token', '{{ csrf_token() }}');
+    form.append('amount', $('#rmpPayAmount').val());
+    form.append('paid_on', $('#rmpPayDate').val());
+    form.append('method', $('#rmpPayMethod').val());
+    form.append('cheque_number', $('#rmpPayChequeNo').val());
+    form.append('reference_no', $('#rmpPayRefNo').val());
+    form.append('note', $('#rmpPayNote').val());
+    if ($('#rmpPayFile')[0].files[0]) {
+        form.append('payment_attachment', $('#rmpPayFile')[0].files[0]);
+    }
     btn.prop('disabled', true);
     $.ajax({
         method: 'POST',
         url: "{{ url('inventory/purchases') }}/" + rmpPayId + "/payments",
-        data: {
-            _token: '{{ csrf_token() }}',
-            amount: $('#rmpPayAmount').val(),
-            paid_on: $('#rmpPayDate').val(),
-            method: $('#rmpPayMethod').val(),
-            note: $('#rmpPayNote').val()
-        },
+        data: form,
+        processData: false,
+        contentType: false,
         success: function () {
             btn.prop('disabled', false);
             $('#rmpPayModal').removeClass('show');
@@ -261,9 +287,13 @@ $(document).on('click', '.rmp-view-pay', function (e) {
         if (!data.payments.length) {
             html += '<p>No payment recorded yet.</p>';
         } else {
-            html += '<table class="table table-bordered"><thead><tr><th>Date</th><th>Method</th><th>Amount</th><th>Note</th></tr></thead><tbody>';
+            html += '<table class="table table-bordered"><thead><tr><th>Date</th><th>Method</th><th>Details</th><th>Amount</th><th>Note</th></tr></thead><tbody>';
             data.payments.forEach(function (p) {
-                html += '<tr><td>' + p.paid_on + '</td><td>' + p.method + '</td><td>Rs. ' + p.amount + '</td><td>' + (p.note || '') + '</td></tr>';
+                var details = '';
+                if (p.cheque_number) { details += 'Cheque ' + p.cheque_number; }
+                if (p.reference_no) { details += (details ? '<br>' : '') + 'Ref ' + p.reference_no; }
+                if (p.attachment) { details += (details ? '<br>' : '') + '<a href="' + p.attachment + '" target="_blank">Open slip</a>'; }
+                html += '<tr><td>' + p.paid_on + '</td><td>' + p.method + '</td><td>' + (details || '—') + '</td><td>Rs. ' + p.amount + '</td><td>' + (p.note || '') + '</td></tr>';
             });
             html += '</tbody></table>';
         }

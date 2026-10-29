@@ -45,24 +45,25 @@ class ChartOfAccountController extends Controller
 
     private function get_account_chart_data(Request $request)
     {
-        $perPage = $request->per_page ?: 20;
         $orderBy = $request->order_by;
-        $orderByDir = $request->order_by_dir;
+        $orderByDir = $request->order_by_dir ?: 'asc';
         $search = $request->s;
 
-        return ChartOfAccount::with('parent')
-            ->with('account_detail_type')
-            ->with('account_detail_type')
-            ->with('currency')
+        $query = ChartOfAccount::with(['parent', 'account_detail_type', 'account_subtype', 'currency'])
             ->forBusiness(session('business.id'))
             ->when($orderBy, function (Builder $query) use ($orderBy, $orderByDir) {
                 $query->orderBy($orderBy, $orderByDir);
-            })->when($search, function (Builder $query) use ($search) {
-                $query->where('name', 'like', "%$search%");
-                $query->orWhere('gl_code', 'like', "%$search%");
+            }, function (Builder $query) {
+                $query->orderBy('name');
             })
-            ->paginate($perPage)
-            ->appends($request->input());
+            ->when($search, function (Builder $query) use ($search) {
+                $query->where(function (Builder $inner) use ($search) {
+                    $inner->where('chart_of_accounts.name', 'like', '%'.$search.'%')
+                        ->orWhere('chart_of_accounts.gl_code', 'like', '%'.$search.'%');
+                });
+            });
+
+        return $query->get();
     }
 
     /**Export the account data to file*/

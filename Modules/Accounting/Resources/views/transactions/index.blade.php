@@ -24,6 +24,7 @@
                     <a href="#" class="list-group-item text-center">@lang('purchase.purchases')</a>
                     <a href="#" class="list-group-item text-center">@lang('accounting::lang.purchase_payments')</a>
                     <a href="#" class="list-group-item text-center">@lang('accounting::lang.expenses')</a>
+                    <a href="#" class="list-group-item text-center">Payroll</a>
                 </div>
             </div>
             <div class="col-lg-10 col-md-10 col-sm-10 col-xs-10 pos-tab">
@@ -40,6 +41,9 @@
             </div>
             <div class="col-lg-10 col-md-10 col-sm-10 col-xs-10 pos-tab">
                 @include('accounting::transactions.partials.expenses')
+            </div>
+            <div class="col-lg-10 col-md-10 col-sm-10 col-xs-10 pos-tab">
+                @include('accounting::transactions.partials.payroll')
             </div>
         </div>
         
@@ -305,6 +309,29 @@
             ],
             fnDrawCallback: function(oSettings) {
                 __currency_convert_recursively($('#transaction_expense_table'));
+            }
+        });
+
+        transaction_payroll_table = $('#transaction_payroll_table').DataTable({
+            processing: true,
+            serverSide: true,
+            ajax: {
+                url: '/accounting/transactions/?datatable=payroll',
+            },
+            scrollY: "75vh",
+            scrollX: true,
+            scrollCollapse: true,
+            columns: [
+                { data: 'action', name: 'action', orderable: false, searchable: false },
+                { data: 'transaction_date', name: 'transaction_date' },
+                { data: 'ref_no', name: 'ref_no' },
+                { data: 'employee', name: 'u.first_name', orderable: false },
+                { data: 'location_name', name: 'bl.name' },
+                { data: 'payment_status', name: 'payment_status' },
+                { data: 'final_total', name: 'final_total' }
+            ],
+            fnDrawCallback: function(oSettings) {
+                __currency_convert_recursively($('#transaction_payroll_table'));
             }
         });
     });

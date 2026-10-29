@@ -558,6 +558,9 @@
 			</div>
 		</div>
 	@endcomponent
+	<div class="row">
+		@include('accounting.partials.link_account_fields')
+	</div>
 	@component('components.widget', ['class' => 'box-primary', 'title' => __('purchase.add_payment')])
 		<div class="box-body payment_row">
 			<div class="row">

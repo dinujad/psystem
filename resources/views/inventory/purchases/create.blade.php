@@ -86,7 +86,7 @@ body .rmp-modal textarea::placeholder {
     </div>
     @endif
 
-    <form method="POST" action="{{ route('inventory.purchases.store') }}" id="rmpForm">
+    <form method="POST" action="{{ route('inventory.purchases.store') }}" id="rmpForm" enctype="multipart/form-data">
         @csrf
         <div class="rmp-card">
             <div class="rmp-grid">
@@ -117,17 +117,47 @@ body .rmp-modal textarea::placeholder {
             </div>
             <div class="rmp-grid" style="margin-top:12px;">
                 <div class="rmp-field">
+                    <label>Deposit to account</label>
+                    <select name="accounting_deposit_to" class="accounts-dropdown" style="width:100%;">
+                        <option value="">Use linked account from Accounting settings</option>
+                    </select>
+                </div>
+                <div class="rmp-field">
+                    <label>Payment account</label>
+                    <select name="accounting_payment_account" class="accounts-dropdown" style="width:100%;">
+                        <option value="">Use linked account from Accounting settings</option>
+                    </select>
+                </div>
+            </div>
+            <div class="rmp-grid" style="margin-top:12px;">
+                <div class="rmp-field">
                     <label>Amount paid now</label>
                     <input type="number" name="amount_paid" min="0" step="0.01" value="{{ old('amount_paid', '0') }}" placeholder="0 if nothing paid yet">
                 </div>
                 <div class="rmp-field">
                     <label>Payment method</label>
-                    <select name="payment_method">
+                    <select name="payment_method" id="rmpCreateMethod">
                         <option value="cash" @selected(old('payment_method', 'cash') === 'cash')>Cash</option>
-                        <option value="card" @selected(old('payment_method') === 'card')>Card</option>
-                        <option value="bank" @selected(old('payment_method') === 'bank')>Bank transfer</option>
                         <option value="cheque" @selected(old('payment_method') === 'cheque')>Cheque</option>
+                        <option value="bank" @selected(old('payment_method') === 'bank')>Bank transfer</option>
+                        <option value="card" @selected(old('payment_method') === 'card')>Card</option>
                     </select>
+                </div>
+            </div>
+            <div class="rmp-field" id="rmpCreateCheque" style="margin-top:12px;display:none;">
+                <label>Cheque number</label>
+                <input type="text" name="cheque_number" value="{{ old('cheque_number') }}" placeholder="Cheque number">
+            </div>
+            <div id="rmpCreateBank" style="margin-top:12px;display:none;">
+                <div class="rmp-grid">
+                    <div class="rmp-field">
+                        <label>Transfer id / reference</label>
+                        <input type="text" name="reference_no" value="{{ old('reference_no') }}" placeholder="Bank reference or transfer id">
+                    </div>
+                    <div class="rmp-field">
+                        <label>Transfer slip (PDF, JPG, or PNG)</label>
+                        <input type="file" name="payment_attachment" accept=".pdf,.jpg,.jpeg,.png">
+                    </div>
                 </div>
             </div>
             <div class="rmp-field" style="margin-top:12px;">
@@ -405,6 +435,14 @@ document.getElementById('nmSave').addEventListener('click', function () {
         err.textContent = 'Could not save the material.';
     });
 });
+
+function toggleCreatePayFields() {
+    var method = document.getElementById('rmpCreateMethod').value;
+    document.getElementById('rmpCreateCheque').style.display = method === 'cheque' ? 'block' : 'none';
+    document.getElementById('rmpCreateBank').style.display = method === 'bank' ? 'block' : 'none';
+}
+document.getElementById('rmpCreateMethod').addEventListener('change', toggleCreatePayFields);
+toggleCreatePayFields();
 
 addLine();
 </script>

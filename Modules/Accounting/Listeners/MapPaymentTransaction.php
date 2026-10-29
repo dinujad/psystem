@@ -45,7 +45,13 @@ class MapPaymentTransaction
 
         //get location setting
         $business_location = BusinessLocation::find($transaction->location_id);
+        if (empty($business_location) || empty($business_location->accounting_default_map)) {
+            return;
+        }
         $accounting_default_map = json_decode($business_location->accounting_default_map, true);
+        if (! is_array($accounting_default_map)) {
+            return;
+        }
 
         //check if default map is set or not, if set the proceed.
         $deposit_to = isset($accounting_default_map[$type]['deposit_to']) ? $accounting_default_map[$type]['deposit_to'] : null;

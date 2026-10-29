@@ -18,6 +18,7 @@ class InventoryPurchase extends Model
         'payment_status',
         'notes',
         'created_by',
+        'transaction_id',
     ];
 
     protected $casts = [

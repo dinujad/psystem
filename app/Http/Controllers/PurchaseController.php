@@ -65,6 +65,10 @@ class PurchaseController extends Controller
         $business_id = request()->session()->get('user.business_id');
         if (request()->ajax()) {
             $purchases = $this->transactionUtil->getListPurchases($business_id);
+            $purchases->where(function ($query) {
+                $query->whereNull('transactions.sub_type')
+                    ->orWhere('transactions.sub_type', '!=', 'raw_material');
+            });
 
             $permitted_locations = auth()->user()->permitted_locations();
             if ($permitted_locations != 'all') {
@@ -319,6 +323,8 @@ class PurchaseController extends Controller
                 'location_id' => 'required',
                 'final_total' => 'required',
                 'document' => 'file|max:'.(config('constants.document_size_limit') / 1000),
+                'accounting_deposit_to' => 'nullable|integer',
+                'accounting_payment_account' => 'nullable|integer',
             ]);
 
             $user_id = $request->session()->get('user.id');
@@ -507,9 +513,13 @@ class PurchaseController extends Controller
            ->get();
 
         $statuses = $this->productUtil->orderStatuses();
+        $raw_material_purchase = null;
+        if ($purchase->sub_type === 'raw_material') {
+            $raw_material_purchase = \App\InventoryPurchase::where('transaction_id', $purchase->id)->first();
+        }
 
         return view('purchase.show')
-                ->with(compact('taxes', 'purchase', 'payment_methods', 'purchase_taxes', 'activities', 'statuses', 'purchase_order_nos', 'purchase_order_dates'));
+                ->with(compact('taxes', 'purchase', 'payment_methods', 'purchase_taxes', 'activities', 'statuses', 'purchase_order_nos', 'purchase_order_dates', 'raw_material_purchase'));
     }
 
     /**

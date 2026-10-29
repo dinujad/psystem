@@ -3,6 +3,7 @@
 namespace Modules\Accounting\Utils;
 
 use App\Business;
+use App\BusinessLocation;
 use App\Transaction;
 use App\TransactionPayment;
 use App\Utils\Util;
@@ -245,8 +246,8 @@ class AccountingUtil extends Util
                 'created_by' => $user_id,
                 'operation_date' => \Carbon::now(),
             ];
-        }elseif ($type == 'expense') {
-            $transaction = Transaction::where('business_id', $business_id)->where('id', $id)->firstorFail();            
+        } elseif (in_array($type, ['expense', 'payroll'])) {
+            $transaction = Transaction::where('business_id', $business_id)->where('id', $id)->firstorFail();
             $payment_data = [
                 'accounting_account_id' => $payment_account,
                 'transaction_id' => $id,
@@ -274,5 +275,97 @@ class AccountingUtil extends Util
 
         AccountingAccountsTransaction::updateOrCreateMapTransaction($payment_data);
         AccountingAccountsTransaction::updateOrCreateMapTransaction($deposit_data);
+    }
+
+    /**
+     * Post a transaction to the chart accounts chosen in Accounting settings,
+     * or to the two accounts picked on the form.
+     */
+    public function mapTransaction($transaction, $type, $userId, $depositOverride = null, $paymentOverride = null)
+    {
+        if (empty($transaction)) {
+            return;
+        }
+
+        if (empty($depositOverride) && request()->filled('accounting_deposit_to') && request()->filled('accounting_payment_account')) {
+            $depositOverride = request()->input('accounting_deposit_to');
+            $paymentOverride = request()->input('accounting_payment_account');
+        }
+
+        [$depositTo, $paymentAccount, $locationId] = $this->accountsFor($transaction, $type);
+        if (! empty($depositOverride) && ! empty($paymentOverride)) {
+            $depositTo = $depositOverride;
+            $paymentAccount = $paymentOverride;
+        }
+        if (empty($depositTo) || empty($paymentAccount) || empty($locationId)) {
+            return;
+        }
+
+        if (empty($transaction->location_id)) {
+            $transaction->location_id = $locationId;
+            $transaction->save();
+        }
+
+        $this->saveMap($type, $transaction->id, $userId ?: $transaction->created_by, $transaction->business_id, $depositTo, $paymentAccount);
+    }
+
+    /**
+     * Link saved purchases, expenses, and payroll that have no journal yet.
+     */
+    public function backfillUnmapped($businessId, $type, $userId)
+    {
+        $rows = Transaction::where('business_id', $businessId)
+            ->where('type', $type)
+            ->whereNotExists(function ($query) {
+                $query->select(DB::raw(1))
+                    ->from('accounting_accounts_transactions')
+                    ->whereColumn('accounting_accounts_transactions.transaction_id', 'transactions.id');
+            })
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get();
+
+        foreach ($rows as $row) {
+            $this->mapTransaction($row, $type, $userId ?: $row->created_by);
+        }
+    }
+
+    private function accountsFor($transaction, $type)
+    {
+        $locationId = $transaction->location_id;
+        if (empty($locationId)) {
+            $locationId = BusinessLocation::where('business_id', $transaction->business_id)->orderBy('id')->value('id');
+        }
+        if (empty($locationId)) {
+            return [null, null, null];
+        }
+
+        $location = BusinessLocation::find($locationId);
+        $map = [];
+        if ($location && ! empty($location->accounting_default_map)) {
+            $decoded = json_decode($location->accounting_default_map, true);
+            $map = is_array($decoded) ? $decoded : [];
+        }
+
+        $depositTo = null;
+        $paymentAccount = null;
+        if ($type === 'expense' && ! empty($transaction->expense_category_id)) {
+            $categoryKey = 'expense_'.$transaction->expense_category_id;
+            $depositTo = $map[$categoryKey]['deposit_to'] ?? null;
+            $paymentAccount = $map[$categoryKey]['payment_account'] ?? null;
+        }
+
+        if (empty($depositTo) || empty($paymentAccount)) {
+            $key = $type;
+            if ($type === 'purchase') {
+                $key = 'purchases';
+            } elseif ($type === 'sell') {
+                $key = 'sale';
+            }
+            $depositTo = $map[$key]['deposit_to'] ?? null;
+            $paymentAccount = $map[$key]['payment_account'] ?? null;
+        }
+
+        return [$depositTo, $paymentAccount, $locationId];
     }
 }

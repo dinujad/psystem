@@ -9,6 +9,7 @@ use App\InventoryPurchase;
 use App\InventoryPurchaseLine;
 use App\InventoryPurchasePayment;
 use App\InventoryUnit;
+use App\Utils\RawMaterialAccounting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -42,6 +43,7 @@ class InventoryPurchaseController extends Controller
         $this->checkAccess();
 
         $businessId = request()->session()->get('user.business_id');
+        RawMaterialAccounting::backfill((int) $businessId);
 
         if (request()->ajax()) {
             $paidSql = '(SELECT COALESCE(SUM(amount),0) FROM inventory_purchase_payments WHERE inventory_purchase_id = inventory_purchases.id)';
@@ -213,7 +215,12 @@ class InventoryPurchaseController extends Controller
             'ref_no' => ['nullable', 'string', 'max:50'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'amount_paid' => ['nullable', 'numeric', 'min:0'],
-            'payment_method' => ['nullable', 'string', 'max:30'],
+            'payment_method' => ['nullable', 'in:cash,card,cheque,bank'],
+            'cheque_number' => ['nullable', 'string', 'max:60'],
+            'reference_no' => ['nullable', 'string', 'max:80'],
+            'payment_attachment' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
+            'accounting_deposit_to' => ['nullable', 'integer'],
+            'accounting_payment_account' => ['nullable', 'integer'],
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.material_id' => ['required', 'integer', 'exists:inventory_materials,id'],
             'lines.*.quantity' => ['required', 'numeric', 'min:0.0001'],
@@ -221,8 +228,22 @@ class InventoryPurchaseController extends Controller
         ]);
 
         $businessId = $request->session()->get('user.business_id');
+        $paidNowCheck = round((float) ($data['amount_paid'] ?? 0), 4);
+        $paymentMethod = $data['payment_method'] ?? 'cash';
+        $paymentFile = null;
+        if ($paidNowCheck > 0) {
+            $this->assertPaymentDetails($paymentMethod, $data['cheque_number'] ?? null, $data['reference_no'] ?? null);
+            if ($paymentMethod === 'bank') {
+                $paymentFile = $this->storePaymentFile($request);
+            }
+        }
 
-        $purchase = DB::transaction(function () use ($data, $businessId) {
+        $linkedAccounts = [
+            'deposit_to' => $data['accounting_deposit_to'] ?? null,
+            'payment_account' => $data['accounting_payment_account'] ?? null,
+        ];
+
+        $purchase = DB::transaction(function () use ($data, $businessId, $paymentMethod, $paymentFile, $linkedAccounts) {
             $total = 0;
             foreach ($data['lines'] as $line) {
                 $total += ((float) $line['quantity']) * ((float) $line['unit_cost']);
@@ -270,8 +291,13 @@ class InventoryPurchaseController extends Controller
                     'amount_paid' => 'Paid amount cannot be more than the purchase total.',
                 ]);
             }
+            RawMaterialAccounting::syncPurchase($purchase, $linkedAccounts);
             if ($paidNow > 0) {
-                $this->recordPayment($purchase, $paidNow, $data['purchase_date'], $data['payment_method'] ?? 'cash', 'Paid when purchase was saved');
+                $this->recordPayment($purchase, $paidNow, $data['purchase_date'], $paymentMethod, 'Paid when purchase was saved', [
+                    'cheque_number' => $paymentMethod === 'cheque' ? ($data['cheque_number'] ?? null) : null,
+                    'reference_no' => $paymentMethod === 'bank' ? ($data['reference_no'] ?? null) : null,
+                    'attachment' => $paymentFile,
+                ]);
             }
 
             return $purchase;
@@ -312,6 +338,9 @@ class InventoryPurchaseController extends Controller
                 return [
                     'paid_on' => $payment->paid_on ? $payment->paid_on->format('d M Y') : '',
                     'method' => $payment->method,
+                    'cheque_number' => $payment->cheque_number,
+                    'reference_no' => $payment->reference_no,
+                    'attachment' => $payment->attachment ? asset('uploads/raw-material-payments/'.$payment->attachment) : null,
                     'amount' => number_format((float) $payment->amount, 2),
                     'note' => $payment->note,
                 ];
@@ -330,9 +359,13 @@ class InventoryPurchaseController extends Controller
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
             'paid_on' => ['required', 'date'],
-            'method' => ['required', 'string', 'max:30'],
+            'method' => ['required', 'in:cash,card,cheque,bank'],
+            'cheque_number' => ['nullable', 'string', 'max:60'],
+            'reference_no' => ['nullable', 'string', 'max:80'],
+            'payment_attachment' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
             'note' => ['nullable', 'string', 'max:200'],
         ]);
+        $this->assertPaymentDetails($data['method'], $data['cheque_number'] ?? null, $data['reference_no'] ?? null);
 
         $due = $purchase->amountDue();
         if ((float) $data['amount'] > $due + 0.009) {
@@ -341,7 +374,11 @@ class InventoryPurchaseController extends Controller
             ]);
         }
 
-        $this->recordPayment($purchase, (float) $data['amount'], $data['paid_on'], $data['method'], $data['note'] ?? null);
+        $this->recordPayment($purchase, (float) $data['amount'], $data['paid_on'], $data['method'], $data['note'] ?? null, [
+            'cheque_number' => $data['method'] === 'cheque' ? ($data['cheque_number'] ?? null) : null,
+            'reference_no' => $data['method'] === 'bank' ? ($data['reference_no'] ?? null) : null,
+            'attachment' => $data['method'] === 'bank' ? $this->storePaymentFile($request) : null,
+        ]);
 
         if ($request->expectsJson()) {
             $purchase->refresh();
@@ -379,6 +416,7 @@ class InventoryPurchaseController extends Controller
                 $this->applyStock((int) $line->material_id, (float) $line->quantity, (float) $line->unit_cost);
             }
             $purchase->update(['status' => 'received']);
+            RawMaterialAccounting::syncPurchase($purchase->fresh());
         });
 
         return back()->with('success', 'Marked as received — raw material stock updated.');
@@ -392,17 +430,52 @@ class InventoryPurchaseController extends Controller
         }
     }
 
-    private function recordPayment(InventoryPurchase $purchase, float $amount, $paidOn, string $method, ?string $note): void
+    private function assertPaymentDetails(string $method, ?string $chequeNumber, ?string $referenceNo): void
     {
-        InventoryPurchasePayment::create([
+        if ($method === 'cheque' && trim((string) $chequeNumber) === '') {
+            throw ValidationException::withMessages([
+                'cheque_number' => 'Enter the cheque number.',
+            ]);
+        }
+        if ($method === 'bank' && trim((string) $referenceNo) === '') {
+            throw ValidationException::withMessages([
+                'reference_no' => 'Enter the transfer id or reference number.',
+            ]);
+        }
+    }
+
+    private function storePaymentFile(Request $request): ?string
+    {
+        if (! $request->hasFile('payment_attachment')) {
+            return null;
+        }
+
+        $file = $request->file('payment_attachment');
+        $dir = public_path('uploads/raw-material-payments');
+        if (! is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        $name = time().'_'.preg_replace('/[^A-Za-z0-9._-]/', '_', $file->getClientOriginalName());
+        $file->move($dir, $name);
+
+        return $name;
+    }
+
+    private function recordPayment(InventoryPurchase $purchase, float $amount, $paidOn, string $method, ?string $note, array $extra = []): void
+    {
+        $payment = InventoryPurchasePayment::create([
             'inventory_purchase_id' => $purchase->id,
             'amount' => round($amount, 4),
             'paid_on' => $paidOn,
             'method' => $method,
+            'cheque_number' => $extra['cheque_number'] ?? null,
+            'reference_no' => $extra['reference_no'] ?? null,
+            'attachment' => $extra['attachment'] ?? null,
             'note' => $note,
             'created_by' => auth()->id(),
         ]);
         $purchase->refreshPaymentStatus();
+        RawMaterialAccounting::syncPayment($purchase->fresh(), $payment);
     }
 
     /**

@@ -341,6 +341,10 @@ class PayrollController extends Controller
 
             $payroll_group = PayrollGroup::create($payroll_group);
             $transaction_ids = [];
+            $locationId = $request->input('location_id');
+            if ($locationId === '' || $locationId === null) {
+                $locationId = \App\BusinessLocation::where('business_id', $business_id)->orderBy('id')->value('id');
+            }
             foreach ($payrolls as $key => $payroll) {
                 $payroll['transaction_date'] = $transaction_date;
                 $payroll['business_id'] = $business_id;
@@ -348,6 +352,7 @@ class PayrollController extends Controller
                 $payroll['type'] = 'payroll';
                 $payroll['payment_status'] = 'due';
                 $payroll['status'] = 'final';
+                $payroll['location_id'] = $locationId;
                 $payroll['total_before_tax'] = $payroll['final_total'];
                 $payroll['essentials_amount_per_unit_duration'] = $this->moduleUtil->num_uf($payroll['essentials_amount_per_unit_duration']);
 
@@ -369,6 +374,7 @@ class PayrollController extends Controller
 
                 $transaction = Transaction::create($payroll);
                 $transaction_ids[] = $transaction->id;
+                $this->linkPayrollToAccounting($transaction);
 
                 if ($notify_employee && $payroll_group->status == 'final') {
                     $transaction->action = 'created';
@@ -393,6 +399,19 @@ class PayrollController extends Controller
         }
 
         return redirect()->action([\Modules\Essentials\Http\Controllers\PayrollController::class, 'index'])->with('status', $output);
+    }
+
+    private function linkPayrollToAccounting($transaction)
+    {
+        if (empty($transaction) || ! class_exists(\Modules\Accounting\Utils\AccountingUtil::class)) {
+            return;
+        }
+
+        try {
+            (new \Modules\Accounting\Utils\AccountingUtil())->mapTransaction($transaction, 'payroll', auth()->id());
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     private function getAllowanceAndDeductionJson($payroll)
@@ -921,7 +940,15 @@ class PayrollController extends Controller
                                         ->find($transaction_id);
 
                 if (! empty($payroll_trans)) {
+                    if (empty($payroll_trans->location_id)) {
+                        $locationId = $request->input('location_id') ?: $payroll_group->location_id;
+                        if (empty($locationId)) {
+                            $locationId = \App\BusinessLocation::where('business_id', $business_id)->orderBy('id')->value('id');
+                        }
+                        $payroll['location_id'] = $locationId;
+                    }
                     $payroll_trans->update($payroll);
+                    $this->linkPayrollToAccounting($payroll_trans->fresh());
 
                     if ($notify_employee && $payroll_group->status == 'final') {
                         $payroll_trans->action = 'updated';

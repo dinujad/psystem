@@ -201,7 +201,9 @@
     <script>
         $(document).ready(function() {
             $('#data-table').DataTable({
-                pageLength: -1
+                pageLength: -1,
+                lengthMenu: [[-1, 25, 50, 100, 200], ['All', 25, 50, 100, 200]],
+                order: [[1, 'asc']]
             });
         });
     </script>

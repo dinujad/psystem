@@ -60,7 +60,11 @@
                             {!! Form::select('payroll_group_status', ['draft' => __('sale.draft'), 'final' => __('sale.final')], !empty($payroll_group) ? $payroll_group->status : null, ['class' => 'form-control select2', 'required', 'style' => 'width: 100%;', 'placeholder' => __( 'messages.please_select' )]); !!}
                             <p class="help-block text-muted">@lang('essentials::lang.payroll_cant_be_deleted_if_final')</p>
                         </div>
-                    </div><br><br>
+                    </div>
+                    <div class="row">
+                        @include('accounting.partials.link_account_fields')
+                    </div>
+                    <br><br>
                     <table class="table" id="payroll_table">
                         <tr>
                             <th>

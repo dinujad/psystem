@@ -94,6 +94,7 @@ body #scrollable-container .rmp-page select {
                 <tr>
                     <th>Date</th>
                     <th>Method</th>
+                    <th>Details</th>
                     <th>Amount</th>
                     <th>Note</th>
                 </tr>
@@ -103,17 +104,25 @@ body #scrollable-container .rmp-page select {
                 <tr>
                     <td>{{ $payment->paid_on?->format('d M Y') }}</td>
                     <td>{{ $payment->method }}</td>
+                    <td>
+                        @if($payment->cheque_number) Cheque {{ $payment->cheque_number }}<br>@endif
+                        @if($payment->reference_no) Ref {{ $payment->reference_no }}<br>@endif
+                        @if($payment->attachment)
+                            <a href="{{ asset('uploads/raw-material-payments/'.$payment->attachment) }}" target="_blank">Open slip</a>
+                        @endif
+                        @if(!$payment->cheque_number && !$payment->reference_no && !$payment->attachment) — @endif
+                    </td>
                     <td>Rs. {{ number_format((float) $payment->amount, 2) }}</td>
                     <td>{{ $payment->note ?: '—' }}</td>
                 </tr>
                 @empty
-                <tr><td colspan="4">No payment recorded yet.</td></tr>
+                <tr><td colspan="5">No payment recorded yet.</td></tr>
                 @endforelse
             </tbody>
         </table>
 
         @if($due > 0.009)
-        <form method="POST" action="{{ route('inventory.purchases.payments.store', $purchase) }}" style="margin-top:14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:end;">
+        <form method="POST" action="{{ route('inventory.purchases.payments.store', $purchase) }}" enctype="multipart/form-data" style="margin-top:14px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:end;">
             @csrf
             <div>
                 <label style="font-size:11px;font-weight:700;color:#6b7280;">Amount</label>
@@ -125,19 +134,44 @@ body #scrollable-container .rmp-page select {
             </div>
             <div>
                 <label style="font-size:11px;font-weight:700;color:#6b7280;">Method</label>
-                <select name="method" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;">
+                <select name="method" id="rmpShowMethod" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;">
                     <option value="cash">Cash</option>
-                    <option value="card">Card</option>
-                    <option value="bank">Bank transfer</option>
                     <option value="cheque">Cheque</option>
+                    <option value="bank">Bank transfer</option>
+                    <option value="card">Card</option>
                 </select>
+            </div>
+            <div id="rmpShowCheque" style="display:none;grid-column:1 / -1;">
+                <label style="font-size:11px;font-weight:700;color:#6b7280;">Cheque number</label>
+                <input type="text" name="cheque_number" placeholder="Cheque number" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;">
+            </div>
+            <div id="rmpShowBank" style="display:none;grid-column:1 / -1;">
+                <label style="font-size:11px;font-weight:700;color:#6b7280;">Transfer id / reference</label>
+                <input type="text" name="reference_no" placeholder="Bank reference or transfer id" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;margin-bottom:8px;">
+                <label style="font-size:11px;font-weight:700;color:#6b7280;">Transfer slip (PDF, JPG, or PNG)</label>
+                <input type="file" name="payment_attachment" accept=".pdf,.jpg,.jpeg,.png" style="width:100%;">
             </div>
             <button type="submit" class="rmp-btn">Add payment</button>
         </form>
         @error('amount')
             <p style="color:#b91c1c;font-weight:700;">{{ $message }}</p>
         @enderror
+        @error('cheque_number')
+            <p style="color:#b91c1c;font-weight:700;">{{ $message }}</p>
+        @enderror
+        @error('reference_no')
+            <p style="color:#b91c1c;font-weight:700;">{{ $message }}</p>
+        @enderror
         @endif
     </div>
 </div>
+@endsection
+
+@section('javascript')
+<script>
+document.getElementById('rmpShowMethod')?.addEventListener('change', function () {
+    document.getElementById('rmpShowCheque').style.display = this.value === 'cheque' ? 'block' : 'none';
+    document.getElementById('rmpShowBank').style.display = this.value === 'bank' ? 'block' : 'none';
+});
+</script>
 @endsection

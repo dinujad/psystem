@@ -5,6 +5,7 @@ namespace Modules\Accounting\Providers;
 use App\Utils\ModuleUtil;
 use Illuminate\Database\Eloquent\Factory;
 
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\View;
 
 use Illuminate\Support\ServiceProvider;
@@ -30,6 +31,7 @@ class AccountingServiceProvider extends ServiceProvider
         $this->registerViews();
         $this->registerFactories();
         $this->loadMigrationsFrom(__DIR__ . '/../Database/Migrations');
+        $this->registerAccountingMaps();
 
         //TODO:Remove sidebar
         view::composer(['accounting::layouts.partials.sidebar'], function ($view) {
@@ -43,6 +45,19 @@ class AccountingServiceProvider extends ServiceProvider
 
                 $view->with(compact('__is_accounting_enabled'));
             });
+    }
+
+    /**
+     * Apply the linked chart accounts when a sale, purchase, expense, or payment is saved.
+     */
+    protected function registerAccountingMaps()
+    {
+        Event::listen(\App\Events\ExpenseCreatedOrModified::class, \Modules\Accounting\Listeners\MapExpenseTransactions::class);
+        Event::listen(\App\Events\PurchaseCreatedOrModified::class, \Modules\Accounting\Listeners\MapPurchaseTransaction::class);
+        Event::listen(\App\Events\SellCreatedOrModified::class, \Modules\Accounting\Listeners\MapSellTransaction::class);
+        Event::listen(\App\Events\TransactionPaymentAdded::class, \Modules\Accounting\Listeners\MapPaymentTransaction::class);
+        Event::listen(\App\Events\TransactionPaymentUpdated::class, \Modules\Accounting\Listeners\MapPaymentTransaction::class);
+        Event::listen(\App\Events\TransactionPaymentDeleted::class, \Modules\Accounting\Listeners\MapPaymentTransaction::class);
     }
 
     /**

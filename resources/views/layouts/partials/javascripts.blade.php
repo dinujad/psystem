@@ -223,5 +223,8 @@
    
     });
 </script>
+@if(\Illuminate\Support\Facades\Route::has('accounts-dropdown'))
+    @include('accounting::accounting.common_js')
+@endif
 
 

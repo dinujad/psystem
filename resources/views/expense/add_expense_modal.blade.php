@@ -75,6 +75,7 @@
                     </div>
                 </div>
                 <div class="clearfix"></div>
+                @include('accounting.partials.link_account_fields')
                 <div class="col-sm-6">
                     <div class="form-group">
                         {!! Form::label('expense_final_total', __('sale.total_amount') . ':*') !!}

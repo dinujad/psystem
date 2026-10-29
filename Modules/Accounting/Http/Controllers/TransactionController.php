@@ -63,6 +63,10 @@ class TransactionController extends Controller
                 return $this->_allExpenses();
             }
 
+            if (request()->input('datatable') == 'payroll') {
+                return $this->_allPayrolls();
+            }
+
 
         }
 
@@ -228,6 +232,9 @@ class TransactionController extends Controller
     {
         $transaction_type = request()->input('transaction_type');
         $business_id = request()->session()->get('user.business_id');
+        if ($transaction_type === 'purchase') {
+            \App\Utils\RawMaterialAccounting::backfill((int) $business_id);
+        }
 
         $query = TransactionPayment::join(
                         'transactions as T',
@@ -342,6 +349,8 @@ class TransactionController extends Controller
     protected function _allPurchases()
     {
         $business_id = request()->session()->get('user.business_id');
+        \App\Utils\RawMaterialAccounting::backfill((int) $business_id);
+        $this->accountingUtil->backfillUnmapped($business_id, 'purchase', request()->session()->get('user.id'));
         $purchases = $this->transactionUtil->getListPurchases($business_id);
 
         return Datatables::of($purchases)
@@ -407,6 +416,7 @@ class TransactionController extends Controller
     protected function _allExpenses()
     {
         $business_id = request()->session()->get('user.business_id');
+        $this->accountingUtil->backfillUnmapped($business_id, 'expense', request()->session()->get('user.id'));
         $expenses = $this->transactionUtil->getListExpenses($business_id);
 
         return Datatables::of($expenses)
@@ -490,6 +500,43 @@ class TransactionController extends Controller
         ->make(true);
     }
 
+    protected function _allPayrolls()
+    {
+        $business_id = request()->session()->get('user.business_id');
+        $this->accountingUtil->backfillUnmapped($business_id, 'payroll', request()->session()->get('user.id'));
+
+        $payrolls = Transaction::leftJoin('users as u', 'transactions.expense_for', '=', 'u.id')
+            ->leftJoin('business_locations as bl', 'transactions.location_id', '=', 'bl.id')
+            ->where('transactions.business_id', $business_id)
+            ->where('transactions.type', 'payroll')
+            ->select(
+                'transactions.id',
+                'transactions.transaction_date',
+                'transactions.ref_no',
+                'transactions.final_total',
+                'transactions.payment_status',
+                'bl.name as location_name',
+                DB::raw("CONCAT(COALESCE(u.surname, ''), ' ', COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, '')) as employee")
+            );
+
+        return Datatables::of($payrolls)
+            ->addColumn('action', function ($row) {
+                $html = '';
+                if (auth()->user()->can('accounting.map_transactions')) {
+                    $is_mapped = AccountingAccountsTransaction::where('transaction_id', $row->id)->exists();
+                    $label = $is_mapped ? __('accounting::lang.edit_mapping') : __('accounting::lang.map_transaction');
+                    $btn = $is_mapped ? 'btn-warning' : 'btn-primary';
+                    $html .= '<a href="#" data-href="'.action([\Modules\Accounting\Http\Controllers\TransactionController::class, 'map']).'?id='.$row->id.'&type=payroll'.'" class="btn-modal btn btn-xs '.$btn.' mt-10" data-container=".view_modal"><i class="fas fa-link"></i> '.$label.'</a>';
+                }
+
+                return $html;
+            })
+            ->editColumn('transaction_date', '{{@format_datetime($transaction_date)}}')
+            ->editColumn('final_total', '<span class="display_currency" data-currency_symbol="true" data-orig-value="{{$final_total}}">@format_currency($final_total)</span>')
+            ->rawColumns(['action', 'final_total'])
+            ->make(true);
+    }
+
     public function map(Request $request)
     {
         $business_id = request()->session()->get('user.business_id');
@@ -565,7 +612,7 @@ class TransactionController extends Controller
 
                 return view('accounting::transactions.map')
                         ->with(compact('transaction', 'type', 'default_payment_account', 'default_deposit_to'));
-            } elseif ($type == 'expense') {
+            } elseif (in_array($type, ['expense', 'payroll'])) {
                 $transaction = Transaction::where('id', $id)->where('business_id', $business_id)
                                     ->firstorFail();
 
