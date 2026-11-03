@@ -177,27 +177,35 @@ var rmpTable;
 var rmpPayId = null;
 
 $(document).ready(function () {
-    $('#rmp_date_range').daterangepicker(dateRangeSettings, function (start, end) {
-        $('#rmp_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
-        rmpTable.ajax.reload();
-    });
-    $('#rmp_date_range').on('cancel.daterangepicker', function () {
+    if ($('#rmp_date_range').length && $.fn.daterangepicker) {
+        $('#rmp_date_range').daterangepicker(
+            $.extend({}, dateRangeSettings, { autoUpdateInput: false }),
+            function (start, end) {
+                $('#rmp_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
+                rmpTable.ajax.reload();
+            }
+        );
         $('#rmp_date_range').val('');
-        rmpTable.ajax.reload();
-    });
+        $('#rmp_date_range').on('cancel.daterangepicker', function () {
+            $('#rmp_date_range').val('');
+            rmpTable.ajax.reload();
+        });
+    }
 
     rmpTable = $('#rmp_table').DataTable({
         processing: true,
         serverSide: true,
-        pageLength: 25,
+        pageLength: -1,
+        lengthMenu: [[-1, 25, 50, 100], ['All', 25, 50, 100]],
         ajax: {
             url: "{{ route('inventory.purchases.index') }}",
             data: function (d) {
                 d.supplier_id = $('#rmp_supplier').val();
                 d.status = $('#rmp_status').val();
                 d.payment_status = $('#rmp_pay_status').val();
-                if ($('#rmp_date_range').val()) {
-                    var picker = $('#rmp_date_range').data('daterangepicker');
+                var range = $('#rmp_date_range').val();
+                var picker = $('#rmp_date_range').data('daterangepicker');
+                if (range && picker) {
                     d.start_date = picker.startDate.format('YYYY-MM-DD');
                     d.end_date = picker.endDate.format('YYYY-MM-DD');
                 }
