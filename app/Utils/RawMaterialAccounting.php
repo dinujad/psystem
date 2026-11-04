@@ -66,6 +66,10 @@ class RawMaterialAccounting
             return;
         }
 
+        $totalBeforeTax = $purchase->total_before_tax !== null
+            ? (float) $purchase->total_before_tax
+            : (float) $purchase->total_amount;
+
         $payload = [
             'business_id' => $purchase->business_id,
             'location_id' => $locationId,
@@ -76,8 +80,14 @@ class RawMaterialAccounting
             'contact_id' => $purchase->contact_id,
             'ref_no' => $purchase->ref_no,
             'transaction_date' => $purchase->purchase_date ? $purchase->purchase_date->format('Y-m-d').' 00:00:00' : now(),
-            'total_before_tax' => $purchase->total_amount,
+            'total_before_tax' => $totalBeforeTax,
+            'discount_type' => $purchase->discount_type,
+            'discount_amount' => (float) ($purchase->discount_amount ?? 0),
+            'tax_id' => $purchase->tax_id,
+            'tax_amount' => (float) ($purchase->tax_amount ?? 0),
             'final_total' => $purchase->total_amount,
+            'pay_term_number' => $purchase->pay_term_number,
+            'pay_term_type' => $purchase->pay_term_type,
             'exchange_rate' => 1,
             'additional_notes' => 'Raw material purchase',
             'created_by' => $purchase->created_by,
@@ -118,7 +128,7 @@ class RawMaterialAccounting
         }
 
         $method = $payment->method === 'bank' ? 'bank_transfer' : $payment->method;
-        if (! in_array($method, ['cash', 'card', 'cheque', 'bank_transfer', 'other'], true)) {
+        if (! in_array($method, ['cash', 'card', 'cheque', 'bank_transfer', 'advance', 'other'], true)) {
             $method = 'other';
         }
 
@@ -134,9 +144,13 @@ class RawMaterialAccounting
             'payment_ref_no' => (Schema::hasColumn('inventory_purchase_payments', 'reference_no') && ! empty($payment->reference_no))
                 ? $payment->reference_no
                 : ('RMP-PAY-'.$payment->id),
+            'is_advance' => $method === 'advance' ? 1 : 0,
         ];
         if (Schema::hasColumn('inventory_purchase_payments', 'cheque_number')) {
             $payload['cheque_number'] = $payment->cheque_number;
+        }
+        if (Schema::hasColumn('inventory_purchase_payments', 'account_id') && $method !== 'advance') {
+            $payload['account_id'] = $payment->account_id;
         }
 
         $existing = $payment->transaction_payment_id

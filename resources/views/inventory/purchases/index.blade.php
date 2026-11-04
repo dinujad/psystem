@@ -43,7 +43,12 @@ body #scrollable-container .rmp-page select option {
             <h1>Raw Material Purchases</h1>
             <div style="font-size:13px;color:#6b7280;margin-top:4px;">Every material on a purchase is listed here. Search, then see what is paid and what is still due.</div>
         </div>
-        <a href="{{ route('inventory.purchases.create') }}" class="rmp-btn">+ Purchase Raw Materials</a>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <a href="{{ route('inventory.purchases.due') }}" class="rmp-btn rmp-btn-secondary">Purchase due</a>
+            <a href="{{ route('inventory.purchases.supplier_statement') }}" class="rmp-btn rmp-btn-secondary">Supplier statement</a>
+            <a href="{{ route('inventory.purchases.due_cheques') }}" class="rmp-btn rmp-btn-secondary">Due cheques</a>
+            <a href="{{ route('inventory.purchases.create') }}" class="rmp-btn">+ Purchase Raw Materials</a>
+        </div>
     </div>
 
     @component('components.filters', ['title' => __('report.filters')])
@@ -132,6 +137,15 @@ body #scrollable-container .rmp-page select option {
                 <option value="cheque">Cheque</option>
                 <option value="bank">Bank transfer</option>
                 <option value="card">Card</option>
+                <option value="advance">Advance balance</option>
+            </select>
+        </div>
+        <div class="rmp-field" id="rmpPayAccount">
+            <label>Payment from account</label>
+            <select id="rmpPayAccountId">
+                @foreach($accounts ?? [] as $id => $name)
+                    <option value="{{ $id }}">{{ $name }}</option>
+                @endforeach
             </select>
         </div>
         <div id="rmpPayCheque" style="display:none;">
@@ -249,6 +263,7 @@ $(document).on('click', '.rmp-add-pay', function (e) {
 $('#rmpPayMethod').on('change', function () {
     $('#rmpPayCheque').toggle($(this).val() === 'cheque');
     $('#rmpPayBank').toggle($(this).val() === 'bank');
+    $('#rmpPayAccount').toggle($(this).val() !== 'advance');
 });
 
 $('#rmpPaySave').on('click', function () {
@@ -258,6 +273,7 @@ $('#rmpPaySave').on('click', function () {
     form.append('amount', $('#rmpPayAmount').val());
     form.append('paid_on', $('#rmpPayDate').val());
     form.append('method', $('#rmpPayMethod').val());
+    form.append('account_id', $('#rmpPayAccountId').val());
     form.append('cheque_number', $('#rmpPayChequeNo').val());
     form.append('cheque_date', $('#rmpPayChequeDate').val());
     form.append('reference_no', $('#rmpPayRefNo').val());

@@ -13,6 +13,7 @@ class InventoryPurchasePayment extends Model
         'amount',
         'paid_on',
         'method',
+        'account_id',
         'cheque_number',
         'cheque_date',
         'reference_no',

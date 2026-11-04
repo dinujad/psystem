@@ -116,9 +116,10 @@ class HomeController extends Controller
 
         $canSeeDueCheques = $this->canSeeDueCheques($user, $is_admin);
         $dueChequeCount = $canSeeDueCheques ? $this->countDuePurchaseCheques((int) $business_id) : 0;
+        $rawPurchaseDueCount = $canSeeDueCheques ? $this->countRawPurchaseDue((int) $business_id) : 0;
 
         if (! auth()->user()->can('dashboard.data')) {
-            return view('home.index', compact('is_admin', 'todoWidget', 'attendanceToday', 'myOt', 'myWork', 'canSeeDueCheques', 'dueChequeCount'));
+            return view('home.index', compact('is_admin', 'todoWidget', 'attendanceToday', 'myOt', 'myWork', 'canSeeDueCheques', 'dueChequeCount', 'rawPurchaseDueCount'));
         }
 
         $fy = $this->businessUtil->getCurrentFinancialYear($business_id);
@@ -296,7 +297,7 @@ class HomeController extends Controller
             'sells_chart_1', 'sells_chart_2', 'widgets', 'all_locations',
             'common_settings', 'is_admin', 'showProduction', 'productionStages',
             'activeJobs', 'stageCounts', 'todoWidget', 'attendanceToday', 'myOt', 'myWork',
-            'canSeeDueCheques', 'dueChequeCount'
+            'canSeeDueCheques', 'dueChequeCount', 'rawPurchaseDueCount'
         ));
     }
 
@@ -309,7 +310,9 @@ class HomeController extends Controller
         return $user->can('accounting.map_transactions')
             || $user->can('accounting.manage_accounts')
             || $user->can('accounting.chart_of_accounts.index')
-            || $user->can('accounting.journal_entries.index');
+            || $user->can('accounting.journal_entries.index')
+            || $user->can('purchase.view')
+            || $user->can('purchase.create');
     }
 
     private function countDuePurchaseCheques(int $businessId): int
@@ -331,6 +334,47 @@ class HomeController extends Controller
                 ->count();
         } catch (\Throwable $e) {
             \Log::warning('home due cheque count failed: '.$e->getMessage());
+
+            return 0;
+        }
+    }
+
+    private function countRawPurchaseDue(int $businessId): int
+    {
+        try {
+            if (
+                ! Schema::hasTable('inventory_purchases')
+                || ! Schema::hasColumn('inventory_purchases', 'pay_term_number')
+            ) {
+                return 0;
+            }
+
+            $today = \Carbon\Carbon::today();
+            $count = 0;
+            $rows = \App\InventoryPurchase::query()
+                ->where('business_id', $businessId)
+                ->whereIn('payment_status', ['due', 'partial'])
+                ->whereNotNull('pay_term_number')
+                ->whereNotNull('pay_term_type')
+                ->get();
+
+            foreach ($rows as $purchase) {
+                if ($purchase->amountDue() <= 0.009) {
+                    continue;
+                }
+                $dueDate = $purchase->dueDate();
+                if (! $dueDate) {
+                    continue;
+                }
+                $days = $today->diffInDays($dueDate, false);
+                if ($dueDate->lt($today) || $days <= 7) {
+                    $count++;
+                }
+            }
+
+            return $count;
+        } catch (\Throwable $e) {
+            \Log::warning('home raw purchase due count failed: '.$e->getMessage());
 
             return 0;
         }

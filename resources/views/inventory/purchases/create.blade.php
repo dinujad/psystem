@@ -117,13 +117,30 @@ body .rmp-modal textarea::placeholder {
             </div>
             <div class="rmp-grid" style="margin-top:12px;">
                 <div class="rmp-field">
-                    <label>Deposit to account</label>
+                    <label>Pay term</label>
+                    <div style="display:flex;gap:8px;">
+                        <input type="number" name="pay_term_number" min="0" value="{{ old('pay_term_number') }}" placeholder="e.g. 30" style="flex:1;">
+                        <select name="pay_term_type" style="flex:1;">
+                            <option value="days" @selected(old('pay_term_type', 'days') === 'days')>Days</option>
+                            <option value="months" @selected(old('pay_term_type') === 'months')>Months</option>
+                        </select>
+                    </div>
+                    <small style="color:#6b7280;">Credit due date = purchase date + pay term</small>
+                </div>
+                <div class="rmp-field">
+                    <label>Supplier advance balance</label>
+                    <input type="text" id="rmpAdvanceBalance" value="—" readonly style="background:#f9fafb;">
+                </div>
+            </div>
+            <div class="rmp-grid" style="margin-top:12px;">
+                <div class="rmp-field">
+                    <label>Accounting deposit to (GL)</label>
                     <select name="accounting_deposit_to" class="accounts-dropdown" style="width:100%;">
                         <option value="">Use linked account from Accounting settings</option>
                     </select>
                 </div>
                 <div class="rmp-field">
-                    <label>Payment account</label>
+                    <label>Accounting payment account (GL)</label>
                     <select name="accounting_payment_account" class="accounts-dropdown" style="width:100%;">
                         <option value="">Use linked account from Accounting settings</option>
                     </select>
@@ -132,7 +149,11 @@ body .rmp-modal textarea::placeholder {
             <div class="rmp-grid" style="margin-top:12px;">
                 <div class="rmp-field">
                     <label>Amount paid now</label>
-                    <input type="number" name="amount_paid" min="0" step="0.01" value="{{ old('amount_paid', '0') }}" placeholder="0 if nothing paid yet">
+                    <input type="number" name="amount_paid" id="rmpAmountPaid" min="0" step="0.01" value="{{ old('amount_paid', '0') }}" placeholder="0 if credit / pay later">
+                </div>
+                <div class="rmp-field">
+                    <label>Paid on date</label>
+                    <input type="date" name="paid_on" value="{{ old('paid_on', date('Y-m-d')) }}">
                 </div>
                 <div class="rmp-field">
                     <label>Payment method</label>
@@ -141,7 +162,17 @@ body .rmp-modal textarea::placeholder {
                         <option value="cheque" @selected(old('payment_method') === 'cheque')>Cheque</option>
                         <option value="bank" @selected(old('payment_method') === 'bank')>Bank transfer</option>
                         <option value="card" @selected(old('payment_method') === 'card')>Card</option>
+                        <option value="advance" @selected(old('payment_method') === 'advance')>Advance balance</option>
                     </select>
+                </div>
+                <div class="rmp-field" id="rmpCreateCashAccount">
+                    <label>Payment from account</label>
+                    <select name="account_id">
+                        @foreach($accounts ?? [] as $id => $name)
+                            <option value="{{ $id }}" @selected(old('account_id') == $id)>{{ $name }}</option>
+                        @endforeach
+                    </select>
+                    <small style="color:#6b7280;">Sampath / Petty Cash etc.</small>
                 </div>
             </div>
             <div id="rmpCreateCheque" style="margin-top:12px;display:none;">
@@ -203,7 +234,33 @@ body .rmp-modal textarea::placeholder {
                 </thead>
                 <tbody id="rmpLines"></tbody>
             </table>
-            <div class="rmp-total">Total: Rs. <span id="rmpTotal">0.00</span></div>
+            <div class="rmp-grid" style="margin-top:14px;">
+                <div class="rmp-field">
+                    <label>Discount</label>
+                    <div style="display:flex;gap:8px;">
+                        <select name="discount_type" id="rmpDiscountType" style="flex:1;">
+                            <option value="fixed" @selected(old('discount_type', 'fixed') === 'fixed')>Fixed</option>
+                            <option value="percentage" @selected(old('discount_type') === 'percentage')>Percentage</option>
+                        </select>
+                        <input type="number" name="discount_amount" id="rmpDiscountAmount" min="0" step="0.01" value="{{ old('discount_amount', '0') }}" style="flex:1;">
+                    </div>
+                </div>
+                <div class="rmp-field">
+                    <label>Tax</label>
+                    <select name="tax_id" id="rmpTaxId">
+                        <option value="" data-rate="0">None</option>
+                        @foreach($taxes ?? [] as $tax)
+                            <option value="{{ $tax->id }}" data-rate="{{ (float) $tax->amount }}" @selected(old('tax_id') == $tax->id)>{{ $tax->name }} ({{ (float) $tax->amount }}%)</option>
+                        @endforeach
+                    </select>
+                </div>
+            </div>
+            <div class="rmp-total" style="line-height:1.8;">
+                Subtotal: Rs. <span id="rmpSubtotal">0.00</span><br>
+                Discount: Rs. <span id="rmpDiscount">0.00</span><br>
+                Tax: Rs. <span id="rmpTax">0.00</span><br>
+                <strong>Total: Rs. <span id="rmpTotal">0.00</span></strong>
+            </div>
         </div>
 
         <div class="rmp-actions">
@@ -356,16 +413,28 @@ function onMaterialChange(sel, i) {
 }
 
 function recalc() {
-    let total = 0;
-    document.querySelectorAll('#rmpLines tr').forEach((tr, idx) => {
+    let subtotal = 0;
+    document.querySelectorAll('#rmpLines tr').forEach((tr) => {
         const qty = parseFloat(tr.querySelector('[name*="[quantity]"]')?.value || 0);
         const cost = parseFloat(tr.querySelector('[name*="[unit_cost]"]')?.value || 0);
         const line = qty * cost;
-        total += line;
+        subtotal += line;
         const strong = tr.querySelector('strong[id^="line_total_"]');
         if (strong) strong.textContent = line.toFixed(2);
     });
-    document.getElementById('rmpTotal').textContent = total.toFixed(2);
+    const discountType = document.getElementById('rmpDiscountType')?.value || 'fixed';
+    const discountRaw = parseFloat(document.getElementById('rmpDiscountAmount')?.value || 0) || 0;
+    let discount = discountType === 'percentage' ? subtotal * (discountRaw / 100) : Math.min(discountRaw, subtotal);
+    const taxOpt = document.getElementById('rmpTaxId')?.selectedOptions?.[0];
+    const taxRate = parseFloat(taxOpt?.getAttribute('data-rate') || 0) || 0;
+    const taxable = Math.max(0, subtotal - discount);
+    const tax = taxable * (taxRate / 100);
+    const total = taxable + tax;
+    const setText = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val.toFixed(2); };
+    setText('rmpSubtotal', subtotal);
+    setText('rmpDiscount', discount);
+    setText('rmpTax', tax);
+    setText('rmpTotal', total);
 }
 
 document.getElementById('rmpForm').addEventListener('submit', function (e) {
@@ -454,9 +523,25 @@ function toggleCreatePayFields() {
     var method = document.getElementById('rmpCreateMethod').value;
     document.getElementById('rmpCreateCheque').style.display = method === 'cheque' ? 'block' : 'none';
     document.getElementById('rmpCreateBank').style.display = method === 'bank' ? 'block' : 'none';
+    var cashAcc = document.getElementById('rmpCreateCashAccount');
+    if (cashAcc) cashAcc.style.display = method === 'advance' ? 'none' : 'block';
 }
 document.getElementById('rmpCreateMethod').addEventListener('change', toggleCreatePayFields);
 toggleCreatePayFields();
+
+['rmpDiscountType', 'rmpDiscountAmount', 'rmpTaxId'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('change', recalc);
+    if (el) el.addEventListener('input', recalc);
+});
+
+var supplierBalances = @json($supplierBalances ?? []);
+document.querySelector('select[name="contact_id"]')?.addEventListener('change', function () {
+    var bal = supplierBalances[this.value];
+    document.getElementById('rmpAdvanceBalance').value = bal !== undefined && bal !== null
+        ? ('Rs. ' + Number(bal).toFixed(2))
+        : '—';
+});
 
 addLine();
 </script>

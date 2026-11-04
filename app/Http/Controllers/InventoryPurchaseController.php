@@ -9,7 +9,10 @@ use App\InventoryPurchase;
 use App\InventoryPurchaseLine;
 use App\InventoryPurchasePayment;
 use App\InventoryUnit;
+use App\TaxRate;
+use App\Utils\ModuleUtil;
 use App\Utils\RawMaterialAccounting;
+use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -146,7 +149,9 @@ class InventoryPurchaseController extends Controller
 
         $suppliers = Contact::suppliersDropdown($businessId, false);
 
-        return view('inventory.purchases.index', compact('suppliers'));
+        $accounts = app(ModuleUtil::class)->accountsDropdown($businessId, true);
+
+        return view('inventory.purchases.index', compact('suppliers', 'accounts'));
     }
 
     public function create()
@@ -171,8 +176,15 @@ class InventoryPurchaseController extends Controller
                 'stock' => (float) $m->current_stock,
             ];
         })->values();
+        $taxes = TaxRate::where('business_id', $businessId)->get();
+        $accounts = app(ModuleUtil::class)->accountsDropdown($businessId, true);
+        $supplierBalances = Contact::where('business_id', $businessId)
+            ->whereIn('type', ['supplier', 'both'])
+            ->pluck('balance', 'id');
 
-        return view('inventory.purchases.create', compact('suppliers', 'materials', 'materialsJson', 'categories', 'units'));
+        return view('inventory.purchases.create', compact(
+            'suppliers', 'materials', 'materialsJson', 'categories', 'units', 'taxes', 'accounts', 'supplierBalances'
+        ));
     }
 
     public function storeMaterial(Request $request)
@@ -221,14 +233,23 @@ class InventoryPurchaseController extends Controller
             abort(403);
         }
 
+        $this->ensurePurchaseExtraColumns();
+
         $data = $request->validate([
             'contact_id' => ['nullable', 'integer', 'exists:contacts,id'],
             'purchase_date' => ['required', 'date'],
+            'pay_term_number' => ['nullable', 'integer', 'min:0'],
+            'pay_term_type' => ['nullable', 'in:days,months'],
             'status' => ['required', 'in:ordered,received'],
             'ref_no' => ['nullable', 'string', 'max:50'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'discount_type' => ['nullable', 'in:fixed,percentage'],
+            'discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'tax_id' => ['nullable', 'integer', 'exists:tax_rates,id'],
             'amount_paid' => ['nullable', 'numeric', 'min:0'],
-            'payment_method' => ['nullable', 'in:cash,card,cheque,bank'],
+            'paid_on' => ['nullable', 'date'],
+            'payment_method' => ['nullable', 'in:cash,card,cheque,bank,advance'],
+            'account_id' => ['nullable', 'integer'],
             'cheque_number' => ['nullable', 'string', 'max:60'],
             'cheque_date' => ['nullable', 'date'],
             'reference_no' => ['nullable', 'string', 'max:80'],
@@ -255,6 +276,14 @@ class InventoryPurchaseController extends Controller
             if ($paymentMethod === 'bank') {
                 $paymentFile = $this->storePaymentFile($request);
             }
+            if ($paymentMethod === 'advance') {
+                $balance = (float) (Contact::where('id', $data['contact_id'] ?? 0)->value('balance') ?? 0);
+                if ($paidNowCheck > $balance + 0.009) {
+                    throw ValidationException::withMessages([
+                        'amount_paid' => 'Advance balance is only Rs. '.number_format($balance, 2).'.',
+                    ]);
+                }
+            }
         }
 
         $linkedAccounts = [
@@ -263,10 +292,36 @@ class InventoryPurchaseController extends Controller
         ];
 
         $purchase = DB::transaction(function () use ($data, $businessId, $paymentMethod, $paymentFile, $linkedAccounts) {
-            $total = 0;
+            $subtotal = 0;
             foreach ($data['lines'] as $line) {
-                $total += ((float) $line['quantity']) * ((float) $line['unit_cost']);
+                $subtotal += ((float) $line['quantity']) * ((float) $line['unit_cost']);
             }
+            $subtotal = round($subtotal, 4);
+
+            $discountType = $data['discount_type'] ?? null;
+            $discountAmount = round((float) ($data['discount_amount'] ?? 0), 4);
+            $discount = 0.0;
+            if ($discountAmount > 0) {
+                if ($discountType === 'percentage') {
+                    $discount = round($subtotal * ($discountAmount / 100), 4);
+                } else {
+                    $discountType = 'fixed';
+                    $discount = min($discountAmount, $subtotal);
+                }
+            }
+            $totalBeforeTax = round(max(0, $subtotal - $discount), 4);
+
+            $taxAmount = 0.0;
+            $taxId = $data['tax_id'] ?? null;
+            if (! empty($taxId)) {
+                $tax = TaxRate::where('business_id', $businessId)->where('id', $taxId)->first();
+                if ($tax) {
+                    $taxAmount = round($totalBeforeTax * ((float) $tax->amount / 100), 4);
+                } else {
+                    $taxId = null;
+                }
+            }
+            $total = round($totalBeforeTax + $taxAmount, 4);
 
             $ref = trim((string) ($data['ref_no'] ?? ''));
             if ($ref === '') {
@@ -274,7 +329,7 @@ class InventoryPurchaseController extends Controller
                 $ref = 'RMP-'.date('Y').'-'.str_pad((string) $count, 4, '0', STR_PAD_LEFT);
             }
 
-            $purchase = InventoryPurchase::create([
+            $payload = [
                 'business_id' => $businessId,
                 'ref_no' => $ref,
                 'contact_id' => $data['contact_id'] ?? null,
@@ -284,7 +339,20 @@ class InventoryPurchaseController extends Controller
                 'payment_status' => 'due',
                 'notes' => $data['notes'] ?? null,
                 'created_by' => auth()->id(),
-            ]);
+            ];
+            if (Schema::hasColumn('inventory_purchases', 'pay_term_number')) {
+                $payload['pay_term_number'] = $data['pay_term_number'] ?? null;
+                $payload['pay_term_type'] = ! empty($data['pay_term_number']) ? ($data['pay_term_type'] ?? 'days') : null;
+            }
+            if (Schema::hasColumn('inventory_purchases', 'discount_type')) {
+                $payload['discount_type'] = $discount > 0 ? $discountType : null;
+                $payload['discount_amount'] = $discountAmount;
+                $payload['tax_id'] = $taxId;
+                $payload['tax_amount'] = $taxAmount;
+                $payload['total_before_tax'] = $totalBeforeTax;
+            }
+
+            $purchase = InventoryPurchase::create($payload);
 
             foreach ($data['lines'] as $line) {
                 $qty = (float) $line['quantity'];
@@ -312,11 +380,13 @@ class InventoryPurchaseController extends Controller
             }
             RawMaterialAccounting::syncPurchase($purchase, $linkedAccounts);
             if ($paidNow > 0) {
-                $this->recordPayment($purchase, $paidNow, $data['purchase_date'], $paymentMethod, 'Paid when purchase was saved', [
+                $paidOn = $data['paid_on'] ?? $data['purchase_date'];
+                $this->recordPayment($purchase, $paidNow, $paidOn, $paymentMethod, 'Paid when purchase was saved', [
                     'cheque_number' => $paymentMethod === 'cheque' ? ($data['cheque_number'] ?? null) : null,
                     'cheque_date' => $paymentMethod === 'cheque' ? ($data['cheque_date'] ?? null) : null,
                     'reference_no' => $paymentMethod === 'bank' ? ($data['reference_no'] ?? null) : null,
                     'attachment' => $paymentFile,
+                    'account_id' => $paymentMethod === 'advance' ? null : ($data['account_id'] ?? null),
                 ]);
             }
 
@@ -337,9 +407,12 @@ class InventoryPurchaseController extends Controller
             abort(404);
         }
 
-        $purchase->load(['supplier', 'creator', 'lines.material.unit', 'payments']);
+        $this->ensurePurchaseExtraColumns();
+        $purchase->load(['supplier', 'creator', 'lines.material.unit', 'payments', 'tax']);
+        $accounts = app(ModuleUtil::class)->accountsDropdown($businessId, true);
+        $advanceBalance = (float) ($purchase->supplier->balance ?? 0);
 
-        return view('inventory.purchases.show', compact('purchase'));
+        return view('inventory.purchases.show', compact('purchase', 'accounts', 'advanceBalance'));
     }
 
     public function payments(InventoryPurchase $purchase)
@@ -424,10 +497,13 @@ class InventoryPurchaseController extends Controller
         }
         $this->assertPurchaseBusiness($purchase);
 
+        $this->ensurePurchaseExtraColumns();
+
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
             'paid_on' => ['required', 'date'],
-            'method' => ['required', 'in:cash,card,cheque,bank'],
+            'method' => ['required', 'in:cash,card,cheque,bank,advance'],
+            'account_id' => ['nullable', 'integer'],
             'cheque_number' => ['nullable', 'string', 'max:60'],
             'cheque_date' => ['nullable', 'date'],
             'reference_no' => ['nullable', 'string', 'max:80'],
@@ -448,11 +524,21 @@ class InventoryPurchaseController extends Controller
             ]);
         }
 
+        if ($data['method'] === 'advance') {
+            $balance = (float) (Contact::where('id', $purchase->contact_id)->value('balance') ?? 0);
+            if ((float) $data['amount'] > $balance + 0.009) {
+                throw ValidationException::withMessages([
+                    'amount' => 'Advance balance is only Rs. '.number_format($balance, 2).'.',
+                ]);
+            }
+        }
+
         $this->recordPayment($purchase, (float) $data['amount'], $data['paid_on'], $data['method'], $data['note'] ?? null, [
             'cheque_number' => $data['method'] === 'cheque' ? ($data['cheque_number'] ?? null) : null,
             'cheque_date' => $data['method'] === 'cheque' ? ($data['cheque_date'] ?? null) : null,
             'reference_no' => $data['method'] === 'bank' ? ($data['reference_no'] ?? null) : null,
             'attachment' => $data['method'] === 'bank' ? $this->storePaymentFile($request) : null,
+            'account_id' => $data['method'] === 'advance' ? null : ($data['account_id'] ?? null),
         ]);
 
         if ($request->expectsJson()) {
@@ -568,8 +654,16 @@ class InventoryPurchaseController extends Controller
         if (Schema::hasColumn('inventory_purchase_payments', 'attachment')) {
             $payload['attachment'] = $extra['attachment'] ?? null;
         }
+        if (Schema::hasColumn('inventory_purchase_payments', 'account_id')) {
+            $payload['account_id'] = $extra['account_id'] ?? null;
+        }
 
         $payment = InventoryPurchasePayment::create($payload);
+
+        if ($method === 'advance' && ! empty($purchase->contact_id)) {
+            Contact::where('id', $purchase->contact_id)->decrement('balance', round($amount, 4));
+        }
+
         $purchase->refreshPaymentStatus();
         RawMaterialAccounting::syncPayment($purchase->fresh(), $payment);
     }
@@ -604,6 +698,140 @@ class InventoryPurchaseController extends Controller
                 $table->string('attachment')->nullable()->after('reference_no');
             });
         }
+        if (! Schema::hasColumn('inventory_purchase_payments', 'account_id')) {
+            Schema::table('inventory_purchase_payments', function (Blueprint $table) {
+                $table->unsignedInteger('account_id')->nullable()->after('method');
+            });
+        }
+    }
+
+    private function ensurePurchaseExtraColumns(): void
+    {
+        $this->ensurePaymentDetailColumns();
+        if (! Schema::hasTable('inventory_purchases')) {
+            return;
+        }
+        if (! Schema::hasColumn('inventory_purchases', 'pay_term_number')) {
+            Schema::table('inventory_purchases', function (Blueprint $table) {
+                $table->integer('pay_term_number')->nullable()->after('purchase_date');
+                $table->string('pay_term_type', 20)->nullable()->after('pay_term_number');
+            });
+        }
+        if (! Schema::hasColumn('inventory_purchases', 'discount_type')) {
+            Schema::table('inventory_purchases', function (Blueprint $table) {
+                $table->string('discount_type', 20)->nullable()->after('status');
+                $table->decimal('discount_amount', 22, 4)->default(0)->after('discount_type');
+                $table->unsignedInteger('tax_id')->nullable()->after('discount_amount');
+                $table->decimal('tax_amount', 22, 4)->default(0)->after('tax_id');
+                $table->decimal('total_before_tax', 22, 4)->nullable()->after('tax_amount');
+            });
+        }
+    }
+
+    public function duePurchases()
+    {
+        $this->checkAccess();
+        $this->ensurePurchaseExtraColumns();
+
+        $businessId = (int) request()->session()->get('user.business_id');
+        $filter = request()->get('filter', 'due'); // due | overdue | upcoming | all
+        $today = Carbon::today();
+
+        $purchases = InventoryPurchase::query()
+            ->with('supplier')
+            ->where('business_id', $businessId)
+            ->whereIn('payment_status', ['due', 'partial'])
+            ->whereNotNull('pay_term_number')
+            ->whereNotNull('pay_term_type')
+            ->orderByDesc('purchase_date')
+            ->get()
+            ->map(function ($purchase) use ($today) {
+                $dueDate = $purchase->dueDate();
+                $purchase->computed_due_date = $dueDate;
+                $purchase->days_to_due = $dueDate ? $today->diffInDays($dueDate, false) : null;
+                $purchase->computed_overdue = $dueDate ? $dueDate->lt($today) : false;
+                $purchase->remaining_due = $purchase->amountDue();
+
+                return $purchase;
+            })
+            ->filter(function ($purchase) use ($filter) {
+                if ($purchase->remaining_due <= 0.009) {
+                    return false;
+                }
+                if ($filter === 'overdue') {
+                    return $purchase->computed_overdue;
+                }
+                if ($filter === 'upcoming') {
+                    return ! $purchase->computed_overdue && $purchase->days_to_due !== null && $purchase->days_to_due <= 7;
+                }
+                if ($filter === 'due') {
+                    return $purchase->computed_overdue || ($purchase->days_to_due !== null && $purchase->days_to_due <= 7);
+                }
+
+                return true;
+            })
+            ->values();
+
+        $bySupplier = $purchases->groupBy(function ($p) {
+            return $p->supplier?->supplier_business_name ?: ($p->supplier?->name ?: 'No supplier');
+        })->map(function ($rows) {
+            return [
+                'count' => $rows->count(),
+                'due' => round($rows->sum('remaining_due'), 2),
+                'overdue' => $rows->where('computed_overdue', true)->count(),
+            ];
+        });
+
+        return view('inventory.purchases.due', compact('purchases', 'filter', 'bySupplier', 'today'));
+    }
+
+    public function supplierStatement(Request $request)
+    {
+        $this->checkAccess();
+        $this->ensurePurchaseExtraColumns();
+
+        $businessId = (int) $request->session()->get('user.business_id');
+        $suppliers = Contact::suppliersDropdown($businessId, false);
+        $supplierId = (int) $request->get('supplier_id');
+        $supplier = null;
+        $purchases = collect();
+        $payments = collect();
+        $advanceBalance = 0.0;
+        $purchaseTotal = 0.0;
+        $paymentTotal = 0.0;
+        $purchaseDue = 0.0;
+
+        if ($supplierId > 0) {
+            $supplier = Contact::where('business_id', $businessId)->where('id', $supplierId)->firstOrFail();
+            $advanceBalance = (float) ($supplier->balance ?? 0);
+            $purchases = InventoryPurchase::with('payments')
+                ->where('business_id', $businessId)
+                ->where('contact_id', $supplierId)
+                ->orderBy('purchase_date')
+                ->orderBy('id')
+                ->get();
+            foreach ($purchases as $purchase) {
+                $purchaseTotal += (float) $purchase->total_amount;
+                $purchaseDue += $purchase->amountDue();
+                foreach ($purchase->payments as $payment) {
+                    $payments->push([
+                        'date' => $payment->paid_on,
+                        'ref' => $purchase->ref_no,
+                        'method' => $payment->method,
+                        'amount' => (float) $payment->amount,
+                        'note' => $payment->note,
+                        'purchase_id' => $purchase->id,
+                    ]);
+                    $paymentTotal += (float) $payment->amount;
+                }
+            }
+            $payments = $payments->sortBy('date')->values();
+        }
+
+        return view('inventory.purchases.supplier_statement', compact(
+            'suppliers', 'supplierId', 'supplier', 'purchases', 'payments',
+            'advanceBalance', 'purchaseTotal', 'paymentTotal', 'purchaseDue'
+        ));
     }
 
     /**

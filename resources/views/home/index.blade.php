@@ -311,6 +311,23 @@
                             </div>
 
                             @if(!empty($canSeeDueCheques))
+                            <a href="{{ route('inventory.purchases.due') }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="tw-p-4 sm:tw-p-5">
+                                    <div class="tw-flex tw-items-center tw-gap-4">
+                                        <div class="pw-stat-icon" style="background:#fee2e2;color:#b91c1c;">
+                                            <svg aria-hidden="true" class="tw-w-6 tw-h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                                <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                                                <path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/>
+                                                <path d="M12 16h.01"/>
+                                            </svg>
+                                        </div>
+                                        <div class="tw-flex-1 tw-min-w-0">
+                                            <p class="pw-stat-label">Raw purchase due</p>
+                                            <p class="pw-stat-value">{{ (int) ($rawPurchaseDueCount ?? 0) }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </a>
                             <a href="{{ route('inventory.purchases.due_cheques') }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
                                 <div class="tw-p-4 sm:tw-p-5">
                                     <div class="tw-flex tw-items-center tw-gap-4">
@@ -336,6 +353,23 @@
             @elseif(!empty($canSeeDueCheques))
                 <div class="tw-px-5 pw-dash-body" style="margin-top:12px;">
                     <div class="tw-grid tw-grid-cols-2 tw-gap-3 md:tw-gap-4 lg:tw-grid-cols-4 pw-stats-grid">
+                        <a href="{{ route('inventory.purchases.due') }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
+                            <div class="tw-p-4 sm:tw-p-5">
+                                <div class="tw-flex tw-items-center tw-gap-4">
+                                    <div class="pw-stat-icon" style="background:#fee2e2;color:#b91c1c;">
+                                        <svg aria-hidden="true" class="tw-w-6 tw-h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                                            <path d="M12 9v4"/><path d="M10.363 3.591l-8.106 13.534a1.914 1.914 0 0 0 1.636 2.871h16.214a1.914 1.914 0 0 0 1.636 -2.87l-8.106 -13.536a1.914 1.914 0 0 0 -3.274 0z"/>
+                                            <path d="M12 16h.01"/>
+                                        </svg>
+                                    </div>
+                                    <div class="tw-flex-1 tw-min-w-0">
+                                        <p class="pw-stat-label">Raw purchase due</p>
+                                        <p class="pw-stat-value">{{ (int) ($rawPurchaseDueCount ?? 0) }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
                         <a href="{{ route('inventory.purchases.due_cheques') }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
                             <div class="tw-p-4 sm:tw-p-5">
                                 <div class="tw-flex tw-items-center tw-gap-4">
