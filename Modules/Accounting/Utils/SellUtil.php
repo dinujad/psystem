@@ -593,92 +593,54 @@ class SellUtil
 
     public function getTransactionsDataTable()
     {
-        $is_admin = $this->businessUtil->is_admin(auth()->user());
-        $is_crm = $this->moduleUtil->isModuleInstalled('Crm');
         $business_id = request()->session()->get('user.business_id');
-        $is_tables_enabled = $this->transactionUtil->isModuleEnabled('tables');
-        $is_service_staff_enabled = $this->transactionUtil->isModuleEnabled('service_staff');
-
         $payment_types = $this->transactionUtil->payment_types(null, false, $business_id);
-        $with = [];
-        $shipping_statuses = $this->transactionUtil->shipping_statuses();
+        if (! is_array($payment_types)) {
+            $payment_types = [];
+        }
 
-        $sale_type = !empty(request()->input('sale_type')) ? request()->input('sale_type') : 'sell';
-
-        $sells = $this->getListSells($business_id, $sale_type);
-
-        // Accounting MAP lists every final sale on Payments and Invoices.
-        // Optional payment_status dropdown still filters when set.
+        $sells = Transaction::with(['journal_entry.chart_of_account', 'payment_lines'])
+            ->leftJoin('contacts', 'transactions.contact_id', '=', 'contacts.id')
+            ->leftJoin('business_locations as bl', 'transactions.location_id', '=', 'bl.id')
+            ->where('transactions.business_id', $business_id)
+            ->where('transactions.type', 'sell')
+            ->where('transactions.status', 'final')
+            ->select(
+                'transactions.id',
+                'transactions.transaction_date',
+                'transactions.invoice_no',
+                'transactions.payment_status',
+                'transactions.final_total',
+                'transactions.journal_entry_id',
+                'contacts.name as customer_name',
+                'contacts.supplier_business_name',
+                'bl.name as business_location',
+                DB::raw('(SELECT COALESCE(SUM(IF(TP.is_return = 1, -1 * TP.amount, TP.amount)), 0) FROM transaction_payments AS TP WHERE TP.transaction_id = transactions.id) as total_paid')
+            );
 
         $permitted_locations = auth()->user()->permitted_locations();
         if ($permitted_locations != 'all') {
-            $sells->whereIn('transactions.location_id', $permitted_locations);
+            $sells->whereIn('transactions.location_id', empty($permitted_locations) ? [0] : $permitted_locations);
         }
 
-        //Add condition for created_by,used in sales representative sales report
-        if (request()->has('created_by')) {
-            $created_by = request()->get('created_by');
-            if (!empty($created_by)) {
-                $sells->where('transactions.created_by', $created_by);
-            }
-        }
-
-        $partial_permissions = ['view_own_sell_only', 'view_commission_agent_sell', 'access_own_shipping', 'access_commission_agent_shipping'];
-        if (!auth()->user()->can('direct_sell.view')) {
+        if (! auth()->user()->can('sell.view') && ! auth()->user()->can('direct_sell.view')) {
             $sells->where(function ($q) {
-                if (auth()->user()->hasAnyPermission(['view_own_sell_only', 'access_own_shipping'])) {
-                    $q->where('transactions.created_by', request()->session()->get('user.id'));
+                if (auth()->user()->can('view_own_sell_only')) {
+                    $q->where('transactions.created_by', auth()->id());
                 }
-
-                //if user is commission agent display only assigned sells
-                if (auth()->user()->hasAnyPermission(['view_commission_agent_sell', 'access_commission_agent_shipping'])) {
-                    $q->orWhere('transactions.commission_agent', request()->session()->get('user.id'));
+                if (auth()->user()->can('view_commission_agent_sell')) {
+                    $q->orWhere('transactions.commission_agent', auth()->id());
                 }
             });
         }
 
-        $only_shipments = request()->only_shipments == 'true' ? true : false;
-        if ($only_shipments) {
-            $sells->whereNotNull('transactions.shipping_status');
-
-            if (auth()->user()->hasAnyPermission(['access_pending_shipments_only'])) {
-                $sells->where('transactions.shipping_status', '!=', 'delivered');
-            }
+        if (! empty(request()->input('location_id'))) {
+            $sells->where('transactions.location_id', request()->input('location_id'));
         }
-
-        if (!$is_admin && !$only_shipments && $sale_type != 'sales_order') {
-            $payment_status_arr = [];
-            if (auth()->user()->can('view_paid_sells_only')) {
-                $payment_status_arr[] = 'paid';
-            }
-
-            if (auth()->user()->can('view_due_sells_only')) {
-                $payment_status_arr[] = 'due';
-            }
-
-            if (auth()->user()->can('view_partial_sells_only')) {
-                $payment_status_arr[] = 'partial';
-            }
-
-            if (empty($payment_status_arr)) {
-                if (auth()->user()->can('view_overdue_sells_only')) {
-                    $sells->OverDue();
-                }
-            } else {
-                if (auth()->user()->can('view_overdue_sells_only')) {
-                    $sells->where(function ($q) use ($payment_status_arr) {
-                        $q->whereIn('transactions.payment_status', $payment_status_arr)
-                            ->orWhere(function ($qr) {
-                                $qr->OverDue();
-                            });
-                    });
-                } else {
-                    $sells->whereIn('transactions.payment_status', $payment_status_arr);
-                }
-            }
+        if (! empty(request()->input('customer_id'))) {
+            $sells->where('transactions.contact_id', request()->input('customer_id'));
         }
-
-        if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
+        if (! empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
             $sells->where('transactions.payment_status', request()->input('payment_status'));
         } elseif (request()->input('payment_status') == 'overdue') {
             $sells->whereIn('transactions.payment_status', ['due', 'partial'])
@@ -686,182 +648,31 @@ class SellUtil
                 ->whereNotNull('transactions.pay_term_type')
                 ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
         }
-
-
-        //Add condition for location,used in sales representative expense report
-        if (request()->has('location_id')) {
-            $location_id = request()->get('location_id');
-            if (!empty($location_id)) {
-                $sells->where('transactions.location_id', $location_id);
-            }
+        if (! empty(request()->input('created_by'))) {
+            $sells->where('transactions.created_by', request()->input('created_by'));
         }
-
-        if (!empty(request()->input('rewards_only')) && request()->input('rewards_only') == true) {
-            $sells->where(function ($q) {
-                $q->whereNotNull('transactions.rp_earned')
-                    ->orWhere('transactions.rp_redeemed', '>', 0);
-            });
-        }
-
-        if (!empty(request()->customer_id)) {
-            $customer_id = request()->customer_id;
-            $sells->where('contacts.id', $customer_id);
-        }
-        if (!empty(request()->start_date) && !empty(request()->end_date)) {
-            $start = request()->start_date;
-            $end =  request()->end_date;
+        $start = request()->input('start_date');
+        $end = request()->input('end_date');
+        if (! empty($start) && ! empty($end) && strtotime($start) && strtotime($end)) {
             $sells->whereDate('transactions.transaction_date', '>=', $start)
                 ->whereDate('transactions.transaction_date', '<=', $end);
         }
 
-        //Check is_direct sell
-        if (request()->has('is_direct_sale')) {
-            $is_direct_sale = request()->is_direct_sale;
-            if ($is_direct_sale == 0) {
-                $sells->where('transactions.is_direct_sale', 0);
-                $sells->whereNull('transactions.sub_type');
+        $money = function ($amount) {
+            try {
+                return $this->transactionUtil->num_f($amount, true);
+            } catch (\Throwable $e) {
+                return number_format((float) $amount, 2);
             }
-        }
+        };
 
-        //Add condition for commission_agent,used in sales representative sales with commission report
-        if (request()->has('commission_agent')) {
-            $commission_agent = request()->get('commission_agent');
-            if (!empty($commission_agent)) {
-                $sells->where('transactions.commission_agent', $commission_agent);
-            }
-        }
-
-        if (!empty(request()->input('source'))) {
-            //only exception for woocommerce
-            if (request()->input('source') == 'woocommerce') {
-                $sells->whereNotNull('transactions.woocommerce_order_id');
-            } else {
-                $sells->where('transactions.source', request()->input('source'));
-            }
-        }
-
-        if ($is_crm) {
-            $sells->addSelect('transactions.crm_is_order_request');
-
-            if (request()->has('crm_is_order_request')) {
-                $sells->where('transactions.crm_is_order_request', 1);
-            }
-        }
-
-        if (request()->only_subscriptions) {
-            $sells->where(function ($q) {
-                $q->whereNotNull('transactions.recur_parent_id')
-                    ->orWhere('transactions.is_recurring', 1);
-            });
-        }
-
-        if (!empty(request()->list_for) && request()->list_for == 'service_staff_report') {
-            $sells->whereNotNull('transactions.res_waiter_id');
-        }
-
-        if (!empty(request()->res_waiter_id)) {
-            $sells->where('transactions.res_waiter_id', request()->res_waiter_id);
-        }
-
-        if (!empty(request()->input('sub_type'))) {
-            $sells->where('transactions.sub_type', request()->input('sub_type'));
-        }
-
-        if (!empty(request()->input('created_by'))) {
-            $sells->where('transactions.created_by', request()->input('created_by'));
-        }
-
-        if (!empty(request()->input('status'))) {
-            $sells->where('transactions.status', request()->input('status'));
-        }
-
-        if (!empty(request()->input('sales_cmsn_agnt'))) {
-            $sells->where('transactions.commission_agent', request()->input('sales_cmsn_agnt'));
-        }
-
-        if (!empty(request()->input('service_staffs'))) {
-            $sells->where('transactions.res_waiter_id', request()->input('service_staffs'));
-        }
-
-        $only_pending_shipments = request()->only_pending_shipments == 'true' ? true : false;
-        if ($only_pending_shipments) {
-            $sells->where('transactions.shipping_status', '!=', 'delivered')
-                ->whereNotNull('transactions.shipping_status');
-            $only_shipments = true;
-        }
-
-        if (!empty(request()->input('shipping_status'))) {
-            $sells->where('transactions.shipping_status', request()->input('shipping_status'));
-        }
-
-        if (!empty(request()->input('for_dashboard_sales_order'))) {
-            $sells->whereIn('transactions.status', ['partial', 'ordered'])
-                ->orHavingRaw('so_qty_remaining > 0');
-        }
-
-        if ($sale_type == 'sales_order') {
-            if (!auth()->user()->can('so.view_all') && auth()->user()->can('so.view_own')) {
-                $sells->where('transactions.created_by', request()->session()->get('user.id'));
-            }
-        }
-
-        $sells->groupBy('transactions.id');
-
-        if (!empty(request()->suspended)) {
-            $transaction_sub_type = request()->get('transaction_sub_type');
-            if (!empty($transaction_sub_type)) {
-                $sells->where('transactions.sub_type', $transaction_sub_type);
-            } else {
-                $sells->where('transactions.sub_type', null);
-            }
-
-            $with = ['sell_lines'];
-
-            if ($is_tables_enabled) {
-                $with[] = 'table';
-            }
-
-            if ($is_service_staff_enabled) {
-                $with[] = 'service_staff';
-            }
-
-            $sales = $sells->where('transactions.is_suspend', 1)
-                ->with($with)
-                ->addSelect('transactions.is_suspend', 'transactions.res_table_id', 'transactions.res_waiter_id', 'transactions.additional_notes')
-                ->get();
-
-            return view('sale_pos.partials.suspended_sales_modal')->with(compact('sales', 'is_tables_enabled', 'is_service_staff_enabled', 'transaction_sub_type'));
-        }
-
-        $with[] = 'payment_lines';
-        $with[] = 'journal_entry';
-        if (!empty($with)) {
-            $sells->with($with);
-        }
-
-        //$business_details = $this->businessUtil->getDetails($business_id);
-        if ($this->businessUtil->isModuleEnabled('subscription')) {
-            $sells->addSelect('transactions.is_recurring', 'transactions.recur_parent_id');
-        }
-        $sales_order_statuses = Transaction::sales_order_statuses();
-        $datatable = DataTables::of($sells)
+        return DataTables::of($sells)
             ->addColumn('mapping', function ($row) {
-                if (!empty($row->journal_entry_id)) {
+                if (! empty($row->journal_entry_id)) {
                     return '<span class="label label-success">' . trans('accounting::general.has_been_mapped') . '</span>';
-                } else {
-                    return '<button class="btn btn-xs btn-success" onclick="setTransactionId(' . $row->id . ')" data-toggle="modal" data-target="#mapTransactionsModal">
-                                MAP <span class="fas fa-share"></span>
-                            </button>';
-                }
-            })
-            ->addColumn('refund_action', function ($row) {
-                if ($row->type !== 'sell') {
-                    return '';
                 }
 
-                $url = action([\App\Http\Controllers\SellReturnController::class, 'add'], [$row->id]);
-
-                return '<a class="btn btn-xs btn-warning" href="'.$url.'"><i class="fas fa-undo"></i> Refund</a>';
+                return '<button type="button" class="btn btn-xs btn-success" onclick="setTransactionId(' . (int) $row->id . ')" data-toggle="modal" data-target="#mapTransactionsModal">MAP <span class="fas fa-share"></span></button>';
             })
             ->addColumn('chart_of_account', function ($row) {
                 try {
@@ -870,161 +681,78 @@ class SellUtil
                         return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
                     }
 
-                    return '<a href="' . url('accounting/chart_of_account/' . $account->id . '/show') . '">
-                        <span>' . e($account->name) . '</span> <i class="fas fa-external-link-alt"></i>
-                    </a>';
+                    return '<a href="' . url('accounting/chart_of_account/' . $account->id . '/show') . '"><span>' . e($account->name) . '</span> <i class="fas fa-external-link-alt"></i></a>';
                 } catch (\Throwable $e) {
                     return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
                 }
             })
-            ->removeColumn('id')
-            ->editColumn(
-                'final_total',
-                '<span class="final-total" data-orig-value="{{$final_total}}">@format_currency($final_total)</span>'
-            )
-            ->editColumn(
-                'tax_amount',
-                '<span class="total-tax" data-orig-value="{{$tax_amount}}">@format_currency($tax_amount)</span>'
-            )
-            ->editColumn(
-                'total_paid',
-                '<span class="total-paid" data-orig-value="{{$total_paid}}">@format_currency($total_paid)</span>'
-            )
-            ->editColumn(
-                'total_before_tax',
-                '<span class="total_before_tax" data-orig-value="{{$total_before_tax}}">@format_currency($total_before_tax)</span>'
-            )
-            ->editColumn(
-                'discount_amount',
-                function ($row) {
-                    $discount = !empty($row->discount_amount) ? $row->discount_amount : 0;
+            ->addColumn('contact_name', function ($row) {
+                $name = trim(($row->supplier_business_name ? $row->supplier_business_name . ', ' : '') . ($row->customer_name ?? ''));
 
-                    if (!empty($discount) && $row->discount_type == 'percentage') {
-                        $discount = $row->total_before_tax * ($discount / 100);
-                    }
-
-                    return '<span class="total-discount" data-orig-value="' . $discount . '">' . $this->transactionUtil->num_f($discount, true) . '</span>';
-                }
-            )
-            ->editColumn('transaction_date', '{{@format_datetime($transaction_date)}}')
-            ->editColumn(
-                'payment_status',
-                function ($row) {
-                    $payment_status = Transaction::getPaymentStatus($row);
-                    return (string) view('sell.partials.payment_status', ['payment_status' => $payment_status, 'id' => $row->id]);
-                }
-            )
-            ->editColumn(
-                'types_of_service_name',
-                '<span class="service-type-label" data-orig-value="{{$types_of_service_name}}" data-status-name="{{$types_of_service_name}}">{{$types_of_service_name}}</span>'
-            )
-            ->addColumn('total_remaining', function ($row) {
-                $total_remaining =  $row->final_total - $row->total_paid;
-                $total_remaining_html = '<span class="payment_due" data-orig-value="' . $total_remaining . '">' . $this->transactionUtil->num_f($total_remaining, true) . '</span>';
-
-                return $total_remaining_html;
+                return e($name);
             })
-            ->addColumn('return_due', function ($row) {
-                $return_due_html = '';
-                if (!empty($row->return_exists)) {
-                    $return_due = $row->amount_return - $row->return_paid;
-                    $return_due_html .= '<a href="' . action([\App\Http\Controllers\TransactionPaymentController::class, 'show'], [$row->return_transaction_id]) . '" class="view_purchase_return_payment_modal"><span class="sell_return_due" data-orig-value="' . $return_due . '">' . $this->transactionUtil->num_f($return_due, true) . '</span></a>';
+            ->editColumn('transaction_date', function ($row) {
+                $raw = $row->getRawOriginal('transaction_date');
+                try {
+                    return e($this->transactionUtil->format_date($raw, true));
+                } catch (\Throwable $e) {
+                    return e((string) $raw);
                 }
-
-                return $return_due_html;
             })
-            ->addColumn('checkbox', function () {
-                return '<input type="checkbox" class="select-row"/>';
+            ->editColumn('invoice_no', function ($row) {
+                return e($row->invoice_no);
             })
-            ->editColumn('invoice_no', function ($row) use ($is_crm) {
-                $invoice_no = $row->invoice_no;
-                if (!empty($row->woocommerce_order_id)) {
-                    $invoice_no .= ' <i class="fab fa-wordpress text-primary no-print" title="' . __('lang_v1.synced_from_woocommerce') . '"></i>';
-                }
-                if (!empty($row->return_exists)) {
-                    $invoice_no .= ' &nbsp;<small class="label bg-red label-round no-print" title="' . __('lang_v1.some_qty_returned_from_sell') . '"><i class="fas fa-undo"></i></small>';
-                }
-                if (!empty($row->is_recurring)) {
-                    $invoice_no .= ' &nbsp;<small class="label bg-red label-round no-print" title="' . __('lang_v1.subscribed_invoice') . '"><i class="fas fa-recycle"></i></small>';
-                }
+            ->editColumn('payment_status', function ($row) {
+                $status = $row->payment_status ?: 'due';
 
-                if (!empty($row->recur_parent_id)) {
-                    $invoice_no .= ' &nbsp;<small class="label bg-info label-round no-print" title="' . __('lang_v1.subscription_invoice') . '"><i class="fas fa-recycle"></i></small>';
-                }
-
-                if (!empty($row->is_export)) {
-                    $invoice_no .= '</br><small class="label label-default no-print" title="' . __('lang_v1.export') . '">' . __('lang_v1.export') . '</small>';
-                }
-
-                if ($is_crm && !empty($row->crm_is_order_request)) {
-                    $invoice_no .= ' &nbsp;<small class="label bg-yellow label-round no-print" title="' . __('crm::lang.order_request') . '"><i class="fas fa-tasks"></i></small>';
-                }
-
-                return $invoice_no;
+                return '<span class="payment-status-label" data-orig-value="' . e($status) . '"><span class="label">' . e(__('lang_v1.' . $status)) . '</span></span>';
             })
-            ->addColumn('contact_name', '@if(!empty($supplier_business_name)) {{$supplier_business_name}}, <br> @endif {{$name}}')
-            ->editColumn('total_items', '{{@format_quantity($total_items)}}')
+            ->addColumn('payment_methods', function ($row) use ($payment_types) {
+                $methods = $row->payment_lines->pluck('method')->filter()->unique()->values();
+                if ($methods->count() === 1) {
+                    $key = $methods[0];
+
+                    return e($payment_types[$key] ?? $key);
+                }
+                if ($methods->count() > 1) {
+                    return e(__('lang_v1.checkout_multi_pay'));
+                }
+
+                return '';
+            })
+            ->editColumn('final_total', function ($row) use ($money) {
+                return '<span class="final-total" data-orig-value="' . (float) $row->final_total . '">' . $money($row->final_total) . '</span>';
+            })
+            ->editColumn('total_paid', function ($row) use ($money) {
+                return '<span class="total-paid" data-orig-value="' . (float) $row->total_paid . '">' . $money($row->total_paid) . '</span>';
+            })
+            ->addColumn('total_remaining', function ($row) use ($money) {
+                $due = (float) $row->final_total - (float) $row->total_paid;
+
+                return '<span class="payment_due" data-orig-value="' . $due . '">' . $money($due) . '</span>';
+            })
             ->filterColumn('contact_name', function ($query, $keyword) {
                 $query->where(function ($q) use ($keyword) {
                     $q->where('contacts.name', 'like', "%{$keyword}%")
                         ->orWhere('contacts.supplier_business_name', 'like', "%{$keyword}%");
                 });
             })
-            ->addColumn('payment_methods', function ($row) use ($payment_types) {
-                $methods = array_unique($row->payment_lines->pluck('method')->toArray());
-                $count = count($methods);
-                $payment_method = '';
-                if ($count == 1) {
-                    $payment_method = $payment_types[$methods[0]] ?? $methods[0];
-                } elseif ($count > 1) {
-                    $payment_method = __('lang_v1.checkout_multi_pay');
-                }
-
-                $html = !empty($payment_method) ? '<span class="payment-method" data-orig-value="' . $payment_method . '" data-status-name="' . $payment_method . '">' . $payment_method . '</span>' : '';
-
-                return $html;
+            ->filterColumn('mapping', function () {
             })
-            ->editColumn('status', function ($row) use ($sales_order_statuses, $is_admin) {
-                $status = '';
-
-                if ($row->type == 'sales_order') {
-                    if ($is_admin && $row->status != 'completed') {
-                        $status = '<span class="edit-so-status label ' . $sales_order_statuses[$row->status]['class'] . '" data-href="' . action([\App\Http\Controllers\SalesOrderController::class, 'getEditSalesOrderStatus'], ['id' => $row->id]) . '">' . $sales_order_statuses[$row->status]['label'] . '</span>';
-                    } else {
-                        $status = '<span class="label ' . $sales_order_statuses[$row->status]['class'] . '" >' . $sales_order_statuses[$row->status]['label'] . '</span>';
-                    }
-                }
-
-                return $status;
+            ->filterColumn('chart_of_account', function () {
             })
-            ->editColumn('so_qty_remaining', '{{@format_quantity($so_qty_remaining)}}')
-            ->orderColumn('chart_of_account', 'transactions.transaction_date $1')
+            ->filterColumn('payment_methods', function () {
+            })
+            ->filterColumn('total_remaining', function () {
+            })
             ->orderColumn('mapping', 'transactions.transaction_date $1')
-            ->orderColumn('checkbox', 'transactions.transaction_date $1')
-            ->orderColumn('refund_action', 'transactions.transaction_date $1')
-            ->orderColumn('total_remaining', 'transactions.transaction_date $1')
-            ->orderColumn('return_due', 'transactions.transaction_date $1')
-            ->filterColumn('chart_of_account', function ($query, $keyword) {
-            })
-            ->filterColumn('mapping', function ($query, $keyword) {
-            })
-            ->filterColumn('total_remaining', function ($query, $keyword) {
-            })
-            ->filterColumn('return_due', function ($query, $keyword) {
-            })
-            ->setRowAttr([
-                'data-href' => function ($row) {
-                    if (auth()->user()->can("sell.view") || auth()->user()->can("view_own_sell_only")) {
-                        return  action([\App\Http\Controllers\SellController::class, 'show'], [$row->id]);
-                    } else {
-                        return '';
-                    }
-                }
-            ]);
-
-        $rawColumns = ['final_total', 'mapping', 'refund_action', 'total_paid', 'total_remaining', 'payment_status', 'invoice_no', 'discount_amount', 'tax_amount', 'total_before_tax', 'types_of_service_name', 'payment_methods', 'return_due', 'contact_name', 'status', 'chart_of_account', 'checkbox'];
-
-        return $datatable->rawColumns($rawColumns)->make(true);
+            ->orderColumn('chart_of_account', 'transactions.transaction_date $1')
+            ->orderColumn('contact_name', 'contacts.name $1')
+            ->orderColumn('payment_methods', 'transactions.transaction_date $1')
+            ->orderColumn('total_paid', 'transactions.final_total $1')
+            ->orderColumn('total_remaining', 'transactions.final_total $1')
+            ->rawColumns(['mapping', 'chart_of_account', 'payment_status', 'final_total', 'total_paid', 'total_remaining'])
+            ->make(true);
     }
 
     /**

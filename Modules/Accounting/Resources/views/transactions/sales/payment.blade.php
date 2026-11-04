@@ -12,14 +12,10 @@
     auth()->user()->can('direct_sell.view') ||
     auth()->user()->can('view_own_sell_only') ||
     auth()->user()->can('view_commission_agent_sell'))
-                @php
-                    $custom_labels = json_decode(session('business.custom_labels'), true);
-                @endphp
                 <div class="table-responsive">
                     <table class="table table-bordered table-striped" id="sell_table">
                         <thead>
                             <tr>
-                                <th></th>
                                 <th>@lang('accounting::general.mapping')</th>
                                 <th>{{ trans_choice('accounting::general.chart_of_account', 1) }}</th>
                                 <th>@lang('messages.date')</th>
@@ -31,31 +27,15 @@
                                 <th>@lang('sale.total_amount')</th>
                                 <th>@lang('sale.total_paid')</th>
                                 <th>@lang('lang_v1.sell_due')</th>
-                                <th>@lang('lang_v1.sell_return_due')</th>
-                                <th>@lang('lang_v1.total_items')</th>
-                                <th>@lang('lang_v1.types_of_service')</th>
-                                <th>{{ $custom_labels['types_of_service']['custom_field_1'] ?? __('lang_v1.service_custom_field_1') }}</th>
-                                <th>@lang('lang_v1.added_by')</th>
-                                <th>@lang('sale.sell_note')</th>
-                                <th>@lang('sale.staff_note')</th>
-                                <th>@lang('restaurant.table')</th>
-                                <th>@lang('restaurant.service_staff')</th>
-                                <th>@lang('messages.action')</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
                         <tfoot>
                             <tr class="bg-gray font-17 footer-total text-center">
-                                <td colspan="7"><strong>@lang('sale.total'):</strong></td>
-                                <td class="footer_payment_status_count"></td>
-                                <td class="payment_method_count"></td>
+                                <td colspan="8"><strong>@lang('sale.total'):</strong></td>
                                 <td class="footer_sale_total"></td>
                                 <td class="footer_total_paid"></td>
                                 <td class="footer_total_remaining"></td>
-                                <td class="footer_total_sell_return_due"></td>
-                                <td colspan="2"></td>
-                                <td class="service_type_count"></td>
-                                <td colspan="8"></td>
                             </tr>
                         </tfoot>
                     </table>

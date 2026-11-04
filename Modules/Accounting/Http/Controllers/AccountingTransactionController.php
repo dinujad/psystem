@@ -25,16 +25,16 @@ class AccountingTransactionController extends Controller
     {
         switch (request()->type) {
             case 'payment':
-                if (request()->ajax()) {
-                    return $this->sellUtil->getTransactionsDataTable();
+                if (request()->ajax() || request()->has('draw')) {
+                    return $this->salesDataTable();
                 }
                 $data_array = $this->sellUtil->getData();
                 $data_array = $this->mappingViewData($data_array, 'payment', 'credit', 'Sales');
                 return view('accounting::transactions.sales.payment')->with($data_array);
 
             case 'invoice':
-                if (request()->ajax()) {
-                    return $this->sellUtil->getTransactionsDataTable();
+                if (request()->ajax() || request()->has('draw')) {
+                    return $this->salesDataTable();
                 }
                 $data_array = $this->sellUtil->getData();
                 $data_array = $this->mappingViewData($data_array, 'invoice', 'credit', 'Sales');
@@ -207,5 +207,22 @@ class AccountingTransactionController extends Controller
         $data['linked_account_name'] = $linked['name'];
 
         return $data;
+    }
+
+    private function salesDataTable()
+    {
+        try {
+            return $this->sellUtil->getTransactionsDataTable();
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'draw' => (int) request()->input('draw'),
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => [],
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
