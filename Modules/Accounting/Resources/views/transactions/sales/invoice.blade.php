@@ -79,9 +79,6 @@
 @endsection
 
 @section('sub-tab-javascript')
-    {{-- For the mapping_modal --}}
-    <script src="{{ Module::asset('accounting:js/accounting_transactions.js') }}"></script>
-    {{-- For Datatable --}}
     @include('accounting::transactions.js.payment_js')
     <script src="{{ asset('js/payment.js?v=' . $asset_v) }}"></script>
 @endsection

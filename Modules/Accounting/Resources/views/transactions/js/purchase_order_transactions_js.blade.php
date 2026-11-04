@@ -1,4 +1,11 @@
 <script type="text/javascript">
+    function setTransactionId(id) {
+        var el = document.getElementById('transaction_id');
+        if (el) {
+            el.value = id;
+        }
+    }
+
     $(document).ready( function(){
         //Purchase table
         purchase_order_table = $('#purchase_order_table').DataTable({

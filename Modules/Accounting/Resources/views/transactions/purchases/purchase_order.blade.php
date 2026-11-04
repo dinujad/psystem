@@ -83,6 +83,5 @@
 
 
 @section('sub-tab-javascript')
-    <script src="{{ Module::asset('accounting:js/accounting_transactions.js') }}"></script>
     @include('accounting::transactions.js.purchase_order_transactions_js')
 @endsection

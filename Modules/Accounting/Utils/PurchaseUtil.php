@@ -549,6 +549,8 @@ class PurchaseUtil
             $purchases->where('transactions.created_by', request()->session()->get('user.id'));
         }
 
+        $purchases->with('journal_entry');
+
         return Datatables::of($purchases)
             ->addColumn('mapping', function ($row) {
                 if (!empty($row->journal_entry_id)) {
@@ -560,11 +562,16 @@ class PurchaseUtil
                 }
             })
             ->addColumn('chart_of_account', function ($row) {
-                if (!empty($row->journal_entry_id)) {
-                    return '<a href="' . url("accounting/chart_of_account/" . $row->journal_entry->chart_of_account->id . "/show") . '">
-                    <span>' . $row->journal_entry->chart_of_account->name . '</span> <i class="fas fa-external-link-alt"></i>
+                try {
+                    $account = ! empty($row->journal_entry_id) ? $row->journal_entry->chart_of_account : null;
+                    if (empty($account) || empty($account->id)) {
+                        return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
+                    }
+
+                    return '<a href="' . url('accounting/chart_of_account/' . $account->id . '/show') . '">
+                    <span>' . e($account->name) . '</span> <i class="fas fa-external-link-alt"></i>
                 </a>';
-                } else {
+                } catch (\Throwable $e) {
                     return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
                 }
             })
@@ -611,9 +618,12 @@ class PurchaseUtil
             ])
             ->orderColumn('chart_of_account', 'transactions.transaction_date $1')
             ->orderColumn('mapping', 'transactions.transaction_date $1')
+            ->orderColumn('payment_due', 'transactions.transaction_date $1')
             ->filterColumn('chart_of_account', function ($query, $keyword) {
             })
             ->filterColumn('mapping', function ($query, $keyword) {
+            })
+            ->filterColumn('payment_due', function ($query, $keyword) {
             })
             ->rawColumns(['final_total', 'mapping', 'payment_due', 'payment_status', 'status', 'ref_no', 'name', 'chart_of_account'])
             ->make(true);
