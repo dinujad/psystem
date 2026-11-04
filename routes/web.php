@@ -646,6 +646,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
 
         // Raw material purchases (stock → inventory_materials, not products)
         Route::get('/purchases', [\App\Http\Controllers\InventoryPurchaseController::class, 'index'])->name('purchases.index');
+        Route::get('/purchases/due-cheques', [\App\Http\Controllers\InventoryPurchaseController::class, 'dueCheques'])->name('purchases.due_cheques');
         Route::get('/purchases/create', [\App\Http\Controllers\InventoryPurchaseController::class, 'create'])->name('purchases.create');
         Route::post('/purchases/materials', [\App\Http\Controllers\InventoryPurchaseController::class, 'storeMaterial'])->name('purchases.materials.store');
         Route::post('/purchases', [\App\Http\Controllers\InventoryPurchaseController::class, 'store'])->name('purchases.store');

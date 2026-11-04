@@ -47,56 +47,86 @@ class WhatsappService
         ];
     }
 
-    public function getQrCode(): array
+    public static function normalizeAccount(?string $account): string
     {
+        $account = strtolower(trim((string) $account));
+
+        return in_array($account, ['printworks', 'safetysign'], true) ? $account : 'printworks';
+    }
+
+    public function getQrCode(?string $account = 'printworks'): array
+    {
+        $account = self::normalizeAccount($account);
+
         try {
-            $response = $this->client()->get($this->baseUrl().'/qr');
+            $response = $this->client()->get($this->baseUrl().'/qr', [
+                'account' => $account,
+            ]);
 
             if ($response->failed()) {
                 return array_merge($this->serviceUnavailableResponse(), [
                     'status' => 'disconnected',
+                    'account' => $account,
                 ]);
             }
 
-            return $response->json();
+            $payload = $response->json() ?? [];
+            $payload['account'] = $payload['account'] ?? $account;
+
+            return $payload;
         } catch (\Throwable $e) {
             Log::warning('WhatsApp getQrCode failed: '.$e->getMessage());
 
             return array_merge($this->serviceUnavailableResponse(), [
                 'status' => 'disconnected',
+                'account' => $account,
             ]);
         }
     }
 
-    public function getStatus(): array
+    public function getStatus(?string $account = 'printworks'): array
     {
+        $account = self::normalizeAccount($account);
+
         try {
-            $response = $this->client()->timeout(3)->get($this->baseUrl().'/status');
+            $response = $this->client()->timeout(3)->get($this->baseUrl().'/status', [
+                'account' => $account,
+            ]);
 
             if ($response->failed()) {
                 return [
                     'status' => 'disconnected',
                     'message' => 'WhatsApp service is unavailable.',
+                    'account' => $account,
                 ];
             }
 
-            return $response->json();
+            $payload = $response->json() ?? [];
+            $payload['account'] = $payload['account'] ?? $account;
+
+            return $payload;
         } catch (\Throwable $e) {
             Log::warning('WhatsApp getStatus failed: '.$e->getMessage());
 
             return [
                 'status' => 'disconnected',
                 'message' => 'WhatsApp service is unavailable.',
+                'account' => $account,
             ];
         }
     }
 
-    public function sendMessage(string $number, string $message, array $media = []): array
+    public function sendMessage(string $number, string $message, array $media = [], ?string $account = 'printworks'): array
     {
         $normalizedNumber = preg_replace('/\D/', '', $number);
+        $account = self::normalizeAccount($account);
 
         try {
-            $body = array_merge(['number' => $normalizedNumber, 'message' => $message], $media);
+            $body = array_merge([
+                'number' => $normalizedNumber,
+                'message' => $message,
+                'account' => $account,
+            ], $media);
             // PDFs / media need a longer timeout than plain text
             $timeout = ! empty($media['media_base64']) ? 90 : 15;
             $response = $this->client()->timeout($timeout)->post($this->baseUrl().'/send', $body);
@@ -389,26 +419,34 @@ class WhatsappService
         }
     }
 
-    public function logout(): array
+    public function logout(?string $account = 'printworks'): array
     {
+        $account = self::normalizeAccount($account);
+
         try {
-            $response = $this->client()->post($this->baseUrl().'/logout');
+            $response = $this->client()->post($this->baseUrl().'/logout', [
+                'account' => $account,
+            ]);
 
             if ($response->failed()) {
                 return [
                     'success' => false,
                     'message' => $response->json('error') ?? 'Failed to logout WhatsApp session.',
+                    'account' => $account,
                 ];
             }
 
             return [
                 'success' => true,
                 'message' => $response->json('message') ?? 'Logged out successfully.',
+                'account' => $account,
             ];
         } catch (\Throwable $e) {
             Log::warning('WhatsApp logout failed: '.$e->getMessage());
 
-            return $this->serviceUnavailableResponse();
+            return array_merge($this->serviceUnavailableResponse(), [
+                'account' => $account,
+            ]);
         }
     }
 
@@ -591,6 +629,8 @@ class WhatsappService
             }
         }
 
+        $this->ensureMessageAccountColumn();
+
         $attrs = [
             'direction'      => $direction,
             'phone_number'   => $rawFrom,
@@ -602,6 +642,9 @@ class WhatsappService
             'media_filename' => $data['media_filename'] ?? null,
             'media_mimetype' => $data['media_mimetype'] ?? null,
         ];
+        if (Schema::hasColumn('whatsapp_messages', 'account')) {
+            $attrs['account'] = self::normalizeAccount($data['account'] ?? 'printworks');
+        }
 
         if (! empty($data['timestamp'])) {
             try {
@@ -614,6 +657,25 @@ class WhatsappService
         }
 
         return WhatsappMessage::create($attrs);
+    }
+
+    private function ensureMessageAccountColumn(): void
+    {
+        if (! Schema::hasTable('whatsapp_messages')) {
+            return;
+        }
+        if (Schema::hasColumn('whatsapp_messages', 'account')) {
+            return;
+        }
+
+        try {
+            Schema::table('whatsapp_messages', function ($table) {
+                $table->string('account', 32)->default('printworks')->after('phone_number');
+                $table->index('account');
+            });
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp account column ensure failed: '.$e->getMessage());
+        }
     }
 
     private function guessExtension(string $mime, string $filename): string

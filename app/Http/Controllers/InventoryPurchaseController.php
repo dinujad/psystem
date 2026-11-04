@@ -10,8 +10,10 @@ use App\InventoryPurchaseLine;
 use App\InventoryPurchasePayment;
 use App\InventoryUnit;
 use App\Utils\RawMaterialAccounting;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Yajra\DataTables\Facades\DataTables;
 
@@ -24,11 +26,22 @@ class InventoryPurchaseController extends Controller
             || auth()->user()->can('purchase.view')
             || auth()->user()->can('send_notifications')
             || auth()->user()->can('production.access')
+            || $this->hasAccountingAccess()
         ) {
             return;
         }
 
         abort(403, 'Unauthorized.');
+    }
+
+    private function hasAccountingAccess(): bool
+    {
+        $user = auth()->user();
+
+        return $user->can('accounting.map_transactions')
+            || $user->can('accounting.manage_accounts')
+            || $user->can('accounting.chart_of_accounts.index')
+            || $user->can('accounting.journal_entries.index');
     }
 
     private function canCreate(): bool
@@ -217,6 +230,7 @@ class InventoryPurchaseController extends Controller
             'amount_paid' => ['nullable', 'numeric', 'min:0'],
             'payment_method' => ['nullable', 'in:cash,card,cheque,bank'],
             'cheque_number' => ['nullable', 'string', 'max:60'],
+            'cheque_date' => ['nullable', 'date'],
             'reference_no' => ['nullable', 'string', 'max:80'],
             'payment_attachment' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
             'accounting_deposit_to' => ['nullable', 'integer'],
@@ -232,7 +246,12 @@ class InventoryPurchaseController extends Controller
         $paymentMethod = $data['payment_method'] ?? 'cash';
         $paymentFile = null;
         if ($paidNowCheck > 0) {
-            $this->assertPaymentDetails($paymentMethod, $data['cheque_number'] ?? null, $data['reference_no'] ?? null);
+            $this->assertPaymentDetails(
+                $paymentMethod,
+                $data['cheque_number'] ?? null,
+                $data['reference_no'] ?? null,
+                $data['cheque_date'] ?? null
+            );
             if ($paymentMethod === 'bank') {
                 $paymentFile = $this->storePaymentFile($request);
             }
@@ -295,6 +314,7 @@ class InventoryPurchaseController extends Controller
             if ($paidNow > 0) {
                 $this->recordPayment($purchase, $paidNow, $data['purchase_date'], $paymentMethod, 'Paid when purchase was saved', [
                     'cheque_number' => $paymentMethod === 'cheque' ? ($data['cheque_number'] ?? null) : null,
+                    'cheque_date' => $paymentMethod === 'cheque' ? ($data['cheque_date'] ?? null) : null,
                     'reference_no' => $paymentMethod === 'bank' ? ($data['reference_no'] ?? null) : null,
                     'attachment' => $paymentFile,
                 ]);
@@ -339,6 +359,7 @@ class InventoryPurchaseController extends Controller
                     'paid_on' => $payment->paid_on ? $payment->paid_on->format('d M Y') : '',
                     'method' => $payment->method,
                     'cheque_number' => $payment->cheque_number,
+                    'cheque_date' => $payment->cheque_date ? $payment->cheque_date->format('d M Y') : '',
                     'reference_no' => $payment->reference_no,
                     'attachment' => $payment->attachment ? asset('uploads/raw-material-payments/'.$payment->attachment) : null,
                     'amount' => number_format((float) $payment->amount, 2),
@@ -346,6 +367,53 @@ class InventoryPurchaseController extends Controller
                 ];
             })->values(),
         ]);
+    }
+
+    public function dueCheques()
+    {
+        $this->checkAccess();
+        $this->ensurePaymentDetailColumns();
+
+        $businessId = (int) request()->session()->get('user.business_id');
+        $today = now()->toDateString();
+        $filter = request()->get('filter', 'due'); // due | upcoming | all
+
+        $query = InventoryPurchasePayment::query()
+            ->join('inventory_purchases', 'inventory_purchases.id', '=', 'inventory_purchase_payments.inventory_purchase_id')
+            ->leftJoin('contacts', 'contacts.id', '=', 'inventory_purchases.contact_id')
+            ->where('inventory_purchases.business_id', $businessId)
+            ->where('inventory_purchase_payments.method', 'cheque')
+            ->whereNotNull('inventory_purchase_payments.cheque_date')
+            ->select([
+                'inventory_purchase_payments.id',
+                'inventory_purchase_payments.amount',
+                'inventory_purchase_payments.cheque_number',
+                'inventory_purchase_payments.cheque_date',
+                'inventory_purchase_payments.paid_on',
+                'inventory_purchases.id as purchase_id',
+                'inventory_purchases.ref_no',
+                'inventory_purchases.purchase_date',
+                DB::raw("COALESCE(contacts.supplier_business_name, contacts.name, '—') as supplier_name"),
+            ])
+            ->orderBy('inventory_purchase_payments.cheque_date')
+            ->orderBy('inventory_purchase_payments.id');
+
+        if ($filter === 'due') {
+            $query->whereDate('inventory_purchase_payments.cheque_date', '<=', $today);
+        } elseif ($filter === 'upcoming') {
+            $query->whereDate('inventory_purchase_payments.cheque_date', '>', $today);
+        }
+
+        $cheques = $query->get();
+        $dueCount = InventoryPurchasePayment::query()
+            ->join('inventory_purchases', 'inventory_purchases.id', '=', 'inventory_purchase_payments.inventory_purchase_id')
+            ->where('inventory_purchases.business_id', $businessId)
+            ->where('inventory_purchase_payments.method', 'cheque')
+            ->whereNotNull('inventory_purchase_payments.cheque_date')
+            ->whereDate('inventory_purchase_payments.cheque_date', '<=', $today)
+            ->count();
+
+        return view('inventory.purchases.due_cheques', compact('cheques', 'filter', 'dueCount', 'today'));
     }
 
     public function storePayment(Request $request, InventoryPurchase $purchase)
@@ -361,11 +429,17 @@ class InventoryPurchaseController extends Controller
             'paid_on' => ['required', 'date'],
             'method' => ['required', 'in:cash,card,cheque,bank'],
             'cheque_number' => ['nullable', 'string', 'max:60'],
+            'cheque_date' => ['nullable', 'date'],
             'reference_no' => ['nullable', 'string', 'max:80'],
             'payment_attachment' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:5120'],
             'note' => ['nullable', 'string', 'max:200'],
         ]);
-        $this->assertPaymentDetails($data['method'], $data['cheque_number'] ?? null, $data['reference_no'] ?? null);
+        $this->assertPaymentDetails(
+            $data['method'],
+            $data['cheque_number'] ?? null,
+            $data['reference_no'] ?? null,
+            $data['cheque_date'] ?? null
+        );
 
         $due = $purchase->amountDue();
         if ((float) $data['amount'] > $due + 0.009) {
@@ -376,6 +450,7 @@ class InventoryPurchaseController extends Controller
 
         $this->recordPayment($purchase, (float) $data['amount'], $data['paid_on'], $data['method'], $data['note'] ?? null, [
             'cheque_number' => $data['method'] === 'cheque' ? ($data['cheque_number'] ?? null) : null,
+            'cheque_date' => $data['method'] === 'cheque' ? ($data['cheque_date'] ?? null) : null,
             'reference_no' => $data['method'] === 'bank' ? ($data['reference_no'] ?? null) : null,
             'attachment' => $data['method'] === 'bank' ? $this->storePaymentFile($request) : null,
         ]);
@@ -430,12 +505,19 @@ class InventoryPurchaseController extends Controller
         }
     }
 
-    private function assertPaymentDetails(string $method, ?string $chequeNumber, ?string $referenceNo): void
+    private function assertPaymentDetails(string $method, ?string $chequeNumber, ?string $referenceNo, ?string $chequeDate = null): void
     {
-        if ($method === 'cheque' && trim((string) $chequeNumber) === '') {
-            throw ValidationException::withMessages([
-                'cheque_number' => 'Enter the cheque number.',
-            ]);
+        if ($method === 'cheque') {
+            $errors = [];
+            if (trim((string) $chequeNumber) === '') {
+                $errors['cheque_number'] = 'Enter the cheque number.';
+            }
+            if (trim((string) $chequeDate) === '') {
+                $errors['cheque_date'] = 'Enter the cheque date.';
+            }
+            if ($errors !== []) {
+                throw ValidationException::withMessages($errors);
+            }
         }
         if ($method === 'bank' && trim((string) $referenceNo) === '') {
             throw ValidationException::withMessages([
@@ -463,19 +545,65 @@ class InventoryPurchaseController extends Controller
 
     private function recordPayment(InventoryPurchase $purchase, float $amount, $paidOn, string $method, ?string $note, array $extra = []): void
     {
-        $payment = InventoryPurchasePayment::create([
+        $this->ensurePaymentDetailColumns();
+
+        $payload = [
             'inventory_purchase_id' => $purchase->id,
             'amount' => round($amount, 4),
             'paid_on' => $paidOn,
             'method' => $method,
-            'cheque_number' => $extra['cheque_number'] ?? null,
-            'reference_no' => $extra['reference_no'] ?? null,
-            'attachment' => $extra['attachment'] ?? null,
             'note' => $note,
             'created_by' => auth()->id(),
-        ]);
+        ];
+
+        if (Schema::hasColumn('inventory_purchase_payments', 'cheque_number')) {
+            $payload['cheque_number'] = $extra['cheque_number'] ?? null;
+        }
+        if (Schema::hasColumn('inventory_purchase_payments', 'cheque_date')) {
+            $payload['cheque_date'] = $extra['cheque_date'] ?? null;
+        }
+        if (Schema::hasColumn('inventory_purchase_payments', 'reference_no')) {
+            $payload['reference_no'] = $extra['reference_no'] ?? null;
+        }
+        if (Schema::hasColumn('inventory_purchase_payments', 'attachment')) {
+            $payload['attachment'] = $extra['attachment'] ?? null;
+        }
+
+        $payment = InventoryPurchasePayment::create($payload);
         $purchase->refreshPaymentStatus();
         RawMaterialAccounting::syncPayment($purchase->fresh(), $payment);
+    }
+
+    /**
+     * Production may not have run the cheque/bank payment migration yet.
+     */
+    private function ensurePaymentDetailColumns(): void
+    {
+        if (! Schema::hasTable('inventory_purchase_payments')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('inventory_purchase_payments', 'cheque_number')) {
+            Schema::table('inventory_purchase_payments', function (Blueprint $table) {
+                $table->string('cheque_number', 60)->nullable()->after('method');
+            });
+        }
+        if (! Schema::hasColumn('inventory_purchase_payments', 'cheque_date')) {
+            Schema::table('inventory_purchase_payments', function (Blueprint $table) {
+                $table->date('cheque_date')->nullable()->after('cheque_number');
+            });
+        }
+        if (! Schema::hasColumn('inventory_purchase_payments', 'reference_no')) {
+            Schema::table('inventory_purchase_payments', function (Blueprint $table) {
+                $after = Schema::hasColumn('inventory_purchase_payments', 'cheque_date') ? 'cheque_date' : 'cheque_number';
+                $table->string('reference_no', 80)->nullable()->after($after);
+            });
+        }
+        if (! Schema::hasColumn('inventory_purchase_payments', 'attachment')) {
+            Schema::table('inventory_purchase_payments', function (Blueprint $table) {
+                $table->string('attachment')->nullable()->after('reference_no');
+            });
+        }
     }
 
     /**

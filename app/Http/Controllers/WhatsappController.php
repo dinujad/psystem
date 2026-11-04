@@ -343,18 +343,18 @@ class WhatsappController extends Controller
         return response()->json(['messages' => $messages]);
     }
 
-    public function qr()
+    public function qr(Request $request)
     {
         $this->requireWhatsappAdmin();
 
-        return response()->json($this->whatsappService->getQrCode());
+        return response()->json($this->whatsappService->getQrCode($request->input('account', 'printworks')));
     }
 
-    public function status()
+    public function status(Request $request)
     {
         $this->requireWhatsappAdmin();
 
-        return response()->json($this->whatsappService->getStatus());
+        return response()->json($this->whatsappService->getStatus($request->input('account', 'printworks')));
     }
 
     public function syncStatus()
@@ -372,13 +372,16 @@ class WhatsappController extends Controller
         $validated = $request->validate([
             'number' => ['required', 'string', 'regex:/^\d{8,15}$/'],
             'message' => ['required', 'string', 'max:4096'],
+            'account' => ['nullable', 'in:printworks,safetysign'],
         ], [
             'number.regex' => 'Phone number must be in international format without + or spaces (8–15 digits).',
         ]);
 
         $result = $this->whatsappService->sendMessage(
             $validated['number'],
-            $validated['message']
+            $validated['message'],
+            [],
+            $validated['account'] ?? 'printworks'
         );
 
         $status = ! empty($result['success']) ? 200 : 422;
@@ -386,11 +389,12 @@ class WhatsappController extends Controller
         return response()->json($result, $status);
     }
 
-    public function logout()
+    public function logout(Request $request)
     {
         $this->requireWhatsappAdmin();
 
-        $result = $this->whatsappService->logout();
+        $account = $request->input('account', 'printworks');
+        $result = $this->whatsappService->logout($account);
 
         return response()->json($result);
     }
@@ -439,7 +443,15 @@ class WhatsappController extends Controller
 
         $validated = $request->validate([
             'phone' => ['required', 'string'],
+            'account' => ['nullable', 'in:printworks,safetysign'],
         ]);
+
+        $account = WhatsappService::normalizeAccount($validated['account'] ?? 'printworks');
+
+        // Safety Sign is send-only for brand docs — never wipe the PrintWorks inbox.
+        if ($account !== 'printworks') {
+            return response()->json(['success' => true, 'sync' => ['cleared' => false, 'skipped' => true, 'account' => $account]]);
+        }
 
         $sync = $this->whatsappService->syncInboxToLinkedAccount([
             'status' => 'connected',
@@ -469,7 +481,11 @@ class WhatsappController extends Controller
             'media_mimetype' => ['nullable', 'string'],
             'media_filename' => ['nullable', 'string'],
             'media_base64'   => ['nullable', 'string'],
+            'account'        => ['nullable', 'in:printworks,safetysign'],
         ]);
+
+        $account = WhatsappService::normalizeAccount($validated['account'] ?? 'printworks');
+        $validated['account'] = $account;
 
         if (! $this->whatsappService->shouldAcceptIncomingMessage($validated)) {
             return response()->json(['success' => true, 'skipped' => true]);
@@ -481,9 +497,9 @@ class WhatsappController extends Controller
             return response()->json(['success' => true, 'skipped' => true]);
         }
 
-        // Only run bot automation for live incoming messages
+        // Bot replies only for the main PrintWorks inbox account
         $direction = $validated['direction'] ?? 'in';
-        if ($direction === 'in') {
+        if ($direction === 'in' && $account === 'printworks') {
             \App\Jobs\ProcessBotMessageJob::dispatch(
                 $validated['from'],
                 $validated['message'] ?? null
@@ -606,6 +622,13 @@ class WhatsappController extends Controller
         )
             ->groupBy('phone_number')
             ->orderByDesc('last_at');
+
+        // Shared inbox is PrintWorks; Safety Sign is brand-send only.
+        if (\Illuminate\Support\Facades\Schema::hasColumn('whatsapp_messages', 'account')) {
+            $q->where(function ($inner) {
+                $inner->where('account', 'printworks')->orWhereNull('account');
+            });
+        }
 
         // Agents see only: (1) chats assigned to them, (2) unassigned/open chats.
         // Admins see everything.

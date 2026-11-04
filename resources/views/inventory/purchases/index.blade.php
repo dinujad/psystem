@@ -134,9 +134,15 @@ body #scrollable-container .rmp-page select option {
                 <option value="card">Card</option>
             </select>
         </div>
-        <div class="rmp-field" id="rmpPayCheque" style="display:none;">
-            <label>Cheque number</label>
-            <input type="text" id="rmpPayChequeNo" placeholder="Cheque number">
+        <div id="rmpPayCheque" style="display:none;">
+            <div class="rmp-field">
+                <label>Cheque number</label>
+                <input type="text" id="rmpPayChequeNo" placeholder="Cheque number">
+            </div>
+            <div class="rmp-field">
+                <label>Cheque date</label>
+                <input type="date" id="rmpPayChequeDate">
+            </div>
         </div>
         <div id="rmpPayBank" style="display:none;">
             <div class="rmp-field">
@@ -253,6 +259,7 @@ $('#rmpPaySave').on('click', function () {
     form.append('paid_on', $('#rmpPayDate').val());
     form.append('method', $('#rmpPayMethod').val());
     form.append('cheque_number', $('#rmpPayChequeNo').val());
+    form.append('cheque_date', $('#rmpPayChequeDate').val());
     form.append('reference_no', $('#rmpPayRefNo').val());
     form.append('note', $('#rmpPayNote').val());
     if ($('#rmpPayFile')[0].files[0]) {
@@ -298,7 +305,7 @@ $(document).on('click', '.rmp-view-pay', function (e) {
             html += '<table class="table table-bordered"><thead><tr><th>Date</th><th>Method</th><th>Details</th><th>Amount</th><th>Note</th></tr></thead><tbody>';
             data.payments.forEach(function (p) {
                 var details = '';
-                if (p.cheque_number) { details += 'Cheque ' + p.cheque_number; }
+                if (p.cheque_number) { details += 'Cheque ' + p.cheque_number + (p.cheque_date ? ' · ' + p.cheque_date : ''); }
                 if (p.reference_no) { details += (details ? '<br>' : '') + 'Ref ' + p.reference_no; }
                 if (p.attachment) { details += (details ? '<br>' : '') + '<a href="' + p.attachment + '" target="_blank">Open slip</a>'; }
                 html += '<tr><td>' + p.paid_on + '</td><td>' + p.method + '</td><td>' + (details || '—') + '</td><td>Rs. ' + p.amount + '</td><td>' + (p.note || '') + '</td></tr>';

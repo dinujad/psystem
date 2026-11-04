@@ -309,7 +309,53 @@
                                     </div>
                                 </div>
                             </div>
+
+                            @if(!empty($canSeeDueCheques))
+                            <a href="{{ route('inventory.purchases.due_cheques') }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="tw-p-4 sm:tw-p-5">
+                                    <div class="tw-flex tw-items-center tw-gap-4">
+                                        <div class="pw-stat-icon" style="background:#fef3c7;color:#b45309;">
+                                            <svg aria-hidden="true" class="tw-w-6 tw-h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                                <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                                                <path d="M3 5m0 3a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3z"/>
+                                                <path d="M3 10h18"/>
+                                                <path d="M7 15h.01"/>
+                                                <path d="M11 15h2"/>
+                                            </svg>
+                                        </div>
+                                        <div class="tw-flex-1 tw-min-w-0">
+                                            <p class="pw-stat-label">Due cheques</p>
+                                            <p class="pw-stat-value">{{ (int) ($dueChequeCount ?? 0) }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </a>
+                            @endif
                     </div>{{-- end pw-stats-grid --}}
+                </div>
+            @elseif(!empty($canSeeDueCheques))
+                <div class="tw-px-5 pw-dash-body" style="margin-top:12px;">
+                    <div class="tw-grid tw-grid-cols-2 tw-gap-3 md:tw-gap-4 lg:tw-grid-cols-4 pw-stats-grid">
+                        <a href="{{ route('inventory.purchases.due_cheques') }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
+                            <div class="tw-p-4 sm:tw-p-5">
+                                <div class="tw-flex tw-items-center tw-gap-4">
+                                    <div class="pw-stat-icon" style="background:#fef3c7;color:#b45309;">
+                                        <svg aria-hidden="true" class="tw-w-6 tw-h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                                            <path d="M3 5m0 3a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3z"/>
+                                            <path d="M3 10h18"/>
+                                            <path d="M7 15h.01"/>
+                                            <path d="M11 15h2"/>
+                                        </svg>
+                                    </div>
+                                    <div class="tw-flex-1 tw-min-w-0">
+                                        <p class="pw-stat-label">Due cheques</p>
+                                        <p class="pw-stat-value">{{ (int) ($dueChequeCount ?? 0) }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
                 </div>
             @endif
 

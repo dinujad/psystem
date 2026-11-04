@@ -6,6 +6,7 @@ use App\BusinessLocation;
 use App\Charts\CommonChart;
 use App\Currency;
 use App\EmployeeWeeklyPlan;
+use App\InventoryPurchasePayment;
 use App\Media;
 use App\ProductionJob;
 use App\ProductionStageEmployee;
@@ -19,6 +20,7 @@ use App\Utils\TransactionUtil;
 use App\Utils\ProductUtil;
 use App\Utils\Util;
 use App\VariationLocationDetails;
+use Illuminate\Support\Facades\Schema;
 use Datatables;
 use DB;
 use Illuminate\Http\Request;
@@ -112,8 +114,11 @@ class HomeController extends Controller
             \Log::warning('home work widget failed: '.$e->getMessage());
         }
 
+        $canSeeDueCheques = $this->canSeeDueCheques($user, $is_admin);
+        $dueChequeCount = $canSeeDueCheques ? $this->countDuePurchaseCheques((int) $business_id) : 0;
+
         if (! auth()->user()->can('dashboard.data')) {
-            return view('home.index', compact('is_admin', 'todoWidget', 'attendanceToday', 'myOt', 'myWork'));
+            return view('home.index', compact('is_admin', 'todoWidget', 'attendanceToday', 'myOt', 'myWork', 'canSeeDueCheques', 'dueChequeCount'));
         }
 
         $fy = $this->businessUtil->getCurrentFinancialYear($business_id);
@@ -290,8 +295,45 @@ class HomeController extends Controller
         return view('home.index', compact(
             'sells_chart_1', 'sells_chart_2', 'widgets', 'all_locations',
             'common_settings', 'is_admin', 'showProduction', 'productionStages',
-            'activeJobs', 'stageCounts', 'todoWidget', 'attendanceToday', 'myOt', 'myWork'
+            'activeJobs', 'stageCounts', 'todoWidget', 'attendanceToday', 'myOt', 'myWork',
+            'canSeeDueCheques', 'dueChequeCount'
         ));
+    }
+
+    private function canSeeDueCheques($user, bool $isAdmin): bool
+    {
+        if ($isAdmin) {
+            return true;
+        }
+
+        return $user->can('accounting.map_transactions')
+            || $user->can('accounting.manage_accounts')
+            || $user->can('accounting.chart_of_accounts.index')
+            || $user->can('accounting.journal_entries.index');
+    }
+
+    private function countDuePurchaseCheques(int $businessId): int
+    {
+        try {
+            if (
+                ! Schema::hasTable('inventory_purchase_payments')
+                || ! Schema::hasColumn('inventory_purchase_payments', 'cheque_date')
+            ) {
+                return 0;
+            }
+
+            return (int) InventoryPurchasePayment::query()
+                ->join('inventory_purchases', 'inventory_purchases.id', '=', 'inventory_purchase_payments.inventory_purchase_id')
+                ->where('inventory_purchases.business_id', $businessId)
+                ->where('inventory_purchase_payments.method', 'cheque')
+                ->whereNotNull('inventory_purchase_payments.cheque_date')
+                ->whereDate('inventory_purchase_payments.cheque_date', '<=', now()->toDateString())
+                ->count();
+        } catch (\Throwable $e) {
+            \Log::warning('home due cheque count failed: '.$e->getMessage());
+
+            return 0;
+        }
     }
 
     private function buildTodoWidget($user, int $businessId): ?array

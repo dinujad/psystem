@@ -15,7 +15,8 @@
     <section class="content no-print">
 
         @component('components.widget', ['class' => 'box-primary', 'title' => ''])
-            @if (auth()->user()->can('direct_sell.view') ||
+            @if (auth()->user()->can('sell.view') ||
+    auth()->user()->can('direct_sell.view') ||
     auth()->user()->can('view_own_sell_only') ||
     auth()->user()->can('view_commission_agent_sell'))
                 @php

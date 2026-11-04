@@ -14,6 +14,7 @@ class InventoryPurchasePayment extends Model
         'paid_on',
         'method',
         'cheque_number',
+        'cheque_date',
         'reference_no',
         'attachment',
         'note',
@@ -24,6 +25,7 @@ class InventoryPurchasePayment extends Model
     protected $casts = [
         'amount' => 'float',
         'paid_on' => 'date',
+        'cheque_date' => 'date',
     ];
 
     public function purchase()

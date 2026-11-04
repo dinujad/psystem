@@ -31,8 +31,36 @@ const LARAVEL_CONNECTED_WEBHOOK_URL = process.env.LARAVEL_CONNECTED_WEBHOOK_URL
 const AUTH_DIR = path.join(__dirname, 'auth_session');
 const LID_MAP_FILE = path.join(__dirname, 'lid_map.json');
 const CONTACT_STORE_FILE = path.join(__dirname, 'contact_store.json');
+const { createAccountSession } = require('./account-session');
 
 const logger = pino({ level: 'info' });
+
+const ACCOUNT_IDS = ['printworks', 'safetysign'];
+const DEFAULT_ACCOUNT = 'printworks';
+
+function resolveAccountId(req) {
+  const raw = String(
+    (req.query && req.query.account) ||
+    (req.body && req.body.account) ||
+    DEFAULT_ACCOUNT
+  ).toLowerCase().trim();
+  return ACCOUNT_IDS.includes(raw) ? raw : DEFAULT_ACCOUNT;
+}
+
+// Safety Sign (and future brands) — separate Baileys session + QR
+const brandAccounts = {
+  safetysign: createAccountSession({
+    id: 'safetysign',
+    authDir: path.join(__dirname, 'auth_session_safetysign'),
+    apiKey: API_KEY,
+    laravelWebhookUrl: LARAVEL_WEBHOOK_URL,
+    laravelConnectedWebhookUrl: LARAVEL_CONNECTED_WEBHOOK_URL,
+    log: (msg) => {
+      logger.info(msg);
+      console.log(`[WhatsApp] ${msg}`);
+    },
+  }),
+};
 
 let sock = null;
 let currentQr = null;
@@ -424,7 +452,7 @@ async function notifyLaravelConnected() {
     const response = await fetch(LARAVEL_CONNECTED_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
-      body: JSON.stringify({ phone }),
+      body: JSON.stringify({ phone, account: DEFAULT_ACCOUNT }),
     });
     if (!response.ok) {
       const body = await response.text();
@@ -1154,10 +1182,20 @@ app.use(express.json({ limit: '64mb' }));
 app.use(express.urlencoded({ limit: '64mb', extended: true }));
 
 app.get('/health', (req, res) => {
+  const accounts = {
+    printworks: {
+      status: connectionStatus,
+      phone: getLinkedPhone(),
+    },
+  };
+  for (const [id, account] of Object.entries(brandAccounts)) {
+    accounts[id] = account.getStatusPayload();
+  }
   res.json({
     ok: true,
     status: connectionStatus,
     phone: getLinkedPhone(),
+    accounts,
     lid_map_size: Object.keys(lidToRealJid).length,
     pending_messages: pendingMessages.length,
     history_sync_queue: historySyncQueue.length,
@@ -1168,13 +1206,22 @@ app.get('/health', (req, res) => {
 });
 
 app.get('/qr', authMiddleware, async (req, res) => {
+  const accountId = resolveAccountId(req);
+  if (accountId !== DEFAULT_ACCOUNT && brandAccounts[accountId]) {
+    try {
+      return res.json(await brandAccounts[accountId].getQrPayload());
+    } catch (error) {
+      return res.status(500).json({ error: 'Failed to generate QR image.' });
+    }
+  }
+
   if (connectionStatus === 'connected') {
-    return res.json({ status: 'connected', phone: getLinkedPhone() });
+    return res.json({ status: 'connected', phone: getLinkedPhone(), account: DEFAULT_ACCOUNT });
   }
   if (currentQr) {
     try {
       const qr = await qrToBase64Png(currentQr);
-      return res.json({ status: 'waiting_for_scan', qr });
+      return res.json({ status: 'waiting_for_scan', qr, account: DEFAULT_ACCOUNT });
     } catch (error) {
       return res.status(500).json({ error: 'Failed to generate QR image.' });
     }
@@ -1183,15 +1230,20 @@ app.get('/qr', authMiddleware, async (req, res) => {
   if (!isStarting && connectionStatus !== 'connecting') {
     scheduleReconnect(100, 'qr-request');
   }
-  return res.json({ status: connectionStatus === 'connecting' ? 'waiting' : 'waiting' });
+  return res.json({ status: 'waiting', account: DEFAULT_ACCOUNT });
 });
 
 app.get('/status', authMiddleware, (req, res) => {
-  res.json({ status: connectionStatus, phone: getLinkedPhone() });
+  const accountId = resolveAccountId(req);
+  if (accountId !== DEFAULT_ACCOUNT && brandAccounts[accountId]) {
+    return res.json(brandAccounts[accountId].getStatusPayload());
+  }
+  res.json({ status: connectionStatus, phone: getLinkedPhone(), account: DEFAULT_ACCOUNT });
 });
 
 app.post('/send', authMiddleware, async (req, res) => {
   const { number, message, media_type, media_base64, media_mimetype, media_filename } = req.body || {};
+  const accountId = resolveAccountId(req);
 
   // Require either a text message or media attachment
   if (!number || (!message && !media_base64)) {
@@ -1205,13 +1257,29 @@ app.post('/send', authMiddleware, async (req, res) => {
     });
   }
 
+  if (accountId !== DEFAULT_ACCOUNT && brandAccounts[accountId]) {
+    try {
+      const result = await brandAccounts[accountId].sendMessage({
+        number: normalizedNumber,
+        message,
+        media_type,
+        media_base64,
+        media_mimetype,
+        media_filename,
+      });
+      return res.json(result);
+    } catch (error) {
+      const status = error.status || 500;
+      logState(`[${accountId}] Send failed: ${error.message}`);
+      return res.status(status).json({ error: error.message || 'Failed to send message.' });
+    }
+  }
+
   if (connectionStatus !== 'connected' || !sock) {
     return res.status(503).json({ error: 'WhatsApp is not connected.' });
   }
 
   try {
-    const { media_type, media_base64, media_mimetype, media_filename } = req.body || {};
-
     let waPayload;
 
     if (media_type && media_base64) {
@@ -1244,7 +1312,7 @@ app.post('/send', authMiddleware, async (req, res) => {
 
     const result = await deliverMessage(normalizedNumber, waPayload);
 
-    return res.json({ success: true, message_id: result?.key?.id || null });
+    return res.json({ success: true, message_id: result?.key?.id || null, account: DEFAULT_ACCOUNT });
   } catch (error) {
     logState(`Send failed: ${error.message}`);
     return res.status(500).json({ error: 'Failed to send message.', detail: error.message });
@@ -1509,6 +1577,16 @@ app.post('/sync-contacts', authMiddleware, async (req, res) => {
 });
 
 app.post('/logout', authMiddleware, async (req, res) => {
+  const accountId = resolveAccountId(req);
+  if (accountId !== DEFAULT_ACCOUNT && brandAccounts[accountId]) {
+    try {
+      const result = await brandAccounts[accountId].logout();
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ error: 'Logout failed.', detail: error.message });
+    }
+  }
+
   try {
     intentionalLogout = true;
     if (reconnectTimer) {
@@ -1532,7 +1610,7 @@ app.post('/logout', authMiddleware, async (req, res) => {
     await new Promise((r) => setTimeout(r, 800));
     clearAuthSession();
 
-    res.json({ success: true, message: 'Logged out. A fresh QR will be generated.' });
+    res.json({ success: true, message: 'Logged out. A fresh QR will be generated.', account: DEFAULT_ACCOUNT });
 
     setTimeout(() => {
       intentionalLogout = false;
@@ -1551,6 +1629,9 @@ loadContactStore();
 const server = app.listen(PORT, () => {
   logState(`Service listening on port ${PORT}`);
   startWhatsApp();
+  for (const account of Object.values(brandAccounts)) {
+    account.start().catch((e) => logState(`[${account.id}] boot start failed: ${e.message}`));
+  }
 });
 
 // If the port is already taken, another instance is already running. Exit

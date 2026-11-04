@@ -144,9 +144,17 @@ body .rmp-modal textarea::placeholder {
                     </select>
                 </div>
             </div>
-            <div class="rmp-field" id="rmpCreateCheque" style="margin-top:12px;display:none;">
-                <label>Cheque number</label>
-                <input type="text" name="cheque_number" value="{{ old('cheque_number') }}" placeholder="Cheque number">
+            <div id="rmpCreateCheque" style="margin-top:12px;display:none;">
+                <div class="rmp-grid">
+                    <div class="rmp-field">
+                        <label>Cheque number</label>
+                        <input type="text" name="cheque_number" value="{{ old('cheque_number') }}" placeholder="Cheque number">
+                    </div>
+                    <div class="rmp-field">
+                        <label>Cheque date</label>
+                        <input type="date" name="cheque_date" value="{{ old('cheque_date') }}">
+                    </div>
+                </div>
             </div>
             <div id="rmpCreateBank" style="margin-top:12px;display:none;">
                 <div class="rmp-grid">
@@ -165,6 +173,12 @@ body .rmp-modal textarea::placeholder {
                 <textarea name="notes" rows="2" placeholder="Optional">{{ old('notes') }}</textarea>
             </div>
             @error('amount_paid')
+                <p style="color:#b91c1c;font-weight:700;margin-top:8px;">{{ $message }}</p>
+            @enderror
+            @error('cheque_number')
+                <p style="color:#b91c1c;font-weight:700;margin-top:8px;">{{ $message }}</p>
+            @enderror
+            @error('cheque_date')
                 <p style="color:#b91c1c;font-weight:700;margin-top:8px;">{{ $message }}</p>
             @enderror
         </div>

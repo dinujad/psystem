@@ -11,6 +11,7 @@ class WhatsappMessage extends Model
     protected $fillable = [
         'direction',
         'phone_number',
+        'account',
         'message',
         'status',
         'read_at',

@@ -295,7 +295,8 @@ class QuotationSmsNotifier
         int $businessId,
         string $docType
     ): bool {
-        $sent = $this->linkedWhatsapp->send($mobile, $message);
+        $documentBrand = strtolower(trim((string) ($transaction->document_brand ?? 'printworks')));
+        $sent = $this->linkedWhatsapp->send($mobile, $message, [], $documentBrand);
         if ($sent) {
             $this->util->activityLog(
                 $transaction,
@@ -304,6 +305,7 @@ class QuotationSmsNotifier
                 [
                     'phone' => LinkedWhatsappSender::normalizePhone($mobile),
                     'pdf' => false,
+                    'whatsapp_account' => LinkedWhatsappSender::accountFromBrand($documentBrand),
                 ],
                 false,
                 $businessId

@@ -199,13 +199,17 @@ class SellUtil
             }
         }
 
-        if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
-            $sells->where('transactions.payment_status', request()->input('payment_status'));
-        } elseif (request()->input('payment_status') == 'overdue') {
-            $sells->whereIn('transactions.payment_status', ['due', 'partial'])
-                ->whereNotNull('transactions.pay_term_number')
-                ->whereNotNull('transactions.pay_term_type')
-                ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
+        // Tab already forces paid / unpaid — don't let the dropdown wipe the list
+        $tabType = request()->input('type');
+        if (! in_array($tabType, ['payment', 'invoice'], true)) {
+            if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
+                $sells->where('transactions.payment_status', request()->input('payment_status'));
+            } elseif (request()->input('payment_status') == 'overdue') {
+                $sells->whereIn('transactions.payment_status', ['due', 'partial'])
+                    ->whereNotNull('transactions.pay_term_number')
+                    ->whereNotNull('transactions.pay_term_type')
+                    ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
+            }
         }
 
 
@@ -355,6 +359,7 @@ class SellUtil
         }
 
         $with[] = 'payment_lines';
+        $with[] = 'journal_entry';
         if (!empty($with)) {
             $sells->with($with);
         }
@@ -567,7 +572,7 @@ class SellUtil
                 $count = count($methods);
                 $payment_method = '';
                 if ($count == 1) {
-                    $payment_method = $payment_types[$methods[0]];
+                    $payment_method = $payment_types[$methods[0]] ?? $methods[0];
                 } elseif ($count > 1) {
                     $payment_method = __('lang_v1.checkout_multi_pay');
                 }
@@ -707,13 +712,17 @@ class SellUtil
             }
         }
 
-        if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
-            $sells->where('transactions.payment_status', request()->input('payment_status'));
-        } elseif (request()->input('payment_status') == 'overdue') {
-            $sells->whereIn('transactions.payment_status', ['due', 'partial'])
-                ->whereNotNull('transactions.pay_term_number')
-                ->whereNotNull('transactions.pay_term_type')
-                ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
+        // Tab already forces paid / unpaid — don't let the dropdown wipe the list
+        $tabType = request()->input('type');
+        if (! in_array($tabType, ['payment', 'invoice'], true)) {
+            if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
+                $sells->where('transactions.payment_status', request()->input('payment_status'));
+            } elseif (request()->input('payment_status') == 'overdue') {
+                $sells->whereIn('transactions.payment_status', ['due', 'partial'])
+                    ->whereNotNull('transactions.pay_term_number')
+                    ->whereNotNull('transactions.pay_term_type')
+                    ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
+            }
         }
 
 
@@ -863,6 +872,7 @@ class SellUtil
         }
 
         $with[] = 'payment_lines';
+        $with[] = 'journal_entry';
         if (!empty($with)) {
             $sells->with($with);
         }
@@ -892,11 +902,16 @@ class SellUtil
                 return '<a class="btn btn-xs btn-warning" href="'.$url.'"><i class="fas fa-undo"></i> Refund</a>';
             })
             ->addColumn('chart_of_account', function ($row) {
-                if (!empty($row->journal_entry_id)) {
-                    return '<a href="' . url("accounting/chart_of_account/" . $row->journal_entry->chart_of_account->id . "/show") . '">
-                        <span>' . $row->journal_entry->chart_of_account->name . '</span> <i class="fas fa-external-link-alt"></i>
+                try {
+                    $account = ! empty($row->journal_entry_id) ? $row->journal_entry->chart_of_account : null;
+                    if (empty($account) || empty($account->id)) {
+                        return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
+                    }
+
+                    return '<a href="' . url('accounting/chart_of_account/' . $account->id . '/show') . '">
+                        <span>' . e($account->name) . '</span> <i class="fas fa-external-link-alt"></i>
                     </a>';
-                } else {
+                } catch (\Throwable $e) {
                     return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
                 }
             })
@@ -998,7 +1013,7 @@ class SellUtil
                 $count = count($methods);
                 $payment_method = '';
                 if ($count == 1) {
-                    $payment_method = $payment_types[$methods[0]];
+                    $payment_method = $payment_types[$methods[0]] ?? $methods[0];
                 } elseif ($count > 1) {
                     $payment_method = __('lang_v1.checkout_multi_pay');
                 }
@@ -1021,6 +1036,20 @@ class SellUtil
                 return $status;
             })
             ->editColumn('so_qty_remaining', '{{@format_quantity($so_qty_remaining)}}')
+            ->orderColumn('chart_of_account', 'transactions.transaction_date $1')
+            ->orderColumn('mapping', 'transactions.transaction_date $1')
+            ->orderColumn('checkbox', 'transactions.transaction_date $1')
+            ->orderColumn('refund_action', 'transactions.transaction_date $1')
+            ->orderColumn('total_remaining', 'transactions.transaction_date $1')
+            ->orderColumn('return_due', 'transactions.transaction_date $1')
+            ->filterColumn('chart_of_account', function ($query, $keyword) {
+            })
+            ->filterColumn('mapping', function ($query, $keyword) {
+            })
+            ->filterColumn('total_remaining', function ($query, $keyword) {
+            })
+            ->filterColumn('return_due', function ($query, $keyword) {
+            })
             ->setRowAttr([
                 'data-href' => function ($row) {
                     if (auth()->user()->can("sell.view") || auth()->user()->can("view_own_sell_only")) {
@@ -1241,13 +1270,17 @@ class SellUtil
             }
         }
 
-        if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
-            $sells->where('transactions.payment_status', request()->input('payment_status'));
-        } elseif (request()->input('payment_status') == 'overdue') {
-            $sells->whereIn('transactions.payment_status', ['due', 'partial'])
-                ->whereNotNull('transactions.pay_term_number')
-                ->whereNotNull('transactions.pay_term_type')
-                ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
+        // Tab already forces paid / unpaid — don't let the dropdown wipe the list
+        $tabType = request()->input('type');
+        if (! in_array($tabType, ['payment', 'invoice'], true)) {
+            if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
+                $sells->where('transactions.payment_status', request()->input('payment_status'));
+            } elseif (request()->input('payment_status') == 'overdue') {
+                $sells->whereIn('transactions.payment_status', ['due', 'partial'])
+                    ->whereNotNull('transactions.pay_term_number')
+                    ->whereNotNull('transactions.pay_term_type')
+                    ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
+            }
         }
 
 
@@ -1397,6 +1430,7 @@ class SellUtil
         }
 
         $with[] = 'payment_lines';
+        $with[] = 'journal_entry';
         if (!empty($with)) {
             $sells->with($with);
         }
@@ -1426,11 +1460,16 @@ class SellUtil
                 return '<a class="btn btn-xs btn-warning" href="'.$url.'"><i class="fas fa-undo"></i> Refund</a>';
             })
             ->addColumn('chart_of_account', function ($row) {
-                if (!empty($row->journal_entry_id)) {
-                    return '<a href="' . url("accounting/chart_of_account/" . $row->journal_entry->chart_of_account->id . "/show") . '">
-                        <span>' . $row->journal_entry->chart_of_account->name . '</span> <i class="fas fa-external-link-alt"></i>
+                try {
+                    $account = ! empty($row->journal_entry_id) ? $row->journal_entry->chart_of_account : null;
+                    if (empty($account) || empty($account->id)) {
+                        return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
+                    }
+
+                    return '<a href="' . url('accounting/chart_of_account/' . $account->id . '/show') . '">
+                        <span>' . e($account->name) . '</span> <i class="fas fa-external-link-alt"></i>
                     </a>';
-                } else {
+                } catch (\Throwable $e) {
                     return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
                 }
             })
@@ -1532,7 +1571,7 @@ class SellUtil
                 $count = count($methods);
                 $payment_method = '';
                 if ($count == 1) {
-                    $payment_method = $payment_types[$methods[0]];
+                    $payment_method = $payment_types[$methods[0]] ?? $methods[0];
                 } elseif ($count > 1) {
                     $payment_method = __('lang_v1.checkout_multi_pay');
                 }
@@ -1555,6 +1594,20 @@ class SellUtil
                 return $status;
             })
             ->editColumn('so_qty_remaining', '{{@format_quantity($so_qty_remaining)}}')
+            ->orderColumn('chart_of_account', 'transactions.transaction_date $1')
+            ->orderColumn('mapping', 'transactions.transaction_date $1')
+            ->orderColumn('checkbox', 'transactions.transaction_date $1')
+            ->orderColumn('refund_action', 'transactions.transaction_date $1')
+            ->orderColumn('total_remaining', 'transactions.transaction_date $1')
+            ->orderColumn('return_due', 'transactions.transaction_date $1')
+            ->filterColumn('chart_of_account', function ($query, $keyword) {
+            })
+            ->filterColumn('mapping', function ($query, $keyword) {
+            })
+            ->filterColumn('total_remaining', function ($query, $keyword) {
+            })
+            ->filterColumn('return_due', function ($query, $keyword) {
+            })
             ->setRowAttr([
                 'data-href' => function ($row) {
                     if (auth()->user()->can("sell.view") || auth()->user()->can("view_own_sell_only")) {

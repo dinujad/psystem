@@ -17,8 +17,9 @@
         sell_table = $('#sell_table').DataTable({
             processing: true,
             serverSide: true,
+            // Date column (after checkbox, mapping, chart_of_account) — never sort by synthetic mapping
             aaSorting: [
-                [1, 'desc']
+                [3, 'desc']
             ],
             "ajax": {
                 "url": "/accounting/transactions/sales?type={{ Request::get('type') }}",
@@ -59,16 +60,20 @@
             columns: [{
                     data: 'checkbox',
                     name: 'checkbox',
+                    orderable: false,
+                    searchable: false
                 },
                 {
                     data: 'mapping',
                     name: 'mapping',
                     orderable: false,
-                    "searchable": false
+                    searchable: false
                 },
                 {
                     data: 'chart_of_account',
-                    name: 'chart_of_account'
+                    name: 'chart_of_account',
+                    orderable: false,
+                    searchable: false
                 },
                 {
                     data: 'transaction_date',
@@ -96,7 +101,7 @@
                 {
                     data: 'payment_methods',
                     orderable: false,
-                    "searchable": false
+                    searchable: false
                 },
                 {
                     data: 'final_total',
@@ -105,25 +110,23 @@
                 {
                     data: 'total_paid',
                     name: 'total_paid',
-                    "searchable": false
+                    searchable: false
                 },
                 {
                     data: 'total_remaining',
-                    name: 'total_remaining'
+                    name: 'total_remaining',
+                    orderable: false,
+                    searchable: false
                 },
                 {
                     data: 'return_due',
                     orderable: false,
-                    "searchable": false
-                },
-                {
-                    data: 'shipping_status',
-                    name: 'shipping_status'
+                    searchable: false
                 },
                 {
                     data: 'total_items',
                     name: 'total_items',
-                    "searchable": false
+                    searchable: false
                 },
                 {
                     data: 'types_of_service_name',
@@ -150,10 +153,6 @@
                 {
                     data: 'staff_note',
                     name: 'staff_note'
-                },
-                {
-                    data: 'shipping_details',
-                    name: 'shipping_details'
                 },
                 {
                     data: 'table_name',

@@ -130,10 +130,14 @@ class RawMaterialAccounting
             'paid_on' => $payment->paid_on ? $payment->paid_on->format('Y-m-d').' 00:00:00' : now(),
             'created_by' => $payment->created_by,
             'payment_for' => $purchase->contact_id,
-            'cheque_number' => $payment->cheque_number,
             'note' => $payment->note,
-            'payment_ref_no' => $payment->reference_no ?: ('RMP-PAY-'.$payment->id),
+            'payment_ref_no' => (Schema::hasColumn('inventory_purchase_payments', 'reference_no') && ! empty($payment->reference_no))
+                ? $payment->reference_no
+                : ('RMP-PAY-'.$payment->id),
         ];
+        if (Schema::hasColumn('inventory_purchase_payments', 'cheque_number')) {
+            $payload['cheque_number'] = $payment->cheque_number;
+        }
 
         $existing = $payment->transaction_payment_id
             ? TransactionPayment::where('business_id', $purchase->business_id)->where('id', $payment->transaction_payment_id)->first()

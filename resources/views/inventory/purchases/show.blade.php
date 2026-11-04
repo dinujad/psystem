@@ -105,7 +105,7 @@ body #scrollable-container .rmp-page select {
                     <td>{{ $payment->paid_on?->format('d M Y') }}</td>
                     <td>{{ $payment->method }}</td>
                     <td>
-                        @if($payment->cheque_number) Cheque {{ $payment->cheque_number }}<br>@endif
+                        @if($payment->cheque_number) Cheque {{ $payment->cheque_number }}@if($payment->cheque_date) · {{ $payment->cheque_date->format('d M Y') }}@endif<br>@endif
                         @if($payment->reference_no) Ref {{ $payment->reference_no }}<br>@endif
                         @if($payment->attachment)
                             <a href="{{ asset('uploads/raw-material-payments/'.$payment->attachment) }}" target="_blank">Open slip</a>
@@ -143,7 +143,9 @@ body #scrollable-container .rmp-page select {
             </div>
             <div id="rmpShowCheque" style="display:none;grid-column:1 / -1;">
                 <label style="font-size:11px;font-weight:700;color:#6b7280;">Cheque number</label>
-                <input type="text" name="cheque_number" placeholder="Cheque number" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;">
+                <input type="text" name="cheque_number" placeholder="Cheque number" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;margin-bottom:8px;">
+                <label style="font-size:11px;font-weight:700;color:#6b7280;">Cheque date</label>
+                <input type="date" name="cheque_date" style="width:100%;border:1px solid #d1d5db;border-radius:8px;padding:8px;">
             </div>
             <div id="rmpShowBank" style="display:none;grid-column:1 / -1;">
                 <label style="font-size:11px;font-weight:700;color:#6b7280;">Transfer id / reference</label>
@@ -157,6 +159,9 @@ body #scrollable-container .rmp-page select {
             <p style="color:#b91c1c;font-weight:700;">{{ $message }}</p>
         @enderror
         @error('cheque_number')
+            <p style="color:#b91c1c;font-weight:700;">{{ $message }}</p>
+        @enderror
+        @error('cheque_date')
             <p style="color:#b91c1c;font-weight:700;">{{ $message }}</p>
         @enderror
         @error('reference_no')
