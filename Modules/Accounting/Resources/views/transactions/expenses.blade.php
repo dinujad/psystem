@@ -108,13 +108,6 @@
 @section('tab-javascript')
     <script src="{{ asset('js/payment.js?v=' . $asset_v) }}"></script>
     <script type="text/javascript">
-        function setTransactionId(id) {
-            var el = document.getElementById('transaction_id');
-            if (el) {
-                el.value = id;
-            }
-        }
-
         $(document).ready(function() {
             if ($('#expense_date_range').length && $.fn.daterangepicker) {
                 $('#expense_date_range').daterangepicker(

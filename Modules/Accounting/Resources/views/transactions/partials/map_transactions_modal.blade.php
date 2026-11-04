@@ -13,15 +13,20 @@
                 </button>
             </div>
 
-            <form action="{{ url('accounting/transactions/map_to_chart_of_account') }}" method="post">
+            <form action="{{ url('accounting/transactions/map_to_chart_of_account') }}" method="post" id="mapTransactionForm">
                 @csrf
 
                 <div class="modal-body">
                     <input type="hidden" name="map_type" value="{{ $map_type }}">
-
                     <input type="hidden" name="mapping_for" value="{{ $mapping_for }}">
+                    {{-- Must be Vue-bound: selecting an account re-renders the modal and would wipe a plain DOM .value --}}
+                    <input type="hidden" id="transaction_id" name="transaction_id" v-model="transaction_id" :value="transaction_id">
 
-                    <input type="hidden" id="transaction_id" name="transaction_id">
+                    <div class="form-group" v-if="!transaction_id">
+                        <div class="alert alert-warning" style="margin-bottom:0;">
+                            Open MAP again from the row so the transaction is selected.
+                        </div>
+                    </div>
 
                     <div class="form-group">
                         <label for="chart_of_account_id" class="control-label">{{ trans_choice('accounting::general.map_to', 1) }}</label>
@@ -48,7 +53,7 @@
 
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                    <button type="submit" class="btn btn-primary">Save changes</button>
+                    <button type="submit" class="btn btn-primary" :disabled="!transaction_id || !chart_of_account_id">Save changes</button>
                 </div>
 
             </form>

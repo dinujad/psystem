@@ -1,11 +1,4 @@
 <script type="text/javascript">
-    function setTransactionId(id) {
-        var el = document.getElementById('transaction_id');
-        if (el) {
-            el.value = id;
-        }
-    }
-
     $(document).ready(function() {
         //Date range as a button
         $('#sell_list_filter_date_range').daterangepicker(

@@ -1,11 +1,4 @@
 <script type="text/javascript">
-    function setTransactionId(id) {
-        var el = document.getElementById('transaction_id');
-        if (el) {
-            el.value = id;
-        }
-    }
-
     $(document).ready(function () {
         if ($('#purchase_list_filter_date_range').length && $.fn.daterangepicker) {
             $('#purchase_list_filter_date_range').daterangepicker(

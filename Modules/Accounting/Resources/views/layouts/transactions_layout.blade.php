@@ -60,14 +60,46 @@
 @section('javascript')
     @yield('tab-javascript')
     <script>
-        const hello = new Vue({
+        window.mapTransactionsVue = new Vue({
             el: '#mapTransactionsModal',
             data() {
                 return {
-                    chart_of_accounts: {!! json_encode($chart_of_accounts) !!},
-                    chart_of_account_id: '{{ old('chart_of_account_id') }}'
+                    chart_of_accounts: {!! json_encode($chart_of_accounts ?? []) !!},
+                    chart_of_account_id: @json(old('chart_of_account_id')),
+                    transaction_id: @json(old('transaction_id', '')),
                 }
             },
-        })
+            methods: {
+                setTransactionId(id) {
+                    this.transaction_id = id ? String(id) : '';
+                }
+            }
+        });
+
+        // Row MAP buttons call this; keep a stable global that updates Vue state
+        // so selecting a CoA (Vue re-render) does not wipe transaction_id.
+        window.setTransactionId = function (id) {
+            if (window.mapTransactionsVue && typeof window.mapTransactionsVue.setTransactionId === 'function') {
+                window.mapTransactionsVue.setTransactionId(id);
+                return;
+            }
+            var el = document.getElementById('transaction_id');
+            if (el) {
+                el.value = id;
+            }
+        };
+
+        $(document).on('submit', '#mapTransactionForm', function (e) {
+            var id = window.mapTransactionsVue ? window.mapTransactionsVue.transaction_id : '';
+            if (!id) {
+                e.preventDefault();
+                alert('Open MAP from the expense/sale/purchase row again so the transaction is selected.');
+                return false;
+            }
+            var el = document.getElementById('transaction_id');
+            if (el) {
+                el.value = id;
+            }
+        });
     </script>
 @endsection
