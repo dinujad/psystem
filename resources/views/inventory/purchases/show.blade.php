@@ -102,8 +102,11 @@ body #scrollable-container .rmp-page select {
         <div style="text-align:right;margin-top:12px;font-size:14px;font-weight:700;line-height:1.8;">
             @if((float) ($purchase->discount_amount ?? 0) > 0 || (float) ($purchase->tax_amount ?? 0) > 0)
                 Before tax: Rs. {{ number_format((float) ($purchase->total_before_tax ?? $purchase->total_amount), 2) }}<br>
-                Discount: Rs. {{ number_format((float) ($purchase->discount_amount ?? 0), 2) }}
-                @if($purchase->discount_type === 'percentage') ({{ number_format((float) $purchase->discount_amount, 2) }}%) @endif
+                @if($purchase->discount_type === 'percentage')
+                    Discount: {{ number_format((float) ($purchase->discount_amount ?? 0), 2) }}%
+                @else
+                    Discount: Rs. {{ number_format((float) ($purchase->discount_amount ?? 0), 2) }}
+                @endif
                 <br>
                 Tax: Rs. {{ number_format((float) ($purchase->tax_amount ?? 0), 2) }}<br>
             @endif

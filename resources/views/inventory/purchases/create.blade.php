@@ -212,6 +212,12 @@ body .rmp-modal textarea::placeholder {
             @error('cheque_date')
                 <p style="color:#b91c1c;font-weight:700;margin-top:8px;">{{ $message }}</p>
             @enderror
+            @error('reference_no')
+                <p style="color:#b91c1c;font-weight:700;margin-top:8px;">{{ $message }}</p>
+            @enderror
+            @error('contact_id')
+                <p style="color:#b91c1c;font-weight:700;margin-top:8px;">{{ $message }}</p>
+            @enderror
         </div>
 
         <div class="rmp-card">

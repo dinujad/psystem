@@ -43,7 +43,13 @@
                     <td>{{ $row['count'] }}</td>
                     <td>{{ $row['overdue'] }}</td>
                     <td>Rs. {{ number_format($row['due'], 2) }}</td>
-                    <td><a href="{{ route('inventory.purchases.supplier_statement') }}" class="rmp-btn">Statement</a></td>
+                    <td>
+                        @if(!empty($row['contact_id']))
+                            <a href="{{ route('inventory.purchases.supplier_statement', ['supplier_id' => $row['contact_id']]) }}" class="rmp-btn">Statement</a>
+                        @else
+                            —
+                        @endif
+                    </td>
                 </tr>
             @endforeach
             </tbody>

@@ -2,6 +2,7 @@
 
 namespace App\Utils;
 
+use App\AccountTransaction;
 use App\BusinessLocation;
 use App\InventoryPurchase;
 use App\InventoryPurchasePayment;
@@ -144,8 +145,11 @@ class RawMaterialAccounting
             'payment_ref_no' => (Schema::hasColumn('inventory_purchase_payments', 'reference_no') && ! empty($payment->reference_no))
                 ? $payment->reference_no
                 : ('RMP-PAY-'.$payment->id),
-            'is_advance' => $method === 'advance' ? 1 : 0,
         ];
+        // Bill payments that use supplier advance must keep is_advance=0 (deposits use 1).
+        if (Schema::hasColumn('transaction_payments', 'is_advance')) {
+            $payload['is_advance'] = 0;
+        }
         if (Schema::hasColumn('inventory_purchase_payments', 'cheque_number')) {
             $payload['cheque_number'] = $payment->cheque_number;
         }
@@ -169,6 +173,27 @@ class RawMaterialAccounting
         Transaction::where('id', $purchase->transaction_id)->update([
             'payment_status' => $purchase->payment_status ?: 'due',
         ]);
+
+        if (
+            $method !== 'advance'
+            && ! empty($transactionPayment->account_id)
+            && class_exists(AccountTransaction::class)
+        ) {
+            $existingAt = AccountTransaction::where('transaction_payment_id', $transactionPayment->id)->first();
+            if ($existingAt) {
+                AccountTransaction::updateAccountTransaction($transactionPayment, 'purchase');
+            } else {
+                AccountTransaction::createAccountTransaction([
+                    'amount' => $transactionPayment->amount,
+                    'account_id' => $transactionPayment->account_id,
+                    'type' => 'debit',
+                    'operation_date' => $transactionPayment->paid_on,
+                    'created_by' => $transactionPayment->created_by,
+                    'transaction_id' => $purchase->transaction_id,
+                    'transaction_payment_id' => $transactionPayment->id,
+                ]);
+            }
+        }
 
         $locationId = Transaction::where('id', $purchase->transaction_id)->value('location_id');
         if (empty($locationId)) {

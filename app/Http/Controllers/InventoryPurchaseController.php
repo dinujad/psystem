@@ -277,7 +277,12 @@ class InventoryPurchaseController extends Controller
                 $paymentFile = $this->storePaymentFile($request);
             }
             if ($paymentMethod === 'advance') {
-                $balance = (float) (Contact::where('id', $data['contact_id'] ?? 0)->value('balance') ?? 0);
+                if (empty($data['contact_id'])) {
+                    throw ValidationException::withMessages([
+                        'contact_id' => 'Select a supplier to use advance balance.',
+                    ]);
+                }
+                $balance = (float) (Contact::where('id', $data['contact_id'])->value('balance') ?? 0);
                 if ($paidNowCheck > $balance + 0.009) {
                     throw ValidationException::withMessages([
                         'amount_paid' => 'Advance balance is only Rs. '.number_format($balance, 2).'.',
@@ -410,7 +415,7 @@ class InventoryPurchaseController extends Controller
         $this->ensurePurchaseExtraColumns();
         $purchase->load(['supplier', 'creator', 'lines.material.unit', 'payments', 'tax']);
         $accounts = app(ModuleUtil::class)->accountsDropdown($businessId, true);
-        $advanceBalance = (float) ($purchase->supplier->balance ?? 0);
+        $advanceBalance = (float) ($purchase->supplier?->balance ?? 0);
 
         return view('inventory.purchases.show', compact('purchase', 'accounts', 'advanceBalance'));
     }
@@ -525,6 +530,11 @@ class InventoryPurchaseController extends Controller
         }
 
         if ($data['method'] === 'advance') {
+            if (empty($purchase->contact_id)) {
+                throw ValidationException::withMessages([
+                    'method' => 'This purchase has no supplier, so advance cannot be used.',
+                ]);
+            }
             $balance = (float) (Contact::where('id', $purchase->contact_id)->value('balance') ?? 0);
             if ((float) $data['amount'] > $balance + 0.009) {
                 throw ValidationException::withMessages([
@@ -776,6 +786,7 @@ class InventoryPurchaseController extends Controller
             return $p->supplier?->supplier_business_name ?: ($p->supplier?->name ?: 'No supplier');
         })->map(function ($rows) {
             return [
+                'contact_id' => $rows->first()->contact_id,
                 'count' => $rows->count(),
                 'due' => round($rows->sum('remaining_due'), 2),
                 'overdue' => $rows->where('computed_overdue', true)->count(),
