@@ -60,21 +60,23 @@
 @section('javascript')
     @yield('tab-javascript')
     <script>
-        window.mapTransactionsVue = new Vue({
-            el: '#mapTransactionsModal',
-            data() {
-                return {
-                    chart_of_accounts: {!! json_encode($chart_of_accounts ?? []) !!},
-                    chart_of_account_id: @json(old('chart_of_account_id')),
-                    transaction_id: @json(old('transaction_id', '')),
+        if (document.getElementById('mapTransactionsModal')) {
+            window.mapTransactionsVue = new Vue({
+                el: '#mapTransactionsModal',
+                data() {
+                    return {
+                        chart_of_accounts: {!! json_encode($chart_of_accounts ?? []) !!},
+                        chart_of_account_id: @json(old('chart_of_account_id')),
+                        transaction_id: @json(old('transaction_id', '')),
+                    }
+                },
+                methods: {
+                    setTransactionId(id) {
+                        this.transaction_id = id ? String(id) : '';
+                    }
                 }
-            },
-            methods: {
-                setTransactionId(id) {
-                    this.transaction_id = id ? String(id) : '';
-                }
-            }
-        });
+            });
+        }
 
         // Row MAP buttons call this; keep a stable global that updates Vue state
         // so selecting a CoA (Vue re-render) does not wipe transaction_id.

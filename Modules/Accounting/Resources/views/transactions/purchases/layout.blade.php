@@ -3,6 +3,13 @@
     @yield('sub-tab-title')
 @endsection
 
+@section('modal-content')
+    @include('accounting::transactions.partials.map_transactions_modal', [
+        'map_type' => 'debit',
+        'mapping_for' => request()->type == 'purchase_order' ? 'purchase_order' : 'purchase_payment',
+    ])
+@endsection
+
 @section('tab-content')
 
     @include('accounting::transactions.partials.map_all_bar')

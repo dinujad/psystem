@@ -3,13 +3,6 @@
     {{ trans_choice('accounting::general.invoice', 2) }}
 @endsection
 
-@section('modal-content')
-    @include('accounting::transactions.partials.map_transactions_modal', [
-        'map_type' => 'credit',
-        'mapping_for' => 'invoice',
-    ])
-@endsection
-
 @section('sub-tab-content')
     <!-- Main content -->
     <section class="content no-print">

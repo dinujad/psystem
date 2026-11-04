@@ -17,6 +17,7 @@
         sell_table = $('#sell_table').DataTable({
             processing: true,
             serverSide: true,
+            pageLength: 25,
             // Date column (after checkbox, mapping, chart_of_account) — never sort by synthetic mapping
             aaSorting: [
                 [3, 'desc']
@@ -55,6 +56,10 @@
                     }
 
                     d = __datatable_ajax_callback(d);
+                },
+                "error": function(xhr) {
+                    console.error('Sales accounting DataTable failed', xhr && xhr.responseText);
+                    toastr.error('Could not load sales for mapping. Refresh and try again.');
                 }
             },
             columns: [{
@@ -85,10 +90,7 @@
                 },
                 {
                     data: 'contact_name',
-                    name: 'contact_name',
-                    @if (Request::get('type') != 'invoice')
-                        visible: false
-                    @endif
+                    name: 'contact_name'
                 },
                 {
                     data: 'business_location',

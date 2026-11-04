@@ -113,23 +113,8 @@ class SellUtil
 
         $sells = $this->getListSells($business_id, $sale_type);
 
-        //Add condition to filter by sale payment or invoice
-        // Payments = sales where status == paid
-        // Invoices = sales where status != paid
-        if (request()->has('type')) {
-            switch (request()->input('type')) {
-                case 'payment':
-                    $sells->where('transactions.payment_status', 'paid');
-                    break;
-
-                case 'invoice':
-                    $sells->where('transactions.payment_status', '!=', 'paid');
-                    break;
-
-                default:
-                    break;
-            }
-        }
+        // Accounting MAP lists every final sale on Payments and Invoices.
+        // Optional payment_status dropdown still filters when set.
 
         $permitted_locations = auth()->user()->permitted_locations();
         if ($permitted_locations != 'all') {
@@ -199,17 +184,13 @@ class SellUtil
             }
         }
 
-        // Tab already forces paid / unpaid — don't let the dropdown wipe the list
-        $tabType = request()->input('type');
-        if (! in_array($tabType, ['payment', 'invoice'], true)) {
-            if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
-                $sells->where('transactions.payment_status', request()->input('payment_status'));
-            } elseif (request()->input('payment_status') == 'overdue') {
-                $sells->whereIn('transactions.payment_status', ['due', 'partial'])
-                    ->whereNotNull('transactions.pay_term_number')
-                    ->whereNotNull('transactions.pay_term_type')
-                    ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
-            }
+        if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
+            $sells->where('transactions.payment_status', request()->input('payment_status'));
+        } elseif (request()->input('payment_status') == 'overdue') {
+            $sells->whereIn('transactions.payment_status', ['due', 'partial'])
+                ->whereNotNull('transactions.pay_term_number')
+                ->whereNotNull('transactions.pay_term_type')
+                ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
         }
 
 
@@ -626,23 +607,8 @@ class SellUtil
 
         $sells = $this->getListSells($business_id, $sale_type);
 
-        //Add condition to filter by sale payment or invoice
-        // Payments = sales where status == paid
-        // Invoices = sales where status != paid
-        if (request()->has('type')) {
-            switch (request()->input('type')) {
-                case 'payment':
-                    $sells->where('transactions.payment_status', 'paid');
-                    break;
-
-                case 'invoice':
-                    $sells->where('transactions.payment_status', '!=', 'paid');
-                    break;
-
-                default:
-                    break;
-            }
-        }
+        // Accounting MAP lists every final sale on Payments and Invoices.
+        // Optional payment_status dropdown still filters when set.
 
         $permitted_locations = auth()->user()->permitted_locations();
         if ($permitted_locations != 'all') {
@@ -712,17 +678,13 @@ class SellUtil
             }
         }
 
-        // Tab already forces paid / unpaid — don't let the dropdown wipe the list
-        $tabType = request()->input('type');
-        if (! in_array($tabType, ['payment', 'invoice'], true)) {
-            if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
-                $sells->where('transactions.payment_status', request()->input('payment_status'));
-            } elseif (request()->input('payment_status') == 'overdue') {
-                $sells->whereIn('transactions.payment_status', ['due', 'partial'])
-                    ->whereNotNull('transactions.pay_term_number')
-                    ->whereNotNull('transactions.pay_term_type')
-                    ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
-            }
+        if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
+            $sells->where('transactions.payment_status', request()->input('payment_status'));
+        } elseif (request()->input('payment_status') == 'overdue') {
+            $sells->whereIn('transactions.payment_status', ['due', 'partial'])
+                ->whereNotNull('transactions.pay_term_number')
+                ->whereNotNull('transactions.pay_term_type')
+                ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
         }
 
 
@@ -1184,23 +1146,8 @@ class SellUtil
 
         $sells = $this->getListSells($business_id, $sale_type);
 
-        // Add condition to filter by sale payment or invoice
-        // Payments = sales where status == paid
-        // Invoices = sales where status != paid
-        if (request()->has('type')) {
-            switch (request()->input('type')) {
-                case 'payment':
-                    $sells->where('transactions.payment_status', 'paid');
-                    break;
-
-                case 'invoice':
-                    $sells->where('transactions.payment_status', '!=', 'paid');
-                    break;
-
-                default:
-                    break;
-            }
-        }
+        // Accounting MAP lists every final sale on Payments and Invoices.
+        // Optional payment_status dropdown still filters when set.
 
         $permitted_locations = auth()->user()->permitted_locations();
         if ($permitted_locations != 'all') {
@@ -1270,17 +1217,13 @@ class SellUtil
             }
         }
 
-        // Tab already forces paid / unpaid — don't let the dropdown wipe the list
-        $tabType = request()->input('type');
-        if (! in_array($tabType, ['payment', 'invoice'], true)) {
-            if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
-                $sells->where('transactions.payment_status', request()->input('payment_status'));
-            } elseif (request()->input('payment_status') == 'overdue') {
-                $sells->whereIn('transactions.payment_status', ['due', 'partial'])
-                    ->whereNotNull('transactions.pay_term_number')
-                    ->whereNotNull('transactions.pay_term_type')
-                    ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
-            }
+        if (!empty(request()->input('payment_status')) && request()->input('payment_status') != 'overdue') {
+            $sells->where('transactions.payment_status', request()->input('payment_status'));
+        } elseif (request()->input('payment_status') == 'overdue') {
+            $sells->whereIn('transactions.payment_status', ['due', 'partial'])
+                ->whereNotNull('transactions.pay_term_number')
+                ->whereNotNull('transactions.pay_term_type')
+                ->whereRaw("IF(transactions.pay_term_type='days', DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number DAY) < CURDATE(), DATE_ADD(transactions.transaction_date, INTERVAL transactions.pay_term_number MONTH) < CURDATE())");
         }
 
 

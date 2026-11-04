@@ -3,13 +3,6 @@
     {{ trans_choice('accounting::general.payment', 2) }}
 @endsection
 
-@section('modal-content')
-    @include('accounting::transactions.partials.map_transactions_modal', [
-        'map_type' => 'credit',
-        'mapping_for' => 'payment',
-    ])
-@endsection
-
 @section('sub-tab-content')
     <!-- Main content -->
     <section class="content no-print">
@@ -31,7 +24,7 @@
                                 <th>{{ trans_choice('accounting::general.chart_of_account', 1) }}</th>
                                 <th>@lang('messages.date')</th>
                                 <th>@lang('sale.invoice_no')</th>
-                                <th class="d-none">@lang('sale.customer_name')</th>
+                                <th>@lang('sale.customer_name')</th>
                                 <th>@lang('sale.location')</th>
                                 <th>@lang('sale.payment_status')</th>
                                 <th>@lang('lang_v1.payment_method')</th>

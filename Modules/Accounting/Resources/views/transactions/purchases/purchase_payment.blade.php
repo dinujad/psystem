@@ -3,13 +3,6 @@
     {{ trans_choice('accounting::general.purchase', 1) }} {{ trans_choice('accounting::general.payment', 1) }}
 @endsection
 
-@section('modal-content')
-    @include('accounting::transactions.partials.map_transactions_modal', [
-        'map_type' => 'debit',
-        'mapping_for' => 'purchase_payment',
-    ])
-@endsection
-
 @section('sub-tab-content')
     <!-- Main content -->
     <section class="content no-print">

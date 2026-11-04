@@ -3,6 +3,13 @@
     {{ trans_choice('accounting::general.sales', 1) }} @yield('sub-tab-title')
 @endsection
 
+@section('modal-content')
+    @include('accounting::transactions.partials.map_transactions_modal', [
+        'map_type' => 'credit',
+        'mapping_for' => request()->type == 'invoice' ? 'invoice' : 'payment',
+    ])
+@endsection
+
 @section('tab-content')
 
     @include('accounting::transactions.partials.map_all_bar')
