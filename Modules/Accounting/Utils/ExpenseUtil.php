@@ -373,13 +373,7 @@ BLADE
 
         return DataTables::of($expenses)
             ->addColumn('mapping', function ($row) {
-                if (!empty($row->journal_entry_id)) {
-                    return '<span class="label label-success">' . trans('accounting::general.has_been_mapped') . '</span>';
-                } else {
-                    return '<button class="btn btn-xs btn-success" onclick="setTransactionId(' . $row->id . ')" data-toggle="modal" data-target="#mapTransactionsModal">
-                            MAP <span class="fas fa-share"></span>
-                        </button>';
-                }
+                return (new \Modules\Accounting\Utils\TransactionAccountMap())->mappingCell($row);
             })
             ->addColumn('chart_of_account', function ($row) {
                 try {

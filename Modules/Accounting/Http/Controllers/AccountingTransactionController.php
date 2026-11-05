@@ -114,8 +114,9 @@ class AccountingTransactionController extends Controller
         try {
             DB::beginTransaction();
 
-            $transaction = Transaction::where('id', $request->transaction_id)->firstOrFail();
-            $mapper->remember((int) $transaction->business_id, $category, $request->map_type, (int) $request->chart_of_account_id);
+            $transaction = Transaction::where('id', $request->transaction_id)
+                ->where('business_id', $request->session()->get('user.business_id'))
+                ->firstOrFail();
             $mapper->mapOne($transaction, (int) $request->chart_of_account_id, $request->map_type, $request->notes, $category);
 
             DB::commit();
@@ -124,25 +125,7 @@ class AccountingTransactionController extends Controller
             return (new  FlashService())->onException($e)->redirectBackWithInput();
         }
 
-        $extra = $mapper->mapUnmapped(
-            (int) $transaction->business_id,
-            $category,
-            $request->map_type,
-            (int) $request->chart_of_account_id,
-            $request->notes
-        );
-
-        $label = [
-            'sale' => 'sale',
-            'expense' => 'expense',
-            'purchase' => 'purchase',
-            'purchase_order' => 'purchase order',
-        ][$category] ?? $category;
-
-        $message = 'Saved. Every new '.$label.' will use this account.';
-        if ($extra > 0) {
-            $message .= ' '.$extra.' existing '.$label.($extra === 1 ? ' was' : 's were').' mapped too.';
-        }
+        $message = 'This entry was mapped. Other entries were left unchanged.';
         (new FlashService())->onSuccess($message);
         request()->session()->flash('status.success', 1);
         request()->session()->flash('status.msg', $message);
@@ -185,6 +168,59 @@ class AccountingTransactionController extends Controller
         if ($count > 0) {
             $message .= ' '.$count.' existing '.$label.($count === 1 ? ' was' : 's were').' mapped.';
         }
+        (new FlashService())->onSuccess($message);
+        request()->session()->flash('status.success', 1);
+        request()->session()->flash('status.msg', $message);
+
+        return back();
+    }
+
+    public function unmap($id)
+    {
+        $businessId = (int) request()->session()->get('user.business_id');
+        $transaction = Transaction::where('id', $id)->where('business_id', $businessId)->firstOrFail();
+
+        try {
+            DB::beginTransaction();
+            (new \Modules\Accounting\Utils\TransactionAccountMap())->unmapOne($transaction);
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return (new FlashService())->onException($e)->redirectBackWithInput();
+        }
+
+        $message = 'Mapping reversed for this entry.';
+        (new FlashService())->onSuccess($message);
+        request()->session()->flash('status.success', 1);
+        request()->session()->flash('status.msg', $message);
+
+        return back();
+    }
+
+    public function unmap_category(Request $request)
+    {
+        $request->validate([
+            'mapping_for' => ['required'],
+        ]);
+
+        $mapper = new \Modules\Accounting\Utils\TransactionAccountMap();
+        $category = $mapper->categoryFromMapping($request->mapping_for);
+        if (empty($category)) {
+            $category = $request->mapping_for;
+        }
+
+        $businessId = (int) ($request->session()->get('user.business_id') ?: session('business.id'));
+        $count = $mapper->unmapCategory($businessId, $category);
+
+        $label = [
+            'sale' => 'sales',
+            'expense' => 'expenses',
+            'purchase' => 'purchases',
+            'purchase_order' => 'purchase orders',
+        ][$category] ?? $category;
+
+        $message = 'Reversed '.$count.' '.$label.' mapping'.($count === 1 ? '' : 's').' in this section.';
         (new FlashService())->onSuccess($message);
         request()->session()->flash('status.success', 1);
         request()->session()->flash('status.msg', $message);

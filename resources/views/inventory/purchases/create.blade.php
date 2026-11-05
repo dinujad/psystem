@@ -526,13 +526,17 @@ document.getElementById('nmSave').addEventListener('click', function () {
 });
 
 function toggleCreatePayFields() {
-    var method = document.getElementById('rmpCreateMethod').value;
-    document.getElementById('rmpCreateCheque').style.display = method === 'cheque' ? 'block' : 'none';
-    document.getElementById('rmpCreateBank').style.display = method === 'bank' ? 'block' : 'none';
+    var methodEl = document.getElementById('rmpCreateMethod');
+    if (!methodEl) return;
+    var method = methodEl.value;
+    var cheque = document.getElementById('rmpCreateCheque');
+    var bank = document.getElementById('rmpCreateBank');
     var cashAcc = document.getElementById('rmpCreateCashAccount');
+    if (cheque) cheque.style.display = method === 'cheque' ? 'block' : 'none';
+    if (bank) bank.style.display = method === 'bank' ? 'block' : 'none';
     if (cashAcc) cashAcc.style.display = method === 'advance' ? 'none' : 'block';
 }
-document.getElementById('rmpCreateMethod').addEventListener('change', toggleCreatePayFields);
+document.getElementById('rmpCreateMethod')?.addEventListener('change', toggleCreatePayFields);
 toggleCreatePayFields();
 
 ['rmpDiscountType', 'rmpDiscountAmount', 'rmpTaxId'].forEach(function (id) {
@@ -544,9 +548,12 @@ toggleCreatePayFields();
 var supplierBalances = @json($supplierBalances ?? []);
 document.querySelector('select[name="contact_id"]')?.addEventListener('change', function () {
     var bal = supplierBalances[this.value];
-    document.getElementById('rmpAdvanceBalance').value = bal !== undefined && bal !== null
-        ? ('Rs. ' + Number(bal).toFixed(2))
-        : '—';
+    var balanceEl = document.getElementById('rmpAdvanceBalance');
+    if (balanceEl) {
+        balanceEl.value = bal !== undefined && bal !== null
+            ? ('Rs. ' + Number(bal).toFixed(2))
+            : '—';
+    }
 });
 
 addLine();

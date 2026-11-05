@@ -282,20 +282,19 @@ class PurchaseUtil
 
         return DataTables::of($purchase_orders)
             ->addColumn('mapping', function ($row) {
-                if (!empty($row->journal_entry_id)) {
-                    return '<span class="label label-success">' . trans('accounting::general.has_been_mapped') . '</span>';
-                } else {
-                    return '<button class="btn btn-xs btn-success" onclick="setTransactionId(' . $row->id . ')" data-toggle="modal" data-target="#mapTransactionsModal">
-                            MAP <span class="fas fa-share"></span>
-                        </button>';
-                }
+                return (new \Modules\Accounting\Utils\TransactionAccountMap())->mappingCell($row);
             })
             ->addColumn('chart_of_account', function ($row) {
-                if (!empty($row->journal_entry_id)) {
-                    return '<a href="' . url("accounting/chart_of_account/" . $row->journal_entry->chart_of_account->id . "/show") . '">
-                    <span>' . $row->journal_entry->chart_of_account->name . '</span> <i class="fas fa-external-link-alt"></i>
+                try {
+                    $account = ! empty($row->journal_entry_id) ? $row->journal_entry->chart_of_account : null;
+                    if (empty($account) || empty($account->id)) {
+                        return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
+                    }
+
+                    return '<a href="' . url('accounting/chart_of_account/' . $account->id . '/show') . '">
+                    <span>' . e($account->name) . '</span> <i class="fas fa-external-link-alt"></i>
                 </a>';
-                } else {
+                } catch (\Throwable $e) {
                     return '<span class="label label-warning">' . trans('accounting::general.has_not_been_mapped') . '</span>';
                 }
             })
@@ -553,13 +552,7 @@ class PurchaseUtil
 
         return Datatables::of($purchases)
             ->addColumn('mapping', function ($row) {
-                if (!empty($row->journal_entry_id)) {
-                    return '<span class="label label-success">' . trans('accounting::general.has_been_mapped') . '</span>';
-                } else {
-                    return '<button class="btn btn-xs btn-success" onclick="setTransactionId(' . $row->id . ')" data-toggle="modal" data-target="#mapTransactionsModal">
-                            MAP <span class="fas fa-share"></span>
-                        </button>';
-                }
+                return (new \Modules\Accounting\Utils\TransactionAccountMap())->mappingCell($row);
             })
             ->addColumn('chart_of_account', function ($row) {
                 try {

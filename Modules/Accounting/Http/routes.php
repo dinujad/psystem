@@ -56,6 +56,8 @@ Route::group(['middleware' => ['web', 'authh', 'auth', 'SetSessionData', 'langua
         Route::get('purchases', 'AccountingTransactionController@purchases');
         Route::post('map_to_chart_of_account', 'AccountingTransactionController@map_to_chart_of_account');
         Route::post('map_category', 'AccountingTransactionController@map_category');
+        Route::post('unmap/{id}', 'AccountingTransactionController@unmap');
+        Route::post('unmap_category', 'AccountingTransactionController@unmap_category');
     });
 
     //Transfers

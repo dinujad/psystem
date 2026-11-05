@@ -1,6 +1,19 @@
 <script type="text/javascript">
     $(document).ready( function(){
-        //Purchase table
+        if ($('#po_list_filter_date_range').length && $.fn.daterangepicker) {
+            $('#po_list_filter_date_range').daterangepicker(
+                $.extend({}, dateRangeSettings, { autoUpdateInput: false }),
+                function (start, end) {
+                    $('#po_list_filter_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
+                    purchase_order_table.ajax.reload();
+                }
+            );
+            $('#po_list_filter_date_range').on('cancel.daterangepicker', function () {
+                $('#po_list_filter_date_range').val('');
+                purchase_order_table.ajax.reload();
+            });
+        }
+
         purchase_order_table = $('#purchase_order_table').DataTable({
             processing: true,
             serverSide: true,
@@ -23,13 +36,10 @@
 
                     var start = '';
                     var end = '';
-                    if ($('#po_list_filter_date_range').val()) {
-                        start = $('input#po_list_filter_date_range')
-                            .data('daterangepicker')
-                            .startDate.format('YYYY-MM-DD');
-                        end = $('input#po_list_filter_date_range')
-                            .data('daterangepicker')
-                            .endDate.format('YYYY-MM-DD');
+                    var picker = $('#po_list_filter_date_range').data('daterangepicker');
+                    if ($('#po_list_filter_date_range').val() && picker) {
+                        start = picker.startDate.format('YYYY-MM-DD');
+                        end = picker.endDate.format('YYYY-MM-DD');
                     }
                     d.start_date = start;
                     d.end_date = end;
@@ -40,7 +50,7 @@
             columns: [
                 { data: 'mapping', name: 'mapping', orderable: false, searchable: false },
                 { data: 'chart_of_account', name: 'chart_of_account', orderable: false, searchable: false },
-                { data: 'transaction_date', name: 'transaction_date' },
+                { data: 'transaction_date', name: 'transactions.transaction_date' },
                 { data: 'ref_no', name: 'ref_no' },
                 { data: 'location_name', name: 'BS.name' },
                 { data: 'name', name: 'contacts.name' },

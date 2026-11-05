@@ -131,6 +131,83 @@ class TransactionAccountMap
         ];
     }
 
+    public function mappingCell($row): string
+    {
+        $id = (int) ($row->id ?? 0);
+        if ($id < 1) {
+            return '';
+        }
+
+        if (empty($row->journal_entry_id)) {
+            return '<button type="button" class="btn btn-xs btn-success" onclick="setTransactionId('.$id.')" data-toggle="modal" data-target="#mapTransactionsModal">MAP <span class="fas fa-share"></span></button>';
+        }
+
+        $action = url('accounting/transactions/unmap/'.$id);
+
+        return '<span class="label label-success">'.e(trans('accounting::general.has_been_mapped')).'</span>'
+            .' <form method="POST" action="'.e($action).'" style="display:inline-block;margin-left:4px;" onsubmit="return confirm(\'Reverse this mapping?\');">'
+            .'<input type="hidden" name="_token" value="'.e(csrf_token()).'">'
+            .'<button type="submit" class="btn btn-xs btn-warning">Reverse</button>'
+            .'</form>';
+    }
+
+    public function forget(int $businessId, string $category): void
+    {
+        $row = DB::table('business')->where('id', $businessId)->first();
+        $settings = [];
+        if ($row && ! empty($row->accounting_settings)) {
+            $decoded = json_decode($row->accounting_settings, true);
+            $settings = is_array($decoded) ? $decoded : [];
+        }
+
+        if (isset($settings['transaction_map'][$category])) {
+            unset($settings['transaction_map'][$category]);
+            DB::table('business')->where('id', $businessId)->update([
+                'accounting_settings' => json_encode($settings),
+            ]);
+        }
+    }
+
+    public function unmapOne($transaction): bool
+    {
+        $transaction = $transaction instanceof Transaction
+            ? $transaction
+            : Transaction::find($transaction->id ?? $transaction);
+
+        if (empty($transaction) || empty($transaction->journal_entry_id)) {
+            return false;
+        }
+
+        $entry = JournalEntry::find($transaction->journal_entry_id);
+        if (! empty($entry)) {
+            $entry->reversed = 1;
+            $entry->save();
+        }
+
+        $transaction->journal_entry_id = null;
+        $transaction->save();
+
+        return true;
+    }
+
+    public function unmapCategory(int $businessId, string $category): int
+    {
+        $count = 0;
+        $this->mappedQuery($businessId, $category)
+            ->orderBy('id')
+            ->chunkById(100, function ($rows) use (&$count) {
+                foreach ($rows as $row) {
+                    if ($this->unmapOne($row)) {
+                        $count++;
+                    }
+                }
+            });
+
+        $this->forget($businessId, $category);
+
+        return $count;
+    }
+
     public function mapOne($transaction, int $accountId, string $mapType, ?string $notes, string $category): void
     {
         $transaction = $transaction instanceof Transaction
@@ -272,8 +349,17 @@ class TransactionAccountMap
 
     private function unmappedQuery(int $businessId, string $category)
     {
+        return $this->typedQuery($businessId, $category)->whereNull('journal_entry_id');
+    }
+
+    private function mappedQuery(int $businessId, string $category)
+    {
+        return $this->typedQuery($businessId, $category)->whereNotNull('journal_entry_id');
+    }
+
+    private function typedQuery(int $businessId, string $category)
+    {
         $query = Transaction::where('business_id', $businessId)
-            ->whereNull('journal_entry_id')
             ->where(function ($query) {
                 $query->whereNull('status')
                     ->orWhereNotIn('status', ['draft', 'quotation']);

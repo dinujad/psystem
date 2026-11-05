@@ -59,7 +59,13 @@ class InventoryPurchaseController extends Controller
         $this->checkAccess();
 
         $businessId = request()->session()->get('user.business_id');
-        RawMaterialAccounting::backfill((int) $businessId);
+        if (! request()->ajax()) {
+            try {
+                RawMaterialAccounting::backfill((int) $businessId);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         if (request()->ajax()) {
             $paidSql = '(SELECT COALESCE(SUM(amount),0) FROM inventory_purchase_payments WHERE inventory_purchase_id = inventory_purchases.id)';

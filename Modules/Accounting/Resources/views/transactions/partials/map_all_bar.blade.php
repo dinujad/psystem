@@ -27,7 +27,13 @@
                     <button type="submit" class="btn btn-primary">Map all</button>
                 </div>
             </div>
-            <p class="help-block" style="margin: 10px 0 0;">Every {{ $map_label }} uses this account and is added to Journal Entries. The newest one stays at the top.</p>
+            <p class="help-block" style="margin: 10px 0 0;">Map all applies the selected account only to unmapped {{ $map_label }} in this section. Mapping one row changes that row only.</p>
+        </form>
+        <form method="post" action="{{ url('accounting/transactions/unmap_category') }}" style="margin-top: 10px;" onsubmit="return confirm('Reverse every mapping in this section?');">
+            @csrf
+            <input type="hidden" name="mapping_for" value="{{ $mapping_for }}">
+            <button type="submit" class="btn btn-warning">Reverse all mapping</button>
+            <span class="help-block" style="display:inline;margin-left:8px;">Reverses mapped {{ $map_label }} in this section only.</span>
         </form>
     </div>
 </div>

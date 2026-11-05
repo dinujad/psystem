@@ -232,9 +232,11 @@ body #scrollable-container .rmp-page select {
 @section('javascript')
 <script>
 document.getElementById('rmpShowMethod')?.addEventListener('change', function () {
-    document.getElementById('rmpShowCheque').style.display = this.value === 'cheque' ? 'block' : 'none';
-    document.getElementById('rmpShowBank').style.display = this.value === 'bank' ? 'block' : 'none';
+    var cheque = document.getElementById('rmpShowCheque');
+    var bank = document.getElementById('rmpShowBank');
     var acc = document.getElementById('rmpShowAccount');
+    if (cheque) cheque.style.display = this.value === 'cheque' ? 'block' : 'none';
+    if (bank) bank.style.display = this.value === 'bank' ? 'block' : 'none';
     if (acc) acc.style.display = this.value === 'advance' ? 'none' : 'block';
 });
 </script>
