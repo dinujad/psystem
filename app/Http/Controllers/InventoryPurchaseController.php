@@ -95,9 +95,11 @@ class InventoryPurchaseController extends Controller
             if (! empty(request()->payment_status)) {
                 $purchases->where('inventory_purchases.payment_status', request()->payment_status);
             }
-            if (! empty(request()->start_date) && ! empty(request()->end_date)) {
-                $purchases->whereDate('inventory_purchases.purchase_date', '>=', request()->start_date)
-                    ->whereDate('inventory_purchases.purchase_date', '<=', request()->end_date);
+            $startDate = trim((string) request()->start_date);
+            $endDate = trim((string) request()->end_date);
+            if ($startDate !== '' && $endDate !== '') {
+                $purchases->whereDate('inventory_purchases.purchase_date', '>=', $startDate)
+                    ->whereDate('inventory_purchases.purchase_date', '<=', $endDate);
             }
 
             $keyword = request()->input('search.value');
@@ -142,6 +144,9 @@ class InventoryPurchaseController extends Controller
                 ->addColumn('action', function ($row) {
                     $due = max(0, (float) $row->total_amount - (float) $row->amount_paid);
                     $html = '<a href="'.route('inventory.purchases.show', $row->id).'">View</a>';
+                    if ($this->canCreate()) {
+                        $html .= ' · <a href="'.route('inventory.purchases.edit', $row->id).'">Edit</a>';
+                    }
                     if ($due > 0.009) {
                         $html .= ' · <a href="#" class="rmp-add-pay" data-id="'.$row->id.'" data-ref="'.e($row->ref_no).'" data-due="'.number_format($due, 2, '.', '').'">Add payment</a>';
                     }
@@ -422,8 +427,197 @@ class InventoryPurchaseController extends Controller
         $purchase->load(['supplier', 'creator', 'lines.material.unit', 'payments', 'tax']);
         $accounts = app(ModuleUtil::class)->accountsDropdown($businessId, true);
         $advanceBalance = (float) ($purchase->supplier?->balance ?? 0);
+        $canEdit = $this->canCreate();
 
-        return view('inventory.purchases.show', compact('purchase', 'accounts', 'advanceBalance'));
+        return view('inventory.purchases.show', compact('purchase', 'accounts', 'advanceBalance', 'canEdit'));
+    }
+
+    public function edit(InventoryPurchase $purchase)
+    {
+        $this->checkAccess();
+        if (! $this->canCreate()) {
+            abort(403);
+        }
+
+        $businessId = request()->session()->get('user.business_id');
+        if ((int) $purchase->business_id !== (int) $businessId) {
+            abort(404);
+        }
+
+        $this->ensurePurchaseExtraColumns();
+        $purchase->load(['lines.material.unit', 'payments', 'tax']);
+
+        $suppliers = Contact::suppliersDropdown($businessId, false);
+        $categories = InventoryCategory::orderBy('name')->get();
+        $units = InventoryUnit::orderBy('name')->get();
+        $materials = InventoryMaterial::with('unit')->orderBy('name')->get();
+        $materialsJson = $materials->map(function ($m) {
+            return [
+                'id' => $m->id,
+                'name' => $m->name,
+                'sku' => $m->sku,
+                'unit' => optional($m->unit)->abbreviation ?: '',
+                'price' => (float) $m->price_per_unit,
+                'stock' => (float) $m->current_stock,
+            ];
+        })->values();
+        $taxes = TaxRate::where('business_id', $businessId)->get();
+        $supplierBalances = Contact::where('business_id', $businessId)
+            ->whereIn('type', ['supplier', 'both'])
+            ->pluck('balance', 'id');
+        $existingLines = $purchase->lines->map(function ($line) {
+            return [
+                'material_id' => (int) $line->material_id,
+                'quantity' => (float) $line->quantity,
+                'unit_cost' => (float) $line->unit_cost,
+            ];
+        })->values();
+        $amountPaid = $purchase->amountPaid();
+
+        return view('inventory.purchases.edit', compact(
+            'purchase', 'suppliers', 'materials', 'materialsJson', 'categories', 'units',
+            'taxes', 'supplierBalances', 'existingLines', 'amountPaid'
+        ));
+    }
+
+    public function update(Request $request, InventoryPurchase $purchase)
+    {
+        $this->checkAccess();
+        if (! $this->canCreate()) {
+            abort(403);
+        }
+        $this->assertPurchaseBusiness($purchase);
+        $this->ensurePurchaseExtraColumns();
+
+        $data = $request->validate([
+            'contact_id' => ['nullable', 'integer', 'exists:contacts,id'],
+            'purchase_date' => ['required', 'date'],
+            'pay_term_number' => ['nullable', 'integer', 'min:0'],
+            'pay_term_type' => ['nullable', 'in:days,months'],
+            'status' => ['required', 'in:ordered,received'],
+            'ref_no' => ['nullable', 'string', 'max:50'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'discount_type' => ['nullable', 'in:fixed,percentage'],
+            'discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'tax_id' => ['nullable', 'integer', 'exists:tax_rates,id'],
+            'lines' => ['required', 'array', 'min:1'],
+            'lines.*.material_id' => ['required', 'integer', 'exists:inventory_materials,id'],
+            'lines.*.quantity' => ['required', 'numeric', 'min:0.0001'],
+            'lines.*.unit_cost' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $businessId = $request->session()->get('user.business_id');
+
+        DB::transaction(function () use ($data, $businessId, $purchase) {
+            $purchase->load('lines');
+            $oldStatus = $purchase->status;
+            $oldLines = $purchase->lines->map(function ($line) {
+                return [
+                    'material_id' => (int) $line->material_id,
+                    'quantity' => (float) $line->quantity,
+                    'unit_cost' => (float) $line->unit_cost,
+                ];
+            })->all();
+
+            $subtotal = 0;
+            foreach ($data['lines'] as $line) {
+                $subtotal += ((float) $line['quantity']) * ((float) $line['unit_cost']);
+            }
+            $subtotal = round($subtotal, 4);
+
+            $discountType = $data['discount_type'] ?? null;
+            $discountAmount = round((float) ($data['discount_amount'] ?? 0), 4);
+            $discount = 0.0;
+            if ($discountAmount > 0) {
+                if ($discountType === 'percentage') {
+                    $discount = round($subtotal * ($discountAmount / 100), 4);
+                } else {
+                    $discountType = 'fixed';
+                    $discount = min($discountAmount, $subtotal);
+                }
+            }
+            $totalBeforeTax = round(max(0, $subtotal - $discount), 4);
+
+            $taxAmount = 0.0;
+            $taxId = $data['tax_id'] ?? null;
+            if (! empty($taxId)) {
+                $tax = TaxRate::where('business_id', $businessId)->where('id', $taxId)->first();
+                if ($tax) {
+                    $taxAmount = round($totalBeforeTax * ((float) $tax->amount / 100), 4);
+                } else {
+                    $taxId = null;
+                }
+            }
+            $total = round($totalBeforeTax + $taxAmount, 4);
+
+            $alreadyPaid = $purchase->amountPaid();
+            if ($alreadyPaid > $total + 0.009) {
+                throw ValidationException::withMessages([
+                    'lines' => 'New total (Rs. '.number_format($total, 2).') is less than already paid (Rs. '.number_format($alreadyPaid, 2).'). Reduce payments first, or keep the total at least that high.',
+                ]);
+            }
+
+            $ref = trim((string) ($data['ref_no'] ?? ''));
+            if ($ref === '') {
+                $ref = $purchase->ref_no;
+            }
+
+            // Reverse stock that this purchase previously added.
+            if ($oldStatus === 'received') {
+                foreach ($oldLines as $line) {
+                    $this->reverseStock((int) $line['material_id'], (float) $line['quantity']);
+                }
+            }
+
+            InventoryPurchaseLine::where('inventory_purchase_id', $purchase->id)->delete();
+
+            foreach ($data['lines'] as $line) {
+                $qty = (float) $line['quantity'];
+                $cost = (float) $line['unit_cost'];
+                InventoryPurchaseLine::create([
+                    'inventory_purchase_id' => $purchase->id,
+                    'material_id' => (int) $line['material_id'],
+                    'quantity' => $qty,
+                    'unit_cost' => $cost,
+                    'line_total' => $qty * $cost,
+                ]);
+            }
+
+            $payload = [
+                'ref_no' => $ref,
+                'contact_id' => $data['contact_id'] ?? null,
+                'purchase_date' => $data['purchase_date'],
+                'status' => $data['status'],
+                'total_amount' => $total,
+                'notes' => $data['notes'] ?? null,
+            ];
+            if (Schema::hasColumn('inventory_purchases', 'pay_term_number')) {
+                $payload['pay_term_number'] = $data['pay_term_number'] ?? null;
+                $payload['pay_term_type'] = ! empty($data['pay_term_number']) ? ($data['pay_term_type'] ?? 'days') : null;
+            }
+            if (Schema::hasColumn('inventory_purchases', 'discount_type')) {
+                $payload['discount_type'] = $discount > 0 ? $discountType : null;
+                $payload['discount_amount'] = $discountAmount;
+                $payload['tax_id'] = $taxId;
+                $payload['tax_amount'] = $taxAmount;
+                $payload['total_before_tax'] = $totalBeforeTax;
+            }
+
+            $purchase->update($payload);
+
+            if ($data['status'] === 'received') {
+                foreach ($data['lines'] as $line) {
+                    $this->applyStock((int) $line['material_id'], (float) $line['quantity'], (float) $line['unit_cost']);
+                }
+            }
+
+            $purchase->refreshPaymentStatus();
+            RawMaterialAccounting::syncPurchase($purchase->fresh());
+        });
+
+        return redirect()
+            ->route('inventory.purchases.show', $purchase)
+            ->with('success', 'Purchase updated.');
     }
 
     public function payments(InventoryPurchase $purchase)
@@ -868,6 +1062,18 @@ class InventoryPurchaseController extends Controller
         $material->update([
             'current_stock' => $newStock,
             'price_per_unit' => round($newCost, 4),
+        ]);
+    }
+
+    /**
+     * Undo stock previously added by a received purchase line.
+     */
+    private function reverseStock(int $materialId, float $qty): void
+    {
+        $material = InventoryMaterial::lockForUpdate()->findOrFail($materialId);
+        $newStock = max(0, (float) $material->current_stock - $qty);
+        $material->update([
+            'current_stock' => $newStock,
         ]);
     }
 }

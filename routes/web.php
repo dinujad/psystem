@@ -652,6 +652,8 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::get('/purchases/create', [\App\Http\Controllers\InventoryPurchaseController::class, 'create'])->name('purchases.create');
         Route::post('/purchases/materials', [\App\Http\Controllers\InventoryPurchaseController::class, 'storeMaterial'])->name('purchases.materials.store');
         Route::post('/purchases', [\App\Http\Controllers\InventoryPurchaseController::class, 'store'])->name('purchases.store');
+        Route::get('/purchases/{purchase}/edit', [\App\Http\Controllers\InventoryPurchaseController::class, 'edit'])->name('purchases.edit');
+        Route::put('/purchases/{purchase}', [\App\Http\Controllers\InventoryPurchaseController::class, 'update'])->name('purchases.update');
         Route::get('/purchases/{purchase}', [\App\Http\Controllers\InventoryPurchaseController::class, 'show'])->name('purchases.show');
         Route::get('/purchases/{purchase}/payments', [\App\Http\Controllers\InventoryPurchaseController::class, 'payments'])->name('purchases.payments');
         Route::post('/purchases/{purchase}/payments', [\App\Http\Controllers\InventoryPurchaseController::class, 'storePayment'])->name('purchases.payments.store');

@@ -130,15 +130,16 @@
     <script src="{{ asset('js/purchase.js?v=' . $asset_v) }}"></script>
     <script src="{{ asset('js/payment.js?v=' . $asset_v) }}"></script>
     <script>
-        //Date range as a button
+        // Do not filter by financial year on load — show every purchase until a range is chosen.
         $('#purchase_list_filter_date_range').daterangepicker(
-            dateRangeSettings,
+            $.extend({}, dateRangeSettings, { autoUpdateInput: false }),
             function(start, end) {
                 $('#purchase_list_filter_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(
                     moment_date_format));
                 purchase_table.ajax.reload();
             }
         );
+        $('#purchase_list_filter_date_range').val('');
         $('#purchase_list_filter_date_range').on('cancel.daterangepicker', function(ev, picker) {
             $('#purchase_list_filter_date_range').val('');
             purchase_table.ajax.reload();

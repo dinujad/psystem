@@ -196,17 +196,22 @@ body #scrollable-container .rmp-page select option {
 var rmpTable;
 var rmpPayId = null;
 
+var rmpDateFilterActive = false;
+
 $(document).ready(function () {
     if ($('#rmp_date_range').length && $.fn.daterangepicker) {
         $('#rmp_date_range').daterangepicker(
             $.extend({}, dateRangeSettings, { autoUpdateInput: false }),
             function (start, end) {
+                rmpDateFilterActive = true;
                 $('#rmp_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
                 rmpTable.ajax.reload();
             }
         );
         $('#rmp_date_range').val('');
+        rmpDateFilterActive = false;
         $('#rmp_date_range').on('cancel.daterangepicker', function () {
+            rmpDateFilterActive = false;
             $('#rmp_date_range').val('');
             rmpTable.ajax.reload();
         });
@@ -215,17 +220,18 @@ $(document).ready(function () {
     rmpTable = $('#rmp_table').DataTable({
         processing: true,
         serverSide: true,
-        pageLength: -1,
-        lengthMenu: [[-1, 25, 50, 100], ['All', 25, 50, 100]],
+        pageLength: 100,
+        lengthMenu: [[25, 50, 100, 500, -1], [25, 50, 100, 500, 'All']],
         ajax: {
             url: "{{ route('inventory.purchases.index') }}",
             data: function (d) {
                 d.supplier_id = $('#rmp_supplier').val();
                 d.status = $('#rmp_status').val();
                 d.payment_status = $('#rmp_pay_status').val();
-                var range = $('#rmp_date_range').val();
+                // Only filter by date after the user explicitly applies a range.
+                var range = $.trim($('#rmp_date_range').val() || '');
                 var picker = $('#rmp_date_range').data('daterangepicker');
-                if (range && picker) {
+                if (rmpDateFilterActive && range && picker) {
                     d.start_date = picker.startDate.format('YYYY-MM-DD');
                     d.end_date = picker.endDate.format('YYYY-MM-DD');
                 }

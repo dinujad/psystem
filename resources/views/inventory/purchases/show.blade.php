@@ -62,6 +62,9 @@ body #scrollable-container .rmp-page select {
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <a href="{{ route('inventory.purchases.index') }}" class="rmp-btn rmp-btn-secondary">All purchases</a>
+                @if(!empty($canEdit))
+                    <a href="{{ route('inventory.purchases.edit', $purchase) }}" class="rmp-btn rmp-btn-secondary">Edit</a>
+                @endif
                 @if($purchase->contact_id)
                     <a href="{{ route('inventory.purchases.supplier_statement', ['supplier_id' => $purchase->contact_id]) }}" class="rmp-btn rmp-btn-secondary">Supplier statement</a>
                 @endif
