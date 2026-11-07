@@ -92,9 +92,7 @@ body #scrollable-container .rmp-page select option {
         </div>
     @endcomponent
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
+    @include('inventory.purchases._swal_flash')
 
     @component('components.widget', ['class' => 'box-primary', 'title' => 'All raw material purchases'])
         <div class="table-responsive">

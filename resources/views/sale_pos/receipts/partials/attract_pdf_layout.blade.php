@@ -1118,6 +1118,20 @@
               <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $discountShow }}</td>
             </tr>
             @endif
+            @if(!empty($receipt_details->payzy_tax))
+            <tr>
+              <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $receipt_details->payzy_tax_label ?? 'Payzy Tax (12%)' }}</td>
+              <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $receipt_details->payzy_tax }}</td>
+            </tr>
+            @endif
+            @if(!empty($receipt_details->payzy_installments) && is_array($receipt_details->payzy_installments))
+              @foreach($receipt_details->payzy_installments as $instLabel => $instAmt)
+              <tr>
+                <td class="lbl" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">Payzy {{ $instLabel }}</td>
+                <td class="val" bgcolor="{{ $rowGrey }}" style="background-color:{{ $rowGrey }} !important;{{ $shadowGrey }}">{{ $instAmt }}</td>
+              </tr>
+              @endforeach
+            @endif
             {{-- Advance only when a payment was recorded; Balance Due only when remaining > 0 --}}
             @if($hasAdvancePayment)
             <tr>

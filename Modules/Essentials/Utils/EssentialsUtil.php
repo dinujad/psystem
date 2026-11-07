@@ -62,6 +62,33 @@ class EssentialsUtil extends Util
      */
     public function getOvertimeForPeriod($user_id, $business_id, $start_date, $end_date, $include_open = false)
     {
+        $breakdown = $this->getOvertimeBreakdownForPeriod($user_id, $business_id, $start_date, $end_date, $include_open);
+
+        return [
+            'hours' => $breakdown['hours'],
+            'amount' => $breakdown['amount'],
+        ];
+    }
+
+    /**
+     * OT split: early (before shift start, e.g. before 09:00) vs after shift end (other OT by rule).
+     *
+     * @return array{
+     *   early_minutes: int,
+     *   after_minutes: int,
+     *   early_hours: string,
+     *   after_hours: string,
+     *   hours: string,
+     *   early_amount: float,
+     *   after_amount: float,
+     *   amount: float,
+     *   early_days: int,
+     *   after_days: int,
+     *   days: array
+     * }
+     */
+    public function getOvertimeBreakdownForPeriod($user_id, $business_id, $start_date, $end_date, $include_open = false)
+    {
         $attendances = EssentialsAttendance::with('shift')
             ->where('business_id', $business_id)
             ->where('user_id', $user_id)
@@ -73,6 +100,7 @@ class EssentialsUtil extends Util
                     $query->orWhereDate('clock_in_time', \Carbon::today()->toDateString());
                 }
             })
+            ->orderBy('clock_in_time')
             ->get();
 
         $assignments = EssentialsUserShift::join('essentials_shifts as s', 's.id', '=', 'essentials_user_shifts.essentials_shift_id')
@@ -90,8 +118,13 @@ class EssentialsUtil extends Util
             )
             ->get();
 
-        $minutes = 0;
-        $amount = 0;
+        $early_minutes = 0;
+        $after_minutes = 0;
+        $early_amount = 0.0;
+        $after_amount = 0.0;
+        $early_days = [];
+        $after_days = [];
+        $days = [];
 
         foreach ($attendances as $row) {
             $clock_in = \Carbon::parse($row->clock_in_time);
@@ -108,30 +141,118 @@ class EssentialsUtil extends Util
             $clock_out = ! empty($row->clock_out_time) ? \Carbon::parse($row->clock_out_time) : \Carbon::now();
             $shift_start = $this->shiftStartDateTime($clock_in, $shift->start_time);
             $shift_end = $this->shiftEndDateTime($clock_in, $shift->start_time, $shift->end_time);
-            $ot_minutes = 0;
+            $day_key = $clock_in->toDateString();
+            $day_early = 0;
+            $day_after = 0;
 
             if ($clock_in->lt($shift_start)) {
                 $early_until = $clock_out->lt($shift_start) ? $clock_out : $shift_start;
                 if ($early_until->gt($clock_in)) {
-                    $ot_minutes += $clock_in->diffInMinutes($early_until);
+                    $day_early = $clock_in->diffInMinutes($early_until);
                 }
             }
 
             if ($clock_out->gt($shift_end)) {
-                $ot_minutes += $shift_end->diffInMinutes($clock_out);
+                $day_after = $shift_end->diffInMinutes($clock_out);
             }
 
-            if ($ot_minutes <= 0) {
+            if ($day_early <= 0 && $day_after <= 0) {
                 continue;
             }
 
-            $minutes += $ot_minutes;
-            $amount += ($ot_minutes / 60) * $rate;
+            $early_minutes += $day_early;
+            $after_minutes += $day_after;
+            $early_amount += ($day_early / 60) * $rate;
+            $after_amount += ($day_after / 60) * $rate;
+            if ($day_early > 0) {
+                $early_days[$day_key] = true;
+            }
+            if ($day_after > 0) {
+                $after_days[$day_key] = true;
+            }
+
+            $days[] = [
+                'date' => $day_key,
+                'clock_in' => $clock_in->format('h:i A'),
+                'clock_out' => $clock_out->format('h:i A'),
+                'shift_start' => $shift_start->format('h:i A'),
+                'early_hours' => number_format($day_early / 60, 2),
+                'after_hours' => number_format($day_after / 60, 2),
+                'total_hours' => number_format(($day_early + $day_after) / 60, 2),
+            ];
+        }
+
+        $total_minutes = $early_minutes + $after_minutes;
+
+        return [
+            'early_minutes' => $early_minutes,
+            'after_minutes' => $after_minutes,
+            'early_hours' => number_format($early_minutes / 60, 2),
+            'after_hours' => number_format($after_minutes / 60, 2),
+            'hours' => number_format($total_minutes / 60, 2),
+            'early_amount' => round($early_amount, 2),
+            'after_amount' => round($after_amount, 2),
+            'amount' => round($early_amount + $after_amount, 2),
+            'early_days' => count($early_days),
+            'after_days' => count($after_days),
+            'days' => $days,
+        ];
+    }
+
+    /**
+     * OT board for everyone — HRM users with all-attendance access.
+     */
+    public function getAllEmployeesOvertimeBoard($business_id, $start_date, $end_date, $include_open = true)
+    {
+        $users = User::where('business_id', $business_id)
+            ->where('user_type', 'user')
+            ->where('is_cmmsn_agnt', 0)
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get(['id', 'first_name', 'last_name', 'surname']);
+
+        $rows = [];
+        $sum_early = 0.0;
+        $sum_after = 0.0;
+        $sum_total = 0.0;
+        $sum_amount = 0.0;
+
+        foreach ($users as $user) {
+            $ot = $this->getOvertimeBreakdownForPeriod($user->id, $business_id, $start_date, $end_date, $include_open);
+            if ((float) $ot['hours'] <= 0) {
+                continue;
+            }
+
+            $name = trim(implode(' ', array_filter([$user->surname, $user->first_name, $user->last_name])));
+            $rows[] = [
+                'user_id' => $user->id,
+                'name' => $name !== '' ? $name : 'User #'.$user->id,
+                'early_hours' => $ot['early_hours'],
+                'after_hours' => $ot['after_hours'],
+                'total_hours' => $ot['hours'],
+                'early_days' => $ot['early_days'],
+                'after_days' => $ot['after_days'],
+                'amount' => $ot['amount'],
+                'amount_label' => $this->num_f($ot['amount'], true),
+                'days' => $ot['days'],
+            ];
+            $sum_early += (float) $ot['early_hours'];
+            $sum_after += (float) $ot['after_hours'];
+            $sum_total += (float) $ot['hours'];
+            $sum_amount += (float) $ot['amount'];
         }
 
         return [
-            'hours' => number_format($minutes / 60, 2),
-            'amount' => round($amount, 2),
+            'rows' => $rows,
+            'totals' => [
+                'early_hours' => number_format($sum_early, 2),
+                'after_hours' => number_format($sum_after, 2),
+                'total_hours' => number_format($sum_total, 2),
+                'amount' => round($sum_amount, 2),
+                'amount_label' => $this->num_f($sum_amount, true),
+            ],
+            'start_date' => $start_date,
+            'end_date' => $end_date,
         ];
     }
 

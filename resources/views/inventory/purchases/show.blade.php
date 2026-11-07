@@ -35,9 +35,7 @@ body #scrollable-container .rmp-page select {
     $overdue = $purchase->isOverdue();
 @endphp
 <div class="rmp-page">
-    @if(session('success'))
-        <div class="alert alert-success" style="margin-top:16px;">{{ session('success') }}</div>
-    @endif
+    @include('inventory.purchases._swal_flash')
 
     <div class="rmp-card">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
@@ -115,6 +113,9 @@ body #scrollable-container .rmp-page select {
             @endif
             Total: Rs. {{ number_format((float) $purchase->total_amount, 2) }}<br>
             Paid: Rs. {{ number_format($paid, 2) }}<br>
+            @if(($pendingCheques = $purchase->amountPendingCheques()) > 0.009)
+                Pending cheques: Rs. {{ number_format($pendingCheques, 2) }}<br>
+            @endif
             Due: Rs. {{ number_format($due, 2) }}
             <span class="rmp-badge pay-{{ $purchase->payment_status ?: 'due' }}">{{ $purchase->payment_status ?: 'due' }}</span>
         </div>
@@ -129,13 +130,23 @@ body #scrollable-container .rmp-page select {
                     <th>Details</th>
                     <th>Amount</th>
                     <th>Note</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
                 @forelse($purchase->payments as $payment)
                 <tr>
                     <td>{{ $payment->paid_on?->format('d M Y') }}</td>
-                    <td>{{ $payment->method }}</td>
+                    <td>
+                        {{ $payment->method }}
+                        @if($payment->method === 'cheque')
+                            @if($payment->isChequePending())
+                                <span class="rmp-badge" style="background:#fef3c7;color:#b45309;margin-left:4px;">Pending</span>
+                            @else
+                                <span class="rmp-badge" style="background:#d1fae5;color:#047857;margin-left:4px;">Paid</span>
+                            @endif
+                        @endif
+                    </td>
                     <td>
                         @php
                             $accName = !empty($payment->account_id) && !empty($accounts[$payment->account_id])
@@ -154,16 +165,25 @@ body #scrollable-container .rmp-page select {
                     </td>
                     <td>Rs. {{ number_format((float) $payment->amount, 2) }}</td>
                     <td>{{ $payment->note ?: '—' }}</td>
+                    <td>
+                        @if(!empty($canEdit) && $payment->isChequePending())
+                            <form method="POST" action="{{ route('inventory.purchases.payments.mark_cheque_paid', [$purchase, $payment]) }}" onsubmit="return confirm('Mark this cheque as paid?');">
+                                @csrf
+                                <button type="submit" class="rmp-btn" style="padding:6px 10px;background:#059669;">Mark paid</button>
+                            </form>
+                        @endif
+                    </td>
                 </tr>
                 @empty
-                <tr><td colspan="6">No payment recorded yet.</td></tr>
+                <tr><td colspan="7">No payment recorded yet.</td></tr>
                 @endforelse
             </tbody>
         </table>
 
-        @if($due > 0.009)
+        @php $availablePay = $purchase->amountAvailableToAllocate(); @endphp
+        @if($availablePay > 0.009)
         <div class="rmp-pay-box" id="rmpAddPayment">
-            <h3>Add payment · Remaining due Rs. {{ number_format($due, 2) }}</h3>
+            <h3>Add payment · Open amount Rs. {{ number_format($availablePay, 2) }}@if($due > $availablePay + 0.009) <small style="font-weight:500;color:#6b7280;">(due Rs. {{ number_format($due, 2) }} incl. pending cheques)</small>@endif</h3>
             <form method="POST" action="{{ route('inventory.purchases.payments.store', $purchase) }}" enctype="multipart/form-data">
                 @csrf
                 <div class="rmp-grid">

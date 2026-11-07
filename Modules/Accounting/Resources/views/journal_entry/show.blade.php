@@ -29,12 +29,13 @@
                     @slot('header')
                         <div class="box-tools">
                             @if ($data->first()->reversed == 0 && $data->first()->reversible == 1)
-                                @can('accounting.journal_entries.reverse')
+                                @canany(['accounting.journal_entries.reverse', 'accounting.journal_entries.create'])
                                     <a href="{{ url('accounting/journal_entry/' . $data->first()->transaction_number . '/reverse') }}"
-                                        class="btn btn-danger confirm">
+                                        class="btn btn-danger"
+                                        onclick="return confirm('Reverse this journal entry? A new opposite entry will be created.');">
                                         <i class="fa fa-undo"></i> {{ trans_choice('accounting::general.reverse', 1) }}
                                     </a>
-                                @endcan
+                                @endcanany
                             @else
                                 <span class="text-danger">
                                     {{ trans_choice('accounting::lang.transaction', 1) }} {{ trans_choice('accounting::general.reversed', 1) }}

@@ -411,7 +411,7 @@ class InventoryPurchaseController extends Controller
 
         return redirect()
             ->route('inventory.purchases.show', $purchase)
-            ->with('success', 'Raw material purchase saved. Stock updated in Raw Materials.');
+            ->with($this->swalFlash('success', 'Purchase saved', 'Raw material purchase saved. Stock updated in Raw Materials.'));
     }
 
     public function show(InventoryPurchase $purchase)
@@ -617,7 +617,7 @@ class InventoryPurchaseController extends Controller
 
         return redirect()
             ->route('inventory.purchases.show', $purchase)
-            ->with('success', 'Purchase updated.');
+            ->with($this->swalFlash('success', 'Purchase updated', 'Purchase updated.'));
     }
 
     public function payments(InventoryPurchase $purchase)
@@ -654,20 +654,28 @@ class InventoryPurchaseController extends Controller
 
         $businessId = (int) request()->session()->get('user.business_id');
         $today = now()->toDateString();
-        $filter = request()->get('filter', 'due'); // due | upcoming | all
+        $filter = request()->get('filter', 'overdue'); // overdue | due_soon | upcoming | all
+        $hasCleared = Schema::hasColumn('inventory_purchase_payments', 'cheque_cleared_at');
 
-        $query = InventoryPurchasePayment::query()
+        $base = InventoryPurchasePayment::query()
             ->join('inventory_purchases', 'inventory_purchases.id', '=', 'inventory_purchase_payments.inventory_purchase_id')
             ->leftJoin('contacts', 'contacts.id', '=', 'inventory_purchases.contact_id')
             ->where('inventory_purchases.business_id', $businessId)
             ->where('inventory_purchase_payments.method', 'cheque')
-            ->whereNotNull('inventory_purchase_payments.cheque_date')
+            ->whereNotNull('inventory_purchase_payments.cheque_date');
+
+        if ($hasCleared) {
+            $base->whereNull('inventory_purchase_payments.cheque_cleared_at');
+        }
+
+        $query = (clone $base)
             ->select([
                 'inventory_purchase_payments.id',
                 'inventory_purchase_payments.amount',
                 'inventory_purchase_payments.cheque_number',
                 'inventory_purchase_payments.cheque_date',
                 'inventory_purchase_payments.paid_on',
+                'inventory_purchase_payments.cheque_cleared_at',
                 'inventory_purchases.id as purchase_id',
                 'inventory_purchases.ref_no',
                 'inventory_purchases.purchase_date',
@@ -676,22 +684,62 @@ class InventoryPurchaseController extends Controller
             ->orderBy('inventory_purchase_payments.cheque_date')
             ->orderBy('inventory_purchase_payments.id');
 
-        if ($filter === 'due') {
-            $query->whereDate('inventory_purchase_payments.cheque_date', '<=', $today);
+        if ($filter === 'overdue') {
+            $query->whereDate('inventory_purchase_payments.cheque_date', '<', $today);
+        } elseif ($filter === 'due_soon' || $filter === 'due') {
+            // Today + next 7 days (coming due)
+            $query->whereDate('inventory_purchase_payments.cheque_date', '>=', $today)
+                ->whereDate('inventory_purchase_payments.cheque_date', '<=', now()->addDays(7)->toDateString());
         } elseif ($filter === 'upcoming') {
-            $query->whereDate('inventory_purchase_payments.cheque_date', '>', $today);
+            $query->whereDate('inventory_purchase_payments.cheque_date', '>', now()->addDays(7)->toDateString());
         }
 
         $cheques = $query->get();
-        $dueCount = InventoryPurchasePayment::query()
-            ->join('inventory_purchases', 'inventory_purchases.id', '=', 'inventory_purchase_payments.inventory_purchase_id')
-            ->where('inventory_purchases.business_id', $businessId)
-            ->where('inventory_purchase_payments.method', 'cheque')
-            ->whereNotNull('inventory_purchase_payments.cheque_date')
-            ->whereDate('inventory_purchase_payments.cheque_date', '<=', $today)
-            ->count();
 
-        return view('inventory.purchases.due_cheques', compact('cheques', 'filter', 'dueCount', 'today'));
+        $overdueCount = (clone $base)->whereDate('inventory_purchase_payments.cheque_date', '<', $today)->count();
+        $dueSoonCount = (clone $base)
+            ->whereDate('inventory_purchase_payments.cheque_date', '>=', $today)
+            ->whereDate('inventory_purchase_payments.cheque_date', '<=', now()->addDays(7)->toDateString())
+            ->count();
+        $dueCount = $overdueCount; // legacy alias for older views
+
+        $canClear = $this->canCreate();
+
+        return view('inventory.purchases.due_cheques', compact(
+            'cheques', 'filter', 'dueCount', 'overdueCount', 'dueSoonCount', 'today', 'canClear'
+        ));
+    }
+
+    /**
+     * Manually mark a purchase cheque as paid/cleared.
+     */
+    public function markChequePaid(InventoryPurchase $purchase, InventoryPurchasePayment $payment)
+    {
+        $this->checkAccess();
+        if (! $this->canCreate()) {
+            abort(403);
+        }
+        $this->assertPurchaseBusiness($purchase);
+        $this->ensurePaymentDetailColumns();
+
+        if ((int) $payment->inventory_purchase_id !== (int) $purchase->id) {
+            abort(404);
+        }
+        if ($payment->method !== 'cheque') {
+            return back()->with($this->swalFlash('error', 'Cannot mark paid', 'Only cheque payments can be marked paid this way.'));
+        }
+        if (! empty($payment->cheque_cleared_at)) {
+            return back()->with($this->swalFlash('success', 'Already paid', 'Cheque already marked as paid.'));
+        }
+
+        DB::transaction(function () use ($purchase, $payment) {
+            $payment->cheque_cleared_at = now();
+            $payment->save();
+            $purchase->refreshPaymentStatus();
+            RawMaterialAccounting::syncPayment($purchase->fresh(), $payment->fresh());
+        });
+
+        return back()->with($this->swalFlash('success', 'Cheque paid', 'Cheque marked as paid. Purchase payment status updated.'));
     }
 
     public function storePayment(Request $request, InventoryPurchase $purchase)
@@ -722,10 +770,10 @@ class InventoryPurchaseController extends Controller
             $data['cheque_date'] ?? null
         );
 
-        $due = $purchase->amountDue();
-        if ((float) $data['amount'] > $due + 0.009) {
+        $available = $purchase->amountAvailableToAllocate();
+        if ((float) $data['amount'] > $available + 0.009) {
             throw ValidationException::withMessages([
-                'amount' => 'Payment cannot be more than the amount still due (Rs. '.number_format($due, 2).').',
+                'amount' => 'Payment cannot be more than the amount still open (Rs. '.number_format($available, 2).'), including pending cheques.',
             ]);
         }
 
@@ -762,7 +810,7 @@ class InventoryPurchaseController extends Controller
             ]);
         }
 
-        return back()->with('success', 'Payment saved.');
+        return back()->with($this->swalFlash('success', 'Payment saved', 'Payment saved.'));
     }
 
     public function markReceived(InventoryPurchase $purchase)
@@ -778,7 +826,7 @@ class InventoryPurchaseController extends Controller
         }
 
         if ($purchase->status === 'received') {
-            return back()->with('success', 'Already received.');
+            return back()->with($this->swalFlash('success', 'Already received', 'This purchase is already marked as received.'));
         }
 
         DB::transaction(function () use ($purchase) {
@@ -790,7 +838,7 @@ class InventoryPurchaseController extends Controller
             RawMaterialAccounting::syncPurchase($purchase->fresh());
         });
 
-        return back()->with('success', 'Marked as received — raw material stock updated.');
+        return back()->with($this->swalFlash('success', 'Received', 'Marked as received — raw material stock updated.'));
     }
 
     private function assertPurchaseBusiness(InventoryPurchase $purchase): void
@@ -799,6 +847,22 @@ class InventoryPurchaseController extends Controller
         if ((int) $purchase->business_id !== (int) $businessId) {
             abort(404);
         }
+    }
+
+    /**
+     * Flash a SweetAlert popup only (no toastr duplicate).
+     *
+     * @return array{swal_popup: array{type: string, title: string, text: string}}
+     */
+    private function swalFlash(string $type, string $title, string $text): array
+    {
+        return [
+            'swal_popup' => [
+                'type' => $type,
+                'title' => $title,
+                'text' => $text,
+            ],
+        ];
     }
 
     private function assertPaymentDetails(string $method, ?string $chequeNumber, ?string $referenceNo, ?string $chequeDate = null): void
@@ -858,6 +922,10 @@ class InventoryPurchaseController extends Controller
         if (Schema::hasColumn('inventory_purchase_payments', 'cheque_date')) {
             $payload['cheque_date'] = $extra['cheque_date'] ?? null;
         }
+        // New cheques stay uncleared until manually marked paid.
+        if (Schema::hasColumn('inventory_purchase_payments', 'cheque_cleared_at')) {
+            $payload['cheque_cleared_at'] = $method === 'cheque' ? null : null;
+        }
         if (Schema::hasColumn('inventory_purchase_payments', 'reference_no')) {
             $payload['reference_no'] = $extra['reference_no'] ?? null;
         }
@@ -875,7 +943,11 @@ class InventoryPurchaseController extends Controller
         }
 
         $purchase->refreshPaymentStatus();
-        RawMaterialAccounting::syncPayment($purchase->fresh(), $payment);
+
+        // Do not post cheque to accounts / mark paid in ledger until cleared.
+        if ($method !== 'cheque') {
+            RawMaterialAccounting::syncPayment($purchase->fresh(), $payment);
+        }
     }
 
     /**
@@ -896,6 +968,19 @@ class InventoryPurchaseController extends Controller
             Schema::table('inventory_purchase_payments', function (Blueprint $table) {
                 $table->date('cheque_date')->nullable()->after('cheque_number');
             });
+        }
+        if (! Schema::hasColumn('inventory_purchase_payments', 'cheque_cleared_at')) {
+            Schema::table('inventory_purchase_payments', function (Blueprint $table) {
+                $after = Schema::hasColumn('inventory_purchase_payments', 'cheque_date') ? 'cheque_date' : 'cheque_number';
+                $table->timestamp('cheque_cleared_at')->nullable()->after($after);
+            });
+            // Existing cheques were already counted as paid — keep them cleared.
+            DB::table('inventory_purchase_payments')
+                ->where('method', 'cheque')
+                ->whereNull('cheque_cleared_at')
+                ->update([
+                    'cheque_cleared_at' => DB::raw('COALESCE(paid_on, created_at, NOW())'),
+                ]);
         }
         if (! Schema::hasColumn('inventory_purchase_payments', 'reference_no')) {
             Schema::table('inventory_purchase_payments', function (Blueprint $table) {

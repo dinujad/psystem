@@ -155,6 +155,21 @@
                                                                         <i class="fas fa-eye"></i>
                                                                         <span>{{ trans_choice('accounting::lang.detail', 2) }}</span>
                                                                     </a>
+                                                                    @if ((int) ($key->reversed ?? 0) === 0 && (int) ($key->reversible ?? 1) === 1)
+                                                                        @canany(['accounting.journal_entries.reverse', 'accounting.journal_entries.create'])
+                                                                            <a href="{{ url('accounting/journal_entry/' . $key->transaction_number . '/reverse') }}"
+                                                                                class="dropdown-item text-danger"
+                                                                                onclick="return confirm('Reverse this journal entry? A new opposite entry will be created.');">
+                                                                                <i class="fas fa-undo"></i>
+                                                                                <span>{{ trans_choice('accounting::general.reverse', 1) }}</span>
+                                                                            </a>
+                                                                        @endcanany
+                                                                    @else
+                                                                        <span class="dropdown-item text-muted disabled">
+                                                                            <i class="fas fa-ban"></i>
+                                                                            <span>{{ trans_choice('accounting::general.reversed', 1) }}</span>
+                                                                        </span>
+                                                                    @endif
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -174,6 +189,9 @@
                                                         </td>
                                                         <td>
                                                             <span>{{ $key->transaction_number }}</span>
+                                                            @if ((int) ($key->reversed ?? 0) === 1)
+                                                                <br><span class="label label-danger">{{ trans_choice('accounting::general.reversed', 1) }}</span>
+                                                            @endif
                                                         </td>
                                                         <td>
                                                             @if ($key->account_type == 'asset')

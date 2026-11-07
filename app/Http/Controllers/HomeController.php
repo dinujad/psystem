@@ -115,11 +115,19 @@ class HomeController extends Controller
         }
 
         $canSeeDueCheques = $this->canSeeDueCheques($user, $is_admin);
-        $dueChequeCount = $canSeeDueCheques ? $this->countDuePurchaseCheques((int) $business_id) : 0;
+        $overdueChequeCount = $canSeeDueCheques ? $this->countPendingPurchaseCheques((int) $business_id, 'overdue') : 0;
+        $dueSoonChequeCount = $canSeeDueCheques ? $this->countPendingPurchaseCheques((int) $business_id, 'due_soon') : 0;
+        $dueChequeCount = $overdueChequeCount; // legacy card alias
         $rawPurchaseDueCount = $canSeeDueCheques ? $this->countRawPurchaseDue((int) $business_id) : 0;
+        $overdueCheques = $canSeeDueCheques ? $this->listPendingPurchaseCheques((int) $business_id, 'overdue', 8) : collect();
+        $dueSoonCheques = $canSeeDueCheques ? $this->listPendingPurchaseCheques((int) $business_id, 'due_soon', 8) : collect();
 
         if (! auth()->user()->can('dashboard.data')) {
-            return view('home.index', compact('is_admin', 'todoWidget', 'attendanceToday', 'myOt', 'myWork', 'canSeeDueCheques', 'dueChequeCount', 'rawPurchaseDueCount'));
+            return view('home.index', compact(
+                'is_admin', 'todoWidget', 'attendanceToday', 'myOt', 'myWork',
+                'canSeeDueCheques', 'dueChequeCount', 'overdueChequeCount', 'dueSoonChequeCount',
+                'rawPurchaseDueCount', 'overdueCheques', 'dueSoonCheques'
+            ));
         }
 
         $fy = $this->businessUtil->getCurrentFinancialYear($business_id);
@@ -297,7 +305,8 @@ class HomeController extends Controller
             'sells_chart_1', 'sells_chart_2', 'widgets', 'all_locations',
             'common_settings', 'is_admin', 'showProduction', 'productionStages',
             'activeJobs', 'stageCounts', 'todoWidget', 'attendanceToday', 'myOt', 'myWork',
-            'canSeeDueCheques', 'dueChequeCount', 'rawPurchaseDueCount'
+            'canSeeDueCheques', 'dueChequeCount', 'overdueChequeCount', 'dueSoonChequeCount',
+            'rawPurchaseDueCount', 'overdueCheques', 'dueSoonCheques'
         ));
     }
 
@@ -315,7 +324,37 @@ class HomeController extends Controller
             || $user->can('purchase.create');
     }
 
-    private function countDuePurchaseCheques(int $businessId): int
+    private function pendingChequeBaseQuery(int $businessId)
+    {
+        $query = InventoryPurchasePayment::query()
+            ->join('inventory_purchases', 'inventory_purchases.id', '=', 'inventory_purchase_payments.inventory_purchase_id')
+            ->leftJoin('contacts', 'contacts.id', '=', 'inventory_purchases.contact_id')
+            ->where('inventory_purchases.business_id', $businessId)
+            ->where('inventory_purchase_payments.method', 'cheque')
+            ->whereNotNull('inventory_purchase_payments.cheque_date');
+
+        if (Schema::hasColumn('inventory_purchase_payments', 'cheque_cleared_at')) {
+            $query->whereNull('inventory_purchase_payments.cheque_cleared_at');
+        }
+
+        return $query;
+    }
+
+    private function applyChequeHorizon($query, string $horizon)
+    {
+        $today = now()->toDateString();
+        if ($horizon === 'overdue') {
+            return $query->whereDate('inventory_purchase_payments.cheque_date', '<', $today);
+        }
+        if ($horizon === 'due_soon') {
+            return $query->whereDate('inventory_purchase_payments.cheque_date', '>=', $today)
+                ->whereDate('inventory_purchase_payments.cheque_date', '<=', now()->addDays(7)->toDateString());
+        }
+
+        return $query;
+    }
+
+    private function countPendingPurchaseCheques(int $businessId, string $horizon): int
     {
         try {
             if (
@@ -325,18 +364,53 @@ class HomeController extends Controller
                 return 0;
             }
 
-            return (int) InventoryPurchasePayment::query()
-                ->join('inventory_purchases', 'inventory_purchases.id', '=', 'inventory_purchase_payments.inventory_purchase_id')
-                ->where('inventory_purchases.business_id', $businessId)
-                ->where('inventory_purchase_payments.method', 'cheque')
-                ->whereNotNull('inventory_purchase_payments.cheque_date')
-                ->whereDate('inventory_purchase_payments.cheque_date', '<=', now()->toDateString())
-                ->count();
+            $query = $this->pendingChequeBaseQuery($businessId);
+            $this->applyChequeHorizon($query, $horizon);
+
+            return (int) $query->count();
         } catch (\Throwable $e) {
-            \Log::warning('home due cheque count failed: '.$e->getMessage());
+            \Log::warning('home pending cheque count failed: '.$e->getMessage());
 
             return 0;
         }
+    }
+
+    private function listPendingPurchaseCheques(int $businessId, string $horizon, int $limit = 8)
+    {
+        try {
+            if (
+                ! Schema::hasTable('inventory_purchase_payments')
+                || ! Schema::hasColumn('inventory_purchase_payments', 'cheque_date')
+            ) {
+                return collect();
+            }
+
+            $query = $this->pendingChequeBaseQuery($businessId);
+            $this->applyChequeHorizon($query, $horizon);
+
+            return $query
+                ->select([
+                    'inventory_purchase_payments.id',
+                    'inventory_purchase_payments.amount',
+                    'inventory_purchase_payments.cheque_number',
+                    'inventory_purchase_payments.cheque_date',
+                    'inventory_purchases.id as purchase_id',
+                    'inventory_purchases.ref_no',
+                    DB::raw("COALESCE(contacts.supplier_business_name, contacts.name, '—') as supplier_name"),
+                ])
+                ->orderBy('inventory_purchase_payments.cheque_date')
+                ->limit($limit)
+                ->get();
+        } catch (\Throwable $e) {
+            \Log::warning('home pending cheque list failed: '.$e->getMessage());
+
+            return collect();
+        }
+    }
+
+    private function countDuePurchaseCheques(int $businessId): int
+    {
+        return $this->countPendingPurchaseCheques($businessId, 'overdue');
     }
 
     private function countRawPurchaseDue(int $businessId): int

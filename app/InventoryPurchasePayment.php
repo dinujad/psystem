@@ -16,6 +16,7 @@ class InventoryPurchasePayment extends Model
         'account_id',
         'cheque_number',
         'cheque_date',
+        'cheque_cleared_at',
         'reference_no',
         'attachment',
         'note',
@@ -27,10 +28,21 @@ class InventoryPurchasePayment extends Model
         'amount' => 'float',
         'paid_on' => 'date',
         'cheque_date' => 'date',
+        'cheque_cleared_at' => 'datetime',
     ];
 
     public function purchase()
     {
         return $this->belongsTo(InventoryPurchase::class, 'inventory_purchase_id');
+    }
+
+    public function isChequePending(): bool
+    {
+        return $this->method === 'cheque' && empty($this->cheque_cleared_at);
+    }
+
+    public function isChequeCleared(): bool
+    {
+        return $this->method !== 'cheque' || ! empty($this->cheque_cleared_at);
     }
 }

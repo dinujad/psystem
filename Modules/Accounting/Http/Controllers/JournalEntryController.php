@@ -77,6 +77,8 @@ class JournalEntryController extends Controller
                 journal_entries.debit,
                 journal_entries.credit,
                 journal_entries.transaction_number,
+                journal_entries.reversed,
+                journal_entries.reversible,
                 business_locations.name business_location,
                 chart_of_accounts.account_type,
                 chart_of_accounts.name account_name,
@@ -201,6 +203,8 @@ class JournalEntryController extends Controller
                 $journal_entry->year = $date[0];
                 $journal_entry->debit = $data['amount'];
                 $journal_entry->manual_entry = 1;
+                $journal_entry->reversed = 0;
+                $journal_entry->reversible = 1;
                 $journal_entry->notes = $data['notes'];
                 $journal_entry->save();
 
@@ -219,6 +223,8 @@ class JournalEntryController extends Controller
                 $journal_entry->year = $date[0];
                 $journal_entry->credit = $data['amount'];
                 $journal_entry->manual_entry = 1;
+                $journal_entry->reversed = 0;
+                $journal_entry->reversible = 1;
                 $journal_entry->notes = $data['notes'];
                 $journal_entry->save();
 
@@ -264,60 +270,94 @@ class JournalEntryController extends Controller
 
     public function reverse($old_transaction_number)
     {
-        $journal_entry = JournalEntry::leftJoin("business_locations", "business_locations.id", "journal_entries.location_id")
-            ->where('transaction_number', $old_transaction_number)
-            ->where('business_locations.business_id', session('business.id'));
-
-        $journal_entry->update(['reversed' => 1, 'reversible' => 0]);
-        //create new transactions to reverse these
-        $new_transaction_number = uniqid();
-
-        foreach ($journal_entry->get() as $key) {
-            if (empty($key->debit)) {
-                //credit account
-                $journal_entry = new JournalEntry();
-                $journal_entry->created_by_id = Auth::id();
-                $journal_entry->transaction_number = $new_transaction_number;
-                $journal_entry->payment_detail_id = $key->payment_detail_id;
-                $journal_entry->location_id = $key->location_id;
-                $journal_entry->currency_id = $key->currency_id;
-                $journal_entry->chart_of_account_id = $key->chart_of_account_id;
-                $journal_entry->transaction_type = $key->transaction_type;
-                $journal_entry->date = date("Y-m-d");
-                $date = explode('-', date("Y-m-d"));
-                $journal_entry->month = $date[1];
-                $journal_entry->year = $date[0];
-                $journal_entry->debit = $key->credit;
-                $journal_entry->reference = $key->reference;
-                $journal_entry->manual_entry = $key->manual_entry;
-                $journal_entry->notes = $key->notes;
-                $journal_entry->save();
-            } else {
-                //debit account
-                $journal_entry = new JournalEntry();
-                $journal_entry->created_by_id = Auth::id();
-                $journal_entry->transaction_number = $new_transaction_number;
-                $journal_entry->payment_detail_id = $key->payment_detail_id;
-                $journal_entry->location_id = $key->location_id;
-                $journal_entry->currency_id = $key->currency_id;
-                $journal_entry->chart_of_account_id = $key->chart_of_account_id;
-                $journal_entry->transaction_type = $key->transaction_type;
-                $journal_entry->date = date("Y-m-d");
-                $date = explode('-', date("Y-m-d"));
-                $journal_entry->month = $date[1];
-                $journal_entry->year = $date[0];
-                $journal_entry->credit = $key->debit;
-                $journal_entry->reference = $key->reference;
-                $journal_entry->manual_entry = $key->manual_entry;
-                $journal_entry->notes = $key->notes;
-                $journal_entry->save();
-            }
+        if (
+            ! auth()->user()->can('accounting.journal_entries.reverse')
+            && ! auth()->user()->can('accounting.journal_entries.create')
+        ) {
+            abort(403, 'Unauthorized action.');
         }
-        activity()
-            ->on($journal_entry)
-            ->withProperties(['id' => $journal_entry->id])
-            ->log('Reverse Journal Entry');
-        (new FlashService())->onSave();
-        return redirect()->back()->with("transaction_number", $new_transaction_number);
+
+        $businessId = session('business.id') ?: session('user.business_id');
+
+        $entries = JournalEntry::query()
+            ->join('business_locations', 'business_locations.id', '=', 'journal_entries.location_id')
+            ->where('journal_entries.transaction_number', $old_transaction_number)
+            ->where('business_locations.business_id', $businessId)
+            ->select('journal_entries.*')
+            ->get();
+
+        if ($entries->isEmpty()) {
+            (new FlashService())->onWarning('Journal entry not found.');
+
+            return redirect()->back();
+        }
+
+        if ((int) $entries->first()->reversed === 1 || (int) $entries->first()->reversible !== 1) {
+            (new FlashService())->onWarning('This journal entry is already reversed or cannot be reversed.');
+
+            return redirect()->back();
+        }
+
+        $newTransactionNumber = get_uniqid();
+        $today = date('Y-m-d');
+        $dateParts = explode('-', $today);
+        $savedEntry = null;
+
+        try {
+            DB::beginTransaction();
+
+            JournalEntry::whereIn('id', $entries->pluck('id'))
+                ->update(['reversed' => 1, 'reversible' => 0]);
+
+            foreach ($entries as $key) {
+                $reversal = new JournalEntry();
+                $reversal->created_by_id = Auth::id();
+                $reversal->transaction_number = $newTransactionNumber;
+                $reversal->payment_detail_id = $key->payment_detail_id;
+                $reversal->location_id = $key->location_id;
+                $reversal->currency_id = $key->currency_id;
+                $reversal->chart_of_account_id = $key->chart_of_account_id;
+                $reversal->transaction_type = $key->transaction_type;
+                $reversal->date = $today;
+                $reversal->month = $dateParts[1];
+                $reversal->year = $dateParts[0];
+                $reversal->reference = $key->reference ?: $old_transaction_number;
+                $reversal->manual_entry = $key->manual_entry;
+                $reversal->reversed = 0;
+                $reversal->reversible = 0;
+                $reversal->notes = trim('Reversal of '.$old_transaction_number.($key->notes ? ' — '.$key->notes : ''));
+
+                if (! empty($key->debit) && (float) $key->debit > 0) {
+                    $reversal->credit = $key->debit;
+                } else {
+                    $reversal->debit = $key->credit;
+                }
+
+                $reversal->save();
+                $savedEntry = $reversal;
+            }
+
+            if ($savedEntry) {
+                activity()
+                    ->on($savedEntry)
+                    ->withProperties([
+                        'id' => $savedEntry->id,
+                        'reversed_transaction_number' => $old_transaction_number,
+                        'new_transaction_number' => $newTransactionNumber,
+                    ])
+                    ->log('Reverse Journal Entry');
+            }
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return (new FlashService())->onException($e)->redirectBackWithInput();
+        }
+
+        (new FlashService())->onSuccess('Journal entry reversed successfully.');
+
+        return redirect('accounting/journal_entry/'.$newTransactionNumber.'/show')
+            ->with('transaction_number', $newTransactionNumber);
     }
 }

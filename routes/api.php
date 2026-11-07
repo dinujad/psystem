@@ -16,3 +16,6 @@ use Illuminate\Http\Request;
 Route::middleware('auth:api')->get('/user', function (Request $request) {
     return $request->user();
 });
+
+Route::post('/onepay/callback', [\App\Http\Controllers\Api\OnePayCallbackController::class, '__invoke'])
+    ->name('api.onepay.callback');

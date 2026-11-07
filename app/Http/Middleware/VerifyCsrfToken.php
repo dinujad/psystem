@@ -24,6 +24,8 @@ class VerifyCsrfToken extends BaseVerifier
         '/whatsapp/webhook/connected',
         '/whatsapp/wipe-inbox',
         '/delivery/webhook/status',
+        '/api/onepay/callback',
+        'api/onepay/callback',
         'emwa-api/*',
     ];
 }

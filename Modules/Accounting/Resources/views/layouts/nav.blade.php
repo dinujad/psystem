@@ -52,6 +52,13 @@
                         <a href="{{ url('accounting/reconcile') }}">@lang('accounting::lang.reconcile')</a>
                     </li>
 
+                    <li @if (request()->segment(1) == 'onepay') class="active" @endif>
+                        <a href="{{ url('onepay') }}">OnePay Payouts</a>
+                    </li>
+                    <li @if (request()->segment(1) == 'payzy') class="active" @endif>
+                        <a href="{{ url('payzy') }}">Payzy BNPL</a>
+                    </li>
+
 
 
                     <li @if (request()->segment(1) == 'accounting' && request()->segment(2) == 'budget') class="active" @endif>

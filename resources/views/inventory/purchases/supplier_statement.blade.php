@@ -19,6 +19,7 @@
 
 @section('content')
 <div class="rmp-page">
+    @include('inventory.purchases._swal_flash')
     <div class="rmp-card">
         <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">
             <div>

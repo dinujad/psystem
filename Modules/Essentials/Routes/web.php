@@ -58,6 +58,7 @@ Route::middleware('web', 'authh', 'auth', 'SetSessionData', 'language', 'timezon
         Route::get('/attendance/today-board', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'todayBoard']);
         Route::get('/attendance/today-summary', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'todaySummary']);
         Route::get('/my-ot', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'myOt']);
+        Route::get('/attendance/ot-board', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'otBoard']);
         Route::post('/attendance/today-arrive', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'todayArrive']);
         Route::post('/attendance/today-out', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'todayOut']);
         Route::post('/attendance/end-day', [Modules\Essentials\Http\Controllers\AttendanceController::class, 'endDay']);

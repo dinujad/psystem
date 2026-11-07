@@ -75,6 +75,35 @@
                     </table>
                     <div class="spacer"></div>
                     <div class="spacer"></div>
+
+                    <div class="text-center" style="margin-bottom:16px;">
+                        @if(config('onepay.enabled') && filled(config('onepay.app_id')))
+                            <a href="{{ route('onepay.checkout', ['token' => $transaction->invoice_token]) }}"
+                               class="btn btn-success btn-lg" style="min-width:220px;margin:6px;">
+                                <i class="fas fa-bolt"></i> Pay Now — OnePay
+                            </a>
+                            <p class="text-muted" style="font-size:12px;">Card / FriMi / HelaPay / QPlus / G-Pay / Amex</p>
+                        @endif
+                        @if(config('payzy.enabled') && filled(config('payzy.shop_id')))
+                            @php
+                                $dueRaw = (float) $total_payable;
+                                $payzyTax = round($dueRaw * ((float) config('payzy.bnpl_tax_percent', 12) / 100), 2);
+                                $payzyTotal = round($dueRaw + $payzyTax, 2);
+                                $inst = round($payzyTotal / 4, 2);
+                            @endphp
+                            <a href="{{ route('payzy.checkout', ['token' => $transaction->invoice_token]) }}"
+                               class="btn btn-warning btn-lg" style="min-width:220px;margin:6px;">
+                                <i class="fas fa-calendar-alt"></i> Pay Now — Payzy 4 Installment
+                            </a>
+                            <div class="alert alert-warning" style="text-align:left;font-size:13px;margin-top:10px;">
+                                <strong>Payzy BNPL:</strong> Invoice + 12% Payzy tax (Rs. {{ number_format($payzyTax, 2) }})
+                                = <strong>Rs. {{ number_format($payzyTotal, 2) }}</strong>,
+                                paid in 4 installments of about <strong>Rs. {{ number_format($inst, 2) }}</strong> each.
+                            </div>
+                        @endif
+                    </div>
+
+                    @if(!empty($pos_settings['razor_pay_key_id']))
                     <div class="width-50 text-center f-left">
                         <form action="{{route('confirm_payment', ['id' => $transaction->id])}}" method="POST">
                             <input type="hidden" name="gateway" value="razorpay">
@@ -90,6 +119,7 @@
                             {{ csrf_field() }}
                         </form>
                     </div>
+                    @endif
                         @if(!empty($pos_settings['stripe_public_key']) && !empty($pos_settings['stripe_secret_key']))
                             @php
                                 $code = strtolower($business_details->currency_code);

@@ -64,6 +64,9 @@
                     </li>
                     @can('essentials.crud_all_attendance')
                     <li>
+                        <a href="#ot_tab" data-toggle="tab" aria-expanded="true"><i class="fas fa-business-time" aria-hidden="true"></i> OT</a>
+                    </li>
+                    <li>
                         <a href="#attendance_by_shift_tab" data-toggle="tab" aria-expanded="true"><i class="fas fa-user-check" aria-hidden="true"></i> @lang('essentials::lang.attendance_by_shift')</a>
                     </li>
                     <li>
@@ -151,6 +154,26 @@
                         </div>
                     </div>
                     
+                    @can('essentials.crud_all_attendance')
+                    <div class="tab-pane" id="ot_tab">
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="form-group">
+                                    {!! Form::label('ot_date_range', __('report.date_range') . ':') !!}
+                                    {!! Form::text('ot_date_range', null, ['placeholder' => __('lang_v1.select_a_date_range'), 'class' => 'form-control', 'readonly', 'id' => 'ot_date_range']); !!}
+                                </div>
+                            </div>
+                            <div class="col-md-3" style="padding-top:25px;">
+                                <button type="button" class="btn btn-primary" id="ot_reload_btn">
+                                    <i class="fas fa-sync"></i> Load OT
+                                </button>
+                            </div>
+                        </div>
+                        <div id="ot_board_wrap">
+                            <p class="text-muted">Loading OT…</p>
+                        </div>
+                    </div>
+                    @endcan
                     <div class="tab-pane" id="attendance_by_shift_tab">
                         @include('essentials::attendance.attendance_by_shift')
                     </div>
@@ -711,6 +734,59 @@
     $(document).on('click', 'button.remove_attendance_row', function(e) {
         $(this).closest('tr').remove();
     });
+
+    @can('essentials.crud_all_attendance')
+    var ot_board_loaded = false;
+    function loadOtBoard() {
+        var start = null;
+        var end = null;
+        if ($('#ot_date_range').data('daterangepicker')) {
+            start = $('#ot_date_range').data('daterangepicker').startDate.format('YYYY-MM-DD');
+            end = $('#ot_date_range').data('daterangepicker').endDate.format('YYYY-MM-DD');
+        }
+        $('#ot_board_wrap').html('<p class="text-muted">Loading OT…</p>');
+        $.ajax({
+            url: "{{ action([\Modules\Essentials\Http\Controllers\AttendanceController::class, 'otBoard']) }}",
+            data: { start_date: start, end_date: end },
+            dataType: 'html',
+            success: function(html) {
+                $('#ot_board_wrap').html(html);
+                ot_board_loaded = true;
+            },
+            error: function() {
+                $('#ot_board_wrap').html('<p class="text-danger">Could not load OT board.</p>');
+            }
+        });
+    }
+
+    if ($('#ot_date_range').length) {
+        var otStart = moment().startOf('month');
+        var otEnd = moment();
+        $('#ot_date_range').daterangepicker(
+            $.extend({}, dateRangeSettings, {
+                startDate: otStart,
+                endDate: otEnd
+            }),
+            function (start, end) {
+                $('#ot_date_range').val(start.format(moment_date_format) + ' ~ ' + end.format(moment_date_format));
+            }
+        );
+        $('#ot_date_range').val(otStart.format(moment_date_format) + ' ~ ' + otEnd.format(moment_date_format));
+    }
+
+    $('a[href="#ot_tab"]').on('shown.bs.tab', function () {
+        if (!ot_board_loaded) {
+            loadOtBoard();
+        }
+    });
+    $(document).on('click', '#ot_reload_btn', function () {
+        loadOtBoard();
+    });
+    $(document).on('click', '.ot-day-toggle', function () {
+        var target = $(this).data('target');
+        $(target).toggle();
+    });
+    @endcan
 
 </script>
 @endsection

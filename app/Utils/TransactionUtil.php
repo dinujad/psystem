@@ -1678,6 +1678,22 @@ class TransactionUtil extends Util
             $output['total_paid'] = ($paid_amount == 0) ? 0 : $this->num_f($paid_amount, $show_currency, $business_details);
         }
 
+        // Payzy BNPL breakdown for invoice / PDF (tax + 4 installments)
+        try {
+            $payzyBlock = app(\App\Services\PayzyService::class)->receiptBnplBlock($transaction);
+            if (! empty($payzyBlock)) {
+                $output['payzy_bnpl'] = $payzyBlock;
+                $output['payzy_tax_label'] = $payzyBlock['tax_label'];
+                $output['payzy_tax'] = $this->num_f($payzyBlock['tax_amount'], $show_currency, $business_details);
+                $output['payzy_installments'] = [];
+                foreach ($payzyBlock['installments'] as $idx => $amt) {
+                    $output['payzy_installments']['Installment '.($idx + 1)] = $this->num_f($amt, $show_currency, $business_details);
+                }
+            }
+        } catch (\Throwable $e) {
+            // ignore if Payzy tables/config not ready
+        }
+
         $output['additional_expenses'] = [];
 
         if (! empty($transaction->additional_expense_value_1) && ! empty($transaction->additional_expense_key_1)) {

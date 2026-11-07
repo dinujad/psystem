@@ -65,11 +65,58 @@ class InventoryPurchase extends Model
 
     public function amountPaid(): float
     {
-        return round((float) $this->payments()->sum('amount'), 4);
+        // Uncleared cheques do not count as paid until manually marked.
+        $query = $this->payments();
+        try {
+            if (
+                \Schema::hasTable('inventory_purchase_payments')
+                && \Schema::hasColumn('inventory_purchase_payments', 'cheque_cleared_at')
+            ) {
+                $query->where(function ($q) {
+                    $q->where('method', '!=', 'cheque')
+                        ->orWhereNotNull('cheque_cleared_at');
+                });
+            }
+        } catch (\Throwable $e) {
+            // Fall back to summing all payments if schema check fails.
+        }
+
+        return round((float) $query->sum('amount'), 4);
+    }
+
+    /**
+     * Pending (issued but not yet cleared) cheque total.
+     */
+    public function amountPendingCheques(): float
+    {
+        try {
+            if (
+                ! \Schema::hasTable('inventory_purchase_payments')
+                || ! \Schema::hasColumn('inventory_purchase_payments', 'cheque_cleared_at')
+            ) {
+                return 0.0;
+            }
+        } catch (\Throwable $e) {
+            return 0.0;
+        }
+
+        return round((float) $this->payments()
+            ->where('method', 'cheque')
+            ->whereNull('cheque_cleared_at')
+            ->sum('amount'), 4);
+    }
+
+    /**
+     * Room left for new payments / cheques (excludes already-cleared + pending cheques).
+     */
+    public function amountAvailableToAllocate(): float
+    {
+        return round(max(0, (float) $this->total_amount - $this->amountPaid() - $this->amountPendingCheques()), 4);
     }
 
     public function amountDue(): float
     {
+        // Still due until cheque is manually marked paid/cleared.
         return round(max(0, (float) $this->total_amount - $this->amountPaid()), 4);
     }
 

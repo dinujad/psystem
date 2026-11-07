@@ -128,6 +128,51 @@
         </div>
         @endif
 
+        @if(!empty($canSeeDueCheques))
+        <div class="tw-px-5 tw-pt-4" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;">
+            <div style="background:#fff;border:1px solid #fecaca;border-radius:14px;padding:14px 16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+                    <div style="font-size:14px;font-weight:800;color:#991b1b;"><i class="fas fa-exclamation-circle"></i> Overdue cheques <span style="background:#fee2e2;border-radius:999px;padding:2px 8px;font-size:12px;">{{ (int) ($overdueChequeCount ?? 0) }}</span></div>
+                    <a href="{{ route('inventory.purchases.due_cheques', ['filter' => 'overdue']) }}" style="font-size:12px;font-weight:700;color:#b91c1c;">View all →</a>
+                </div>
+                @forelse(($overdueCheques ?? collect()) as $ch)
+                    <a href="{{ route('inventory.purchases.show', $ch->purchase_id) }}" style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid #f3f4f6;text-decoration:none;color:inherit;font-size:13px;">
+                        <span>
+                            <strong>{{ $ch->supplier_name }}</strong>
+                            <span style="color:#6b7280;"> · {{ $ch->cheque_number ?: '—' }} · {{ $ch->ref_no }}</span>
+                        </span>
+                        <span style="white-space:nowrap;font-weight:700;color:#b91c1c;">
+                            {{ $ch->cheque_date ? \Carbon\Carbon::parse($ch->cheque_date)->format('d M') : '—' }}
+                            · Rs. {{ number_format((float) $ch->amount, 0) }}
+                        </span>
+                    </a>
+                @empty
+                    <p style="margin:0;color:#6b7280;font-size:13px;">No overdue cheques.</p>
+                @endforelse
+            </div>
+            <div style="background:#fff;border:1px solid #fde68a;border-radius:14px;padding:14px 16px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap;">
+                    <div style="font-size:14px;font-weight:800;color:#92400e;"><i class="fas fa-clock"></i> Cheques due soon <span style="background:#fef3c7;border-radius:999px;padding:2px 8px;font-size:12px;">{{ (int) ($dueSoonChequeCount ?? 0) }}</span></div>
+                    <a href="{{ route('inventory.purchases.due_cheques', ['filter' => 'due_soon']) }}" style="font-size:12px;font-weight:700;color:#b45309;">View all →</a>
+                </div>
+                @forelse(($dueSoonCheques ?? collect()) as $ch)
+                    <a href="{{ route('inventory.purchases.show', $ch->purchase_id) }}" style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid #f3f4f6;text-decoration:none;color:inherit;font-size:13px;">
+                        <span>
+                            <strong>{{ $ch->supplier_name }}</strong>
+                            <span style="color:#6b7280;"> · {{ $ch->cheque_number ?: '—' }} · {{ $ch->ref_no }}</span>
+                        </span>
+                        <span style="white-space:nowrap;font-weight:700;color:#b45309;">
+                            {{ $ch->cheque_date ? \Carbon\Carbon::parse($ch->cheque_date)->format('d M') : '—' }}
+                            · Rs. {{ number_format((float) $ch->amount, 0) }}
+                        </span>
+                    </a>
+                @empty
+                    <p style="margin:0;color:#6b7280;font-size:13px;">No cheques due in the next 7 days.</p>
+                @endforelse
+            </div>
+        </div>
+        @endif
+
         @if (auth()->user()->can('dashboard.data'))
             @if ($is_admin)
                 <div class="tw-px-5 pw-dash-body">
@@ -328,7 +373,26 @@
                                     </div>
                                 </div>
                             </a>
-                            <a href="{{ route('inventory.purchases.due_cheques') }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
+                            <a href="{{ route('inventory.purchases.due_cheques', ['filter' => 'overdue']) }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
+                                <div class="tw-p-4 sm:tw-p-5">
+                                    <div class="tw-flex tw-items-center tw-gap-4">
+                                        <div class="pw-stat-icon" style="background:#fee2e2;color:#b91c1c;">
+                                            <svg aria-hidden="true" class="tw-w-6 tw-h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                                <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                                                <path d="M3 5m0 3a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3z"/>
+                                                <path d="M3 10h18"/>
+                                                <path d="M7 15h.01"/>
+                                                <path d="M11 15h2"/>
+                                            </svg>
+                                        </div>
+                                        <div class="tw-flex-1 tw-min-w-0">
+                                            <p class="pw-stat-label">Overdue cheques</p>
+                                            <p class="pw-stat-value">{{ (int) ($overdueChequeCount ?? $dueChequeCount ?? 0) }}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </a>
+                            <a href="{{ route('inventory.purchases.due_cheques', ['filter' => 'due_soon']) }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
                                 <div class="tw-p-4 sm:tw-p-5">
                                     <div class="tw-flex tw-items-center tw-gap-4">
                                         <div class="pw-stat-icon" style="background:#fef3c7;color:#b45309;">
@@ -341,8 +405,8 @@
                                             </svg>
                                         </div>
                                         <div class="tw-flex-1 tw-min-w-0">
-                                            <p class="pw-stat-label">Due cheques</p>
-                                            <p class="pw-stat-value">{{ (int) ($dueChequeCount ?? 0) }}</p>
+                                            <p class="pw-stat-label">Cheques due soon</p>
+                                            <p class="pw-stat-value">{{ (int) ($dueSoonChequeCount ?? 0) }}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -370,7 +434,26 @@
                                 </div>
                             </div>
                         </a>
-                        <a href="{{ route('inventory.purchases.due_cheques') }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
+                        <a href="{{ route('inventory.purchases.due_cheques', ['filter' => 'overdue']) }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
+                            <div class="tw-p-4 sm:tw-p-5">
+                                <div class="tw-flex tw-items-center tw-gap-4">
+                                    <div class="pw-stat-icon" style="background:#fee2e2;color:#b91c1c;">
+                                        <svg aria-hidden="true" class="tw-w-6 tw-h-6" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                                            <path d="M3 5m0 3a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-12a3 3 0 0 1 -3 -3z"/>
+                                            <path d="M3 10h18"/>
+                                            <path d="M7 15h.01"/>
+                                            <path d="M11 15h2"/>
+                                        </svg>
+                                    </div>
+                                    <div class="tw-flex-1 tw-min-w-0">
+                                        <p class="pw-stat-label">Overdue cheques</p>
+                                        <p class="pw-stat-value">{{ (int) ($overdueChequeCount ?? $dueChequeCount ?? 0) }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                        <a href="{{ route('inventory.purchases.due_cheques', ['filter' => 'due_soon']) }}" class="pw-stat-card" style="text-decoration:none;color:inherit;display:block;">
                             <div class="tw-p-4 sm:tw-p-5">
                                 <div class="tw-flex tw-items-center tw-gap-4">
                                     <div class="pw-stat-icon" style="background:#fef3c7;color:#b45309;">
@@ -383,8 +466,8 @@
                                         </svg>
                                     </div>
                                     <div class="tw-flex-1 tw-min-w-0">
-                                        <p class="pw-stat-label">Due cheques</p>
-                                        <p class="pw-stat-value">{{ (int) ($dueChequeCount ?? 0) }}</p>
+                                        <p class="pw-stat-label">Cheques due soon</p>
+                                        <p class="pw-stat-value">{{ (int) ($dueSoonChequeCount ?? 0) }}</p>
                                     </div>
                                 </div>
                             </div>

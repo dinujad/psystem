@@ -104,6 +104,14 @@ Route::middleware(['setData'])->group(function () {
         ->name('invoice_payment');
     Route::post('/confirm-payment/{id}', [SellPosController::class, 'confirmPayment'])
         ->name('confirm_payment');
+    Route::get('/pay/{token}/onepay', [\App\Http\Controllers\OnePayController::class, 'checkout'])
+        ->name('onepay.checkout');
+    Route::get('/pay/{token}/onepay/return', [\App\Http\Controllers\OnePayController::class, 'returnUrl'])
+        ->name('onepay.return');
+    Route::get('/pay/{token}/payzy', [\App\Http\Controllers\PayzyController::class, 'checkout'])
+        ->name('payzy.checkout');
+    Route::get('/pay/{token}/payzy/return', [\App\Http\Controllers\PayzyController::class, 'returnUrl'])
+        ->name('payzy.return');
 });
 
 Route::post('/whatsapp/webhook/incoming', [WhatsappController::class, 'incomingWebhook']);
@@ -458,6 +466,11 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
     Route::post('/discount/mass-deactivate', [DiscountController::class, 'massDeactivate']);
     Route::resource('discount', DiscountController::class);
 
+    Route::get('/onepay', [\App\Http\Controllers\OnePayAdminController::class, 'index'])->name('onepay.index');
+    Route::post('/onepay/{payment}/refund', [\App\Http\Controllers\OnePayAdminController::class, 'refund'])->name('onepay.refund');
+    Route::get('/payzy', [\App\Http\Controllers\PayzyAdminController::class, 'index'])->name('payzy.index');
+    Route::post('/payzy/{payment}/mark-refunded', [\App\Http\Controllers\PayzyAdminController::class, 'markRefunded'])->name('payzy.mark_refunded');
+
     Route::prefix('account')->group(function () {
         Route::resource('/account', AccountController::class);
         Route::get('/fund-transfer/{id}', [AccountController::class, 'getFundTransfer']);
@@ -657,6 +670,7 @@ Route::middleware(['setData', 'auth', 'SetSessionData', 'language', 'timezone', 
         Route::get('/purchases/{purchase}', [\App\Http\Controllers\InventoryPurchaseController::class, 'show'])->name('purchases.show');
         Route::get('/purchases/{purchase}/payments', [\App\Http\Controllers\InventoryPurchaseController::class, 'payments'])->name('purchases.payments');
         Route::post('/purchases/{purchase}/payments', [\App\Http\Controllers\InventoryPurchaseController::class, 'storePayment'])->name('purchases.payments.store');
+        Route::post('/purchases/{purchase}/payments/{payment}/mark-cheque-paid', [\App\Http\Controllers\InventoryPurchaseController::class, 'markChequePaid'])->name('purchases.payments.mark_cheque_paid');
         Route::post('/purchases/{purchase}/receive', [\App\Http\Controllers\InventoryPurchaseController::class, 'markReceived'])->name('purchases.receive');
     });
 

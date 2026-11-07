@@ -759,6 +759,38 @@ class AttendanceController extends Controller
         return $this->essentialsUtil->myOvertimeSummary(auth()->user()->id, $business_id);
     }
 
+    /**
+     * OT tab for HRM users who can manage all attendance — everyone's OT.
+     */
+    public function otBoard(Request $request)
+    {
+        $business_id = $request->session()->get('user.business_id');
+        if (! (auth()->user()->can('superadmin') || $this->moduleUtil->hasThePermissionInSubscription($business_id, 'essentials_module'))) {
+            abort(403, 'Unauthorized action.');
+        }
+        if (! $this->canManageAllAttendance()) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $start = $request->input('start_date');
+        $end = $request->input('end_date');
+        if (empty($start) || empty($end)) {
+            $start = \Carbon::now()->startOfMonth()->toDateString();
+            $end = \Carbon::today()->toDateString();
+        } else {
+            $start = \Carbon::parse($start)->toDateString();
+            $end = \Carbon::parse($end)->toDateString();
+        }
+
+        $board = $this->essentialsUtil->getAllEmployeesOvertimeBoard($business_id, $start, $end, true);
+
+        if ($request->ajax() || $request->wantsJson()) {
+            return view('essentials::attendance.ot_board', compact('board', 'start', 'end'));
+        }
+
+        return view('essentials::attendance.ot_board', compact('board', 'start', 'end'));
+    }
+
     public function todayArrive(Request $request)
     {
         $business_id = $request->session()->get('user.business_id');

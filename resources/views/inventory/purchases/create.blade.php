@@ -69,6 +69,7 @@ body .rmp-modal textarea::placeholder {
 
 @section('content')
 <div class="rmp-page">
+    @include('inventory.purchases._swal_flash')
     <div class="rmp-hero">
         <h1>Purchase Raw Materials</h1>
         <p>Buying sheet / ink / media for Production — stock goes to Raw Materials. No selling price or profit margin.</p>
@@ -348,6 +349,14 @@ const MATERIALS = @json($materialsJson);
 
 let lineIdx = 0;
 
+function rmpSwal(type, title, text) {
+    if (typeof swal === 'function') {
+        swal({ title: title || '', text: text || '', icon: type || 'info', button: 'OK' });
+        return;
+    }
+    window.alert((title ? title + '\n' : '') + (text || ''));
+}
+
 function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
         return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
@@ -446,7 +455,7 @@ function recalc() {
 document.getElementById('rmpForm').addEventListener('submit', function (e) {
     if (!document.querySelectorAll('#rmpLines tr').length) {
         e.preventDefault();
-        alert('Add at least one raw material line.');
+        rmpSwal('error', 'Missing materials', 'Add at least one raw material line.');
     }
 });
 
@@ -487,6 +496,7 @@ document.getElementById('nmSave').addEventListener('click', function () {
             const errors = res.d.errors || {};
             const first = Object.keys(errors).length ? errors[Object.keys(errors)[0]][0] : (res.d.message || 'Could not save the material.');
             err.textContent = first;
+            rmpSwal('error', 'Could not save', first);
             return;
         }
         MATERIALS.push(res.d.material);
@@ -519,9 +529,11 @@ document.getElementById('nmSave').addEventListener('click', function () {
         document.getElementById('nmUnit').value = '';
         closeNewMaterial();
         recalc();
+        rmpSwal('success', 'Material saved', res.d.material.name + ' added.');
     }).catch(function () {
         btn.disabled = false;
         err.textContent = 'Could not save the material.';
+        rmpSwal('error', 'Could not save', 'Could not save the material.');
     });
 });
 

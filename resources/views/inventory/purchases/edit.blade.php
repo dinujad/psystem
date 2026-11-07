@@ -86,15 +86,7 @@ body .rmp-modal select option {
         @endif
     </div>
 
-    @if($errors->any())
-        <div class="alert alert-danger" style="border-radius:10px;">
-            <ul style="margin:0;padding-left:18px;">
-                @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        </div>
-    @endif
+    @include('inventory.purchases._swal_flash')
 
     <form method="POST" action="{{ route('inventory.purchases.update', $purchase) }}" id="rmpForm">
         @csrf
@@ -258,6 +250,14 @@ const ALREADY_PAID = {{ (float) $amountPaid }};
 
 let lineIdx = 0;
 
+function rmpSwal(type, title, text) {
+    if (typeof swal === 'function') {
+        swal({ title: title || '', text: text || '', icon: type || 'info', button: 'OK' });
+        return;
+    }
+    window.alert((title ? title + '\n' : '') + (text || ''));
+}
+
 function esc(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
         return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
@@ -356,14 +356,14 @@ function recalc() {
 document.getElementById('rmpForm').addEventListener('submit', function (e) {
     if (!document.querySelectorAll('#rmpLines tr').length) {
         e.preventDefault();
-        alert('Add at least one raw material line.');
+        rmpSwal('error', 'Missing materials', 'Add at least one raw material line.');
         return;
     }
     const totalText = document.getElementById('rmpTotal')?.textContent || '0';
     const total = parseFloat(totalText) || 0;
     if (ALREADY_PAID > 0 && total + 0.009 < ALREADY_PAID) {
         e.preventDefault();
-        alert('Total cannot be less than already paid (Rs. ' + ALREADY_PAID.toFixed(2) + ').');
+        rmpSwal('error', 'Total too low', 'Total cannot be less than already paid (Rs. ' + ALREADY_PAID.toFixed(2) + ').');
     }
 });
 
@@ -404,6 +404,7 @@ document.getElementById('nmSave').addEventListener('click', function () {
             const errors = res.d.errors || {};
             const first = Object.keys(errors).length ? errors[Object.keys(errors)[0]][0] : (res.d.message || 'Could not save the material.');
             err.textContent = first;
+            rmpSwal('error', 'Could not save', first);
             return;
         }
         MATERIALS.push(res.d.material);
@@ -436,9 +437,11 @@ document.getElementById('nmSave').addEventListener('click', function () {
         document.getElementById('nmUnit').value = '';
         closeNewMaterial();
         recalc();
+        rmpSwal('success', 'Material saved', res.d.material.name + ' added.');
     }).catch(function () {
         btn.disabled = false;
         err.textContent = 'Could not save the material.';
+        rmpSwal('error', 'Could not save', 'Could not save the material.');
     });
 });
 

@@ -2016,8 +2016,24 @@ class SellPosController extends Controller
             $receipt = $this->receiptContent($transaction->business_id, $transaction->location_id, $transaction->id, 'browser', false, false, $invoice_layout_id);
             $pos_settings = empty($transaction->business->pos_settings) ? $this->businessUtil->defaultPosSettings() : json_decode($transaction->business->pos_settings, true);
             $payment_link = '';
-            if (!empty($pos_settings['enable_payment_link']) && $transaction->payment_status != 'paid') {
-                $payment_link = $this->transactionUtil->getInvoicePaymentLink($transaction->id, $transaction->business_id);
+            $onepay_pay_url = '';
+            $payzy_pay_url = '';
+            $onepay_enabled = (bool) config('onepay.enabled')
+                && filled(config('onepay.app_id'))
+                && filled(config('onepay.hash_salt'));
+            $payzy_enabled = (bool) config('payzy.enabled')
+                && filled(config('payzy.shop_id'))
+                && filled(config('payzy.secret_key'));
+            if ($transaction->payment_status != 'paid' && $transaction->status == 'final') {
+                if (!empty($pos_settings['enable_payment_link']) || $onepay_enabled || $payzy_enabled) {
+                    $payment_link = $this->transactionUtil->getInvoicePaymentLink($transaction->id, $transaction->business_id);
+                }
+                if ($onepay_enabled) {
+                    $onepay_pay_url = route('onepay.checkout', ['token' => $transaction->invoice_token]);
+                }
+                if ($payzy_enabled) {
+                    $payzy_pay_url = route('payzy.checkout', ['token' => $transaction->invoice_token]);
+                }
             }
 
             $title = $transaction->business->name . ' | ' . $transaction->invoice_no;
@@ -2026,7 +2042,7 @@ class SellPosController extends Controller
                 : route('download_invoice_pdf', ['token' => $transaction->invoice_token]);
 
             return view('sale_pos.partials.show_invoice')
-                ->with(compact('receipt', 'title', 'payment_link', 'download_url', 'transaction'));
+                ->with(compact('receipt', 'title', 'payment_link', 'onepay_pay_url', 'payzy_pay_url', 'download_url', 'transaction'));
         } else {
             exit(__('messages.something_went_wrong'));
         }
@@ -2045,7 +2061,13 @@ class SellPosController extends Controller
         $business_details = $this->businessUtil->getDetails($business->id);
         $pos_settings = empty($business->pos_settings) ? $this->businessUtil->defaultPosSettings() : json_decode($business->pos_settings, true);
 
-        if (!empty($transaction) && $transaction->status == 'final' && !empty($pos_settings['enable_payment_link'])) {
+        $onepay_enabled = (bool) config('onepay.enabled')
+            && filled(config('onepay.app_id'))
+            && filled(config('onepay.hash_salt'));
+        $payzy_enabled = (bool) config('payzy.enabled')
+            && filled(config('payzy.shop_id'))
+            && filled(config('payzy.secret_key'));
+        if (!empty($transaction) && $transaction->status == 'final' && (!empty($pos_settings['enable_payment_link']) || $onepay_enabled || $payzy_enabled)) {
             $title = $transaction->business->name . ' | ' . $transaction->invoice_no;
             $paid_amount = $this->transactionUtil->getTotalPaid($transaction->id);
             $total_payable = $transaction->final_total - $paid_amount;

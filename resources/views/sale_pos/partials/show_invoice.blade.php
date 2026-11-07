@@ -6,9 +6,25 @@
     <div class="spacer"></div>
     <div class="row">
         <div class="col-md-12 text-right mb-12" >
-            @if(!empty($payment_link))
-                <a href="{{$payment_link}}" class="btn btn-info no-print" style="margin-right: 20px;"><i class="fas fa-money-check-alt" title="@lang('lang_v1.pay')"></i> @lang('lang_v1.pay')
+            @if(!empty($onepay_pay_url))
+                <a href="{{ $onepay_pay_url }}" class="btn btn-success no-print" style="margin-right: 8px;">
+                    <i class="fas fa-bolt"></i> Pay Now — OnePay
                 </a>
+            @endif
+            @if(!empty($payzy_pay_url))
+                <a href="{{ $payzy_pay_url }}" class="btn btn-warning no-print" style="margin-right: 8px;">
+                    <i class="fas fa-calendar-alt"></i> Pay Now — Payzy 4 Installment
+                </a>
+            @endif
+            @if(empty($onepay_pay_url) && empty($payzy_pay_url) && !empty($payment_link))
+                <a href="{{$payment_link}}" class="btn btn-info no-print" style="margin-right: 20px;"><i class="fas fa-money-check-alt" title="@lang('lang_v1.pay')"></i> Pay Now
+                </a>
+            @endif
+            @if(session('status.msg') || (is_array(session('status')) && !empty(session('status')['msg'])))
+                @php $st = session('status'); $stMsg = is_array($st) ? ($st['msg'] ?? '') : session('status.msg'); $stOk = is_array($st) ? !empty($st['success']) : session('status.success'); @endphp
+                <div class="alert {{ !empty($stOk) ? 'alert-success' : 'alert-warning' }} text-left no-print" style="display:inline-block;margin-right:12px;padding:8px 12px;">
+                    {{ $stMsg }}
+                </div>
             @endif
             <button type="button" class="tw-dw-btn tw-dw-btn-primary tw-text-white no-print tw-dw-btn-sm" id="print_invoice" 
                  aria-label="Print"><i class="fas fa-print"></i> @lang( 'messages.print' )
