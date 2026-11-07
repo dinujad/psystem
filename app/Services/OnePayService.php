@@ -20,9 +20,9 @@ class OnePayService
     public function isConfigured(): bool
     {
         return (bool) config('onepay.enabled')
-            && filled(config('onepay.app_id'))
-            && filled(config('onepay.hash_salt'))
-            && filled(config('onepay.app_token'));
+            && $this->cfg('app_id') !== ''
+            && $this->cfg('hash_salt') !== ''
+            && $this->cfg('app_token') !== '';
     }
 
     public function formatAmount(float $amount): string
@@ -32,7 +32,26 @@ class OnePayService
 
     public function hash(string $appId, string $currency, string $amount): string
     {
-        return hash('sha256', $appId.$currency.$amount.(string) config('onepay.hash_salt'));
+        return hash('sha256', $appId.$currency.$amount.$this->cfg('hash_salt'));
+    }
+
+    /**
+     * Trim Coolify/env quirks (quotes, spaces) from OnePay config values.
+     */
+    private function cfg(string $key, string $default = ''): string
+    {
+        $value = config('onepay.'.$key, $default);
+        $value = is_string($value) ? $value : (string) $value;
+        $value = trim($value);
+        // Strip wrapping quotes sometimes pasted into Coolify env UI.
+        if (
+            (str_starts_with($value, '"') && str_ends_with($value, '"'))
+            || (str_starts_with($value, "'") && str_ends_with($value, "'"))
+        ) {
+            $value = substr($value, 1, -1);
+        }
+
+        return trim($value);
     }
 
     public function ensurePayoutAccount(int $businessId): ?Account
@@ -72,8 +91,21 @@ class OnePayService
 
         $transaction->loadMissing(['contact', 'business', 'location']);
         $contact = $transaction->contact;
-        $currency = (string) config('onepay.currency', 'LKR');
-        $appId = (string) config('onepay.app_id');
+        $currency = $this->cfg('currency', 'LKR');
+        $appId = $this->cfg('app_id');
+        $appToken = $this->cfg('app_token');
+        $hashSalt = $this->cfg('hash_salt');
+        $baseUrl = rtrim($this->cfg('base_url', 'https://api.onepay.lk'), '/');
+
+        if ($appId === '' || $appToken === '' || $hashSalt === '') {
+            throw new \RuntimeException('OnePay credentials missing. Set ONEPAY_APP_ID, ONEPAY_APP_TOKEN, ONEPAY_HASH_SALT in Coolify.');
+        }
+
+        // OnePay LKR minimum is 100.00
+        if (strcasecmp($currency, 'LKR') === 0 && $amount + 0.009 < 100) {
+            throw new \RuntimeException('OnePay minimum amount is Rs. 100.00 (this invoice due is Rs. '.number_format($amount, 2).').');
+        }
+
         $amountStr = $this->formatAmount($amount);
         $reference = 'INV-'.$transaction->id.'-'.Str::upper(Str::random(6));
 
@@ -84,12 +116,14 @@ class OnePayService
         // Public HTTPS return URL (Coolify APP_URL must be https://erp.printworks.lk).
         $redirectUrl = rtrim((string) config('app.url'), '/').'/pay/'.$transaction->invoice_token.'/onepay/return';
 
-        // Amount MUST be the exact 2-decimal string used in the hash (JSON float 39 vs "39.00" → 401).
+        $hash = hash('sha256', $appId.$currency.$amountStr.$hashSalt);
+
+        // Amount MUST be the exact 2-decimal string used in the hash.
         $payload = [
             'app_id' => $appId,
             'amount' => $amountStr,
             'currency' => $currency,
-            'hash' => $this->hash($appId, $currency, $amountStr),
+            'hash' => $hash,
             'reference' => $reference,
             'customer_first_name' => $firstName,
             'customer_last_name' => $lastName,
@@ -105,13 +139,12 @@ class OnePayService
 
         $response = Http::timeout(30)
             ->withHeaders([
-                // Required by OnePay — missing/invalid token returns "Unauthorized request"
-                'Authorization' => (string) config('onepay.app_token'),
+                'Authorization' => $appToken,
                 'Content-Type' => 'application/json',
             ])
             ->acceptJson()
-            ->asJson()
-            ->post(rtrim(config('onepay.base_url'), '/').'/v3/checkout/link/', $payload);
+            ->withBody(json_encode($payload, JSON_UNESCAPED_SLASHES), 'application/json')
+            ->post($baseUrl.'/v3/checkout/link/');
 
         $body = $response->json() ?: [];
         if (! $response->successful()) {
@@ -119,18 +152,32 @@ class OnePayService
                 'status' => $response->status(),
                 'body' => $body,
                 'payload' => array_merge($payload, ['hash' => '[redacted]']),
-                'token_len' => strlen((string) config('onepay.app_token')),
+                'token_len' => strlen($appToken),
+                'app_id' => $appId,
+                'redirect' => $redirectUrl,
             ]);
-            $msg = $body['message'] ?? $body['error'] ?? null;
-            if ($response->status() === 401) {
-                $msg = $msg ?: 'Unauthorized request — check ONEPAY_APP_TOKEN (full token) and HASH_SALT in Coolify env.';
+            $msg = trim(implode(' — ', array_filter([
+                $body['message'] ?? null,
+                is_string($body['error'] ?? null) ? $body['error'] : null,
+            ])));
+            $credFail = stripos($msg, 'unauthor') !== false
+                || stripos($msg, 'credential') !== false
+                || $response->status() === 401;
+            if ($credFail) {
+                $msg = ($msg !== '' ? $msg.' ' : '')
+                    .'→ Coolify එකේ ONEPAY_APP_TOKEN OnePay dashboard එකෙන් full copy කරන්න (chat එකේ කැපුණු token එක වැඩ කරන්නේ නෑ). APP_ID + HASH_SALT ත් trim කරලා බලන්න.';
             }
-            throw new \RuntimeException($msg ?: 'OnePay checkout failed (HTTP '.$response->status().').');
+            throw new \RuntimeException($msg !== '' ? $msg : 'OnePay checkout failed (HTTP '.$response->status().').');
         }
 
         $data = $body['data'] ?? $body;
-        $redirect = $data['redirect_url'] ?? $data['link_url'] ?? $body['redirect_url'] ?? null;
-        $ipgId = $data['ipg_transaction_id'] ?? $data['onepay_transaction_id'] ?? $body['ipg_transaction_id'] ?? null;
+        $redirect = data_get($data, 'gateway.redirect_url')
+            ?? data_get($data, 'redirect_url')
+            ?? data_get($data, 'link_url')
+            ?? data_get($body, 'redirect_url');
+        $ipgId = data_get($data, 'ipg_transaction_id')
+            ?? data_get($data, 'onepay_transaction_id')
+            ?? data_get($body, 'ipg_transaction_id');
 
         if (empty($redirect)) {
             Log::error('OnePay checkout missing redirect', ['body' => $body]);
