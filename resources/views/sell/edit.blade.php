@@ -38,6 +38,9 @@
 				@include('sell.partials.document_brand_selector')
 				@include('sell.partials.description_format_selector')
 				@include('sell.partials.sales_channel_selector')
+				@if((int) ($transaction->is_direct_sale ?? 0) === 1 && (int) ($transaction->is_quotation ?? 0) === 0)
+					@include('sell.partials.invoice_online_payment_selector', ['invoice_mode' => true, 'transaction' => $transaction])
+				@endif
 				@if(!empty($transaction->selling_price_group_id))
 					<div class="col-md-4 col-sm-6">
 						<div class="form-group">

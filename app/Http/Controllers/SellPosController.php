@@ -2025,14 +2025,21 @@ class SellPosController extends Controller
                 && filled(config('payzy.shop_id'))
                 && filled(config('payzy.secret_key'));
             if ($transaction->payment_status != 'paid' && $transaction->status == 'final') {
+                $payMode = $this->transactionUtil->invoiceOnlinePaymentMode($transaction);
                 if (!empty($pos_settings['enable_payment_link']) || $onepay_enabled || $payzy_enabled) {
                     $payment_link = $this->transactionUtil->getInvoicePaymentLink($transaction->id, $transaction->business_id);
                 }
-                if ($onepay_enabled) {
+                // bank = no online buttons; card = OnePay only; payzy = Payzy only; legacy = both
+                if ($onepay_enabled && in_array($payMode, ['card', 'legacy'], true)) {
                     $onepay_pay_url = route('onepay.checkout', ['token' => $transaction->invoice_token]);
                 }
-                if ($payzy_enabled) {
+                if ($payzy_enabled && in_array($payMode, ['payzy', 'legacy'], true)) {
                     $payzy_pay_url = route('payzy.checkout', ['token' => $transaction->invoice_token]);
+                }
+                if ($payMode === 'bank') {
+                    $onepay_pay_url = '';
+                    $payzy_pay_url = '';
+                    $payment_link = '';
                 }
             }
 

@@ -162,6 +162,11 @@ class TransactionUtil extends Util
 
         ]);
 
+        if (\Illuminate\Support\Facades\Schema::hasColumn('transactions', 'invoice_online_payment')) {
+            $transaction->invoice_online_payment = $this->resolveInvoiceOnlinePayment($input);
+            $transaction->save();
+        }
+
         return $transaction;
     }
 
@@ -207,6 +212,37 @@ class TransactionUtil extends Util
         $format = strtolower(trim((string) ($input['description_format'] ?? 'product_and_note')));
 
         return in_array($format, ['product_and_note', 'note_only'], true) ? $format : 'product_and_note';
+    }
+
+    /**
+     * Online pay option on customer invoice link: card (OnePay) | payzy | bank.
+     */
+    private function resolveInvoiceOnlinePayment(array $input, ?string $existing = null): ?string
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasColumn('transactions', 'invoice_online_payment')) {
+            return $existing;
+        }
+        if (array_key_exists('invoice_online_payment', $input)) {
+            $v = strtolower(trim((string) $input['invoice_online_payment']));
+
+            return in_array($v, ['card', 'payzy', 'bank'], true) ? $v : 'bank';
+        }
+
+        return $existing;
+    }
+
+    /**
+     * Resolved online payment mode for a sell invoice.
+     */
+    public function invoiceOnlinePaymentMode($transaction): string
+    {
+        $v = strtolower(trim((string) ($transaction->invoice_online_payment ?? '')));
+        if (in_array($v, ['card', 'payzy', 'bank'], true)) {
+            return $v;
+        }
+
+        // Legacy invoices (before selector): keep previous dual-button behaviour.
+        return 'legacy';
     }
 
     /**
@@ -368,6 +404,13 @@ class TransactionUtil extends Util
             'additional_expense_key_4' => ! empty($input['additional_expense_key_4']) ? $input['additional_expense_key_4'] : null,
             'is_kitchen_order' => ! empty($input['is_kitchen_order']) ? 1 : 0,
         ];
+
+        if (\Illuminate\Support\Facades\Schema::hasColumn('transactions', 'invoice_online_payment')) {
+            $update_date['invoice_online_payment'] = $this->resolveInvoiceOnlinePayment(
+                $input,
+                $transaction->invoice_online_payment ?? null
+            );
+        }
 
         if (! empty($input['transaction_date'])) {
             $update_date['transaction_date'] = $input['transaction_date'];
@@ -1695,18 +1738,18 @@ class TransactionUtil extends Util
         }
 
         $output['additional_expenses'] = [];
+        $hidePayzyTaxLine = $this->invoiceOnlinePaymentMode($transaction) === 'card';
 
-        if (! empty($transaction->additional_expense_value_1) && ! empty($transaction->additional_expense_key_1)) {
-            $output['additional_expenses'][$transaction->additional_expense_key_1] = $this->num_f($transaction->additional_expense_value_1, $show_currency, $business_details);
-        }
-        if (! empty($transaction->additional_expense_value_2) && ! empty($transaction->additional_expense_key_2)) {
-            $output['additional_expenses'][$transaction->additional_expense_key_2] = $this->num_f($transaction->additional_expense_value_2, $show_currency, $business_details);
-        }
-        if (! empty($transaction->additional_expense_value_3) && ! empty($transaction->additional_expense_key_3)) {
-            $output['additional_expenses'][$transaction->additional_expense_key_3] = $this->num_f($transaction->additional_expense_value_3, $show_currency, $business_details);
-        }
-        if (! empty($transaction->additional_expense_value_4) && ! empty($transaction->additional_expense_key_4)) {
-            $output['additional_expenses'][$transaction->additional_expense_key_4] = $this->num_f($transaction->additional_expense_value_4, $show_currency, $business_details);
+        for ($ei = 1; $ei <= 4; $ei++) {
+            $ek = $transaction->{'additional_expense_key_'.$ei} ?? null;
+            $ev = $transaction->{'additional_expense_value_'.$ei} ?? null;
+            if (empty($ek) || empty($ev)) {
+                continue;
+            }
+            if ($hidePayzyTaxLine && trim((string) $ek) === \App\Services\PayzyService::TAX_LABEL) {
+                continue;
+            }
+            $output['additional_expenses'][$ek] = $this->num_f($ev, $show_currency, $business_details);
         }
 
         //Check for barcode

@@ -76,15 +76,20 @@
                     <div class="spacer"></div>
                     <div class="spacer"></div>
 
+                    @php
+                        $payMode = app(\App\Utils\TransactionUtil::class)->invoiceOnlinePaymentMode($transaction);
+                        $showCard = in_array($payMode, ['card', 'legacy'], true) && config('onepay.enabled') && filled(config('onepay.app_id'));
+                        $showPayzy = in_array($payMode, ['payzy', 'legacy'], true) && config('payzy.enabled') && filled(config('payzy.shop_id'));
+                    @endphp
                     <div class="text-center" style="margin-bottom:16px;">
-                        @if(config('onepay.enabled') && filled(config('onepay.app_id')))
+                        @if($showCard)
                             <a href="{{ route('onepay.checkout', ['token' => $transaction->invoice_token]) }}"
-                               class="btn btn-success btn-lg" style="min-width:220px;margin:6px;">
-                                <i class="fas fa-bolt"></i> Pay Now — OnePay
+                               class="btn btn-success btn-lg" style="min-width:220px;max-width:100%;margin:6px;">
+                                <i class="fas fa-credit-card"></i> Pay with Card
                             </a>
                             <p class="text-muted" style="font-size:12px;">Card / FriMi / HelaPay / QPlus / G-Pay / Amex</p>
                         @endif
-                        @if(config('payzy.enabled') && filled(config('payzy.shop_id')))
+                        @if($showPayzy)
                             @php
                                 $dueRaw = (float) $total_payable;
                                 $payzyTax = round($dueRaw * ((float) config('payzy.bnpl_tax_percent', 12) / 100), 2);
@@ -92,13 +97,18 @@
                                 $inst = round($payzyTotal / 4, 2);
                             @endphp
                             <a href="{{ route('payzy.checkout', ['token' => $transaction->invoice_token]) }}"
-                               class="btn btn-warning btn-lg" style="min-width:220px;margin:6px;">
-                                <i class="fas fa-calendar-alt"></i> Pay Now — Payzy 4 Installment
+                               class="btn btn-warning btn-lg" style="min-width:220px;max-width:100%;margin:6px;">
+                                <i class="fas fa-calendar-alt"></i> Payzy 4 Installment
                             </a>
                             <div class="alert alert-warning" style="text-align:left;font-size:13px;margin-top:10px;">
                                 <strong>Payzy BNPL:</strong> Invoice + 12% Payzy tax (Rs. {{ number_format($payzyTax, 2) }})
                                 = <strong>Rs. {{ number_format($payzyTotal, 2) }}</strong>,
                                 paid in 4 installments of about <strong>Rs. {{ number_format($inst, 2) }}</strong> each.
+                            </div>
+                        @endif
+                        @if($payMode === 'bank')
+                            <div class="alert alert-info" style="text-align:left;font-size:13px;">
+                                Please pay by bank transfer using the bank details on the invoice. No online payment button for this invoice.
                             </div>
                         @endif
                     </div>

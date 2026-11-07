@@ -458,6 +458,19 @@ class PayzyService
 
     public function receiptBnplBlock(Transaction $transaction): ?array
     {
+        // Only show Payzy tax / installments when this invoice is set to Payzy.
+        $mode = strtolower(trim((string) ($transaction->invoice_online_payment ?? '')));
+        if ($mode !== '' && $mode !== 'payzy' && $mode !== 'legacy') {
+            return null;
+        }
+        if ($mode === '' || $mode === 'legacy') {
+            // Legacy: only show if a Payzy payment record exists or tax already applied intentionally via payzy checkout
+            $hasPayzyPayment = PayzyPayment::where('transaction_id', $transaction->id)->exists();
+            if (! $hasPayzyPayment) {
+                return null;
+            }
+        }
+
         $tax = null;
         for ($i = 1; $i <= 4; $i++) {
             if (trim((string) ($transaction->{'additional_expense_key_'.$i} ?? '')) === self::TAX_LABEL) {

@@ -41,6 +41,12 @@ class PayzyController extends Controller
                 ->with('status', ['success' => 1, 'msg' => 'Invoice is already paid.']);
         }
 
+        $payMode = $this->transactionUtil->invoiceOnlinePaymentMode($transaction);
+        if (! in_array($payMode, ['payzy', 'legacy'], true)) {
+            return redirect()->route('show_invoice', ['token' => $token])
+                ->with('status', ['success' => 0, 'msg' => 'Payzy is not enabled for this invoice.']);
+        }
+
         try {
             $result = $this->payzy->createCheckout($transaction);
 

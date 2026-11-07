@@ -50,6 +50,12 @@ class OnePayController extends Controller
                 ->with('status', ['success' => 1, 'msg' => 'Invoice is already paid.']);
         }
 
+        $payMode = $this->transactionUtil->invoiceOnlinePaymentMode($transaction);
+        if (! in_array($payMode, ['card', 'legacy'], true)) {
+            return redirect()->route('show_invoice', ['token' => $token])
+                ->with('status', ['success' => 0, 'msg' => 'Card payment is not enabled for this invoice.']);
+        }
+
         if (empty($transaction->invoice_token)) {
             $this->transactionUtil->getInvoiceUrl($transaction->id, $transaction->business_id);
             $transaction->refresh();

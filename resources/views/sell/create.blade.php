@@ -73,6 +73,9 @@
 				@include('sell.partials.document_brand_selector')
 				@include('sell.partials.description_format_selector')
 				@include('sell.partials.sales_channel_selector')
+				@if(!empty($invoice_mode))
+					@include('sell.partials.invoice_online_payment_selector', ['invoice_mode' => true, 'transaction' => null])
+				@endif
 
 				@if(!empty($price_groups))
 					@if(count($price_groups) > 1)
