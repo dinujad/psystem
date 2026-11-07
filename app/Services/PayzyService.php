@@ -554,16 +554,20 @@ class PayzyService
     }
 
     /**
-     * Official Payzy checkout host is api.payzypay.xyz (not .lk — that host does not resolve).
+     * Live: https://api.payzy.lk/... | Sandbox: https://api.payzypay.xyz/...
+     * Note: api.payzypay.lk does not resolve — common typo for api.payzy.lk.
      */
     private function checkoutEndpoint(): string
     {
         $url = trim((string) config('payzy.checkout_url'));
         if ($url === '') {
-            $url = 'https://api.payzypay.xyz/checkout/custom-checkout';
+            $url = config('payzy.test_mode')
+                ? 'https://api.payzypay.xyz/checkout/custom-checkout'
+                : 'https://api.payzy.lk/checkout/custom-checkout';
         }
-        // Fix common Coolify/env typo: api.payzypay.lk → api.payzypay.xyz
-        $url = str_ireplace('api.payzypay.lk', 'api.payzypay.xyz', $url);
+
+        // Fix Coolify typo that causes cURL error 6 (host does not exist).
+        $url = str_ireplace('://api.payzypay.lk/', '://api.payzy.lk/', $url);
 
         return $url;
     }
