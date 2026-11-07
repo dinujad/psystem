@@ -81,11 +81,13 @@ class OnePayService
         $phone = $this->normalizePhone($contact->mobile ?? $contact->landline ?? $contact->alternate_number ?? '');
         $email = $contact->email ?: ('invoice'.$transaction->id.'@printworks.lk');
 
-        $redirectUrl = url('/pay/'.$transaction->invoice_token.'/onepay/return');
+        // Public HTTPS return URL (Coolify APP_URL must be https://erp.printworks.lk).
+        $redirectUrl = rtrim((string) config('app.url'), '/').'/pay/'.$transaction->invoice_token.'/onepay/return';
 
+        // Amount MUST be the exact 2-decimal string used in the hash (JSON float 39 vs "39.00" → 401).
         $payload = [
             'app_id' => $appId,
-            'amount' => (float) $amountStr,
+            'amount' => $amountStr,
             'currency' => $currency,
             'hash' => $this->hash($appId, $currency, $amountStr),
             'reference' => $reference,
@@ -102,14 +104,28 @@ class OnePayService
         ];
 
         $response = Http::timeout(30)
+            ->withHeaders([
+                // Required by OnePay — missing/invalid token returns "Unauthorized request"
+                'Authorization' => (string) config('onepay.app_token'),
+                'Content-Type' => 'application/json',
+            ])
             ->acceptJson()
             ->asJson()
             ->post(rtrim(config('onepay.base_url'), '/').'/v3/checkout/link/', $payload);
 
         $body = $response->json() ?: [];
         if (! $response->successful()) {
-            Log::error('OnePay checkout failed', ['status' => $response->status(), 'body' => $body, 'payload' => $payload]);
-            throw new \RuntimeException($body['message'] ?? 'OnePay checkout failed.');
+            Log::error('OnePay checkout failed', [
+                'status' => $response->status(),
+                'body' => $body,
+                'payload' => array_merge($payload, ['hash' => '[redacted]']),
+                'token_len' => strlen((string) config('onepay.app_token')),
+            ]);
+            $msg = $body['message'] ?? $body['error'] ?? null;
+            if ($response->status() === 401) {
+                $msg = $msg ?: 'Unauthorized request — check ONEPAY_APP_TOKEN (full token) and HASH_SALT in Coolify env.';
+            }
+            throw new \RuntimeException($msg ?: 'OnePay checkout failed (HTTP '.$response->status().').');
         }
 
         $data = $body['data'] ?? $body;

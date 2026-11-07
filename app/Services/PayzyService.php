@@ -212,15 +212,18 @@ class PayzyService
         [$first, $last] = $this->splitName($contact);
         $phone = $this->phone($contact);
         $email = $contact->email ?: ('invoice'.$transaction->id.'@printworks.lk');
-        $address = trim(strip_tags((string) ($contact->address_line_1 ?? $contact->landmark ?? 'Colombo')));
-        $city = trim((string) ($contact->city ?? 'Colombo')) ?: 'Colombo';
-        $state = trim((string) ($contact->state ?? 'Western')) ?: 'Western';
-        $zip = trim((string) ($contact->zip_code ?? '00000')) ?: '00000';
-        $country = trim((string) ($contact->country ?? 'Sri Lanka')) ?: 'Sri Lanka';
-        $company = (string) config('payzy.company_name', 'PrintWorks');
+        $address = $this->safeField($contact->address_line_1 ?? $contact->landmark ?? 'Colombo', 'Colombo');
+        $city = $this->safeField($contact->city ?? 'Colombo', 'Colombo');
+        $state = $this->safeField($contact->state ?? 'Western', 'Western');
+        $zip = $this->safeField($contact->zip_code ?? '00000', '00000');
+        $country = $this->safeField($contact->country ?? 'Sri Lanka', 'Sri Lanka');
+        $company = $this->safeField(config('payzy.company_name', 'PrintWorks'), 'PrintWorks');
+        $first = $this->safeField($first, 'Customer');
+        $last = $this->safeField($last, 'Printworks');
 
         $orderId = 'PZ-'.$transaction->id.'-'.Str::upper(Str::random(6));
-        $responseUrl = url('/pay/'.$transaction->invoice_token.'/payzy/return');
+        // Must be public HTTPS URL — localhost / wrong APP_URL causes Payzy 500.
+        $responseUrl = rtrim((string) config('app.url'), '/').'/pay/'.$transaction->invoice_token.'/payzy/return';
         $testMode = config('payzy.test_mode') ? 'on' : 'off';
 
         $fields = [
@@ -232,7 +235,7 @@ class PayzyService
             'x_first_name' => $first,
             'x_last_name' => $last,
             'x_company' => $company,
-            'x_address' => $address ?: 'Colombo',
+            'x_address' => $address,
             'x_country' => $country,
             'x_state' => $state,
             'x_city' => $city,
@@ -242,7 +245,7 @@ class PayzyService
             'x_ship_to_first_name' => $first,
             'x_ship_to_last_name' => $last,
             'x_ship_to_company' => $company,
-            'x_ship_to_address' => $address ?: 'Colombo',
+            'x_ship_to_address' => $address,
             'x_ship_to_country' => $country,
             'x_ship_to_state' => $state,
             'x_ship_to_city' => $city,
@@ -263,8 +266,21 @@ class PayzyService
 
         $body = $response->json() ?: [];
         if (! $response->successful()) {
-            Log::error('Payzy checkout failed', ['status' => $response->status(), 'body' => $body, 'payload' => $payload]);
-            throw new \RuntimeException($body['message'] ?? $body['error'] ?? 'Payzy checkout failed.');
+            Log::error('Payzy checkout failed', [
+                'status' => $response->status(),
+                'body' => $body,
+                'response_url' => $responseUrl,
+                'shop_id' => $fields['x_shopid'],
+                'amount' => $fields['x_amount'],
+                'raw' => $response->body(),
+            ]);
+            $msg = $body['message'] ?? $body['error'] ?? $body['detail'] ?? null;
+            if (! $msg && is_string($response->body()) && strlen($response->body()) < 200) {
+                $msg = trim($response->body());
+            }
+            throw new \RuntimeException(
+                ($msg ?: 'Payzy checkout failed').' (HTTP '.$response->status().'). Check PAYZY_SHOP_ID, PAYZY_SECRET_KEY and APP_URL=https://erp.printworks.lk'
+            );
         }
 
         $redirect = data_get($body, 'data.url')
@@ -504,7 +520,21 @@ class PayzyService
         if ($digits === '') {
             return '0700000000';
         }
+        // Prefer local 0xxxxxxxxx form Payzy samples use.
+        if (Str::startsWith($digits, '94') && strlen($digits) >= 11) {
+            return '0'.substr($digits, 2);
+        }
 
         return $digits;
+    }
+
+    private function safeField($value, string $fallback): string
+    {
+        $text = trim(strip_tags((string) $value));
+        // Keep signature string stable — strip commas/newlines that break Payzy HMAC list.
+        $text = preg_replace('/[\r\n,]+/', ' ', $text) ?? '';
+        $text = trim(preg_replace('/\s+/', ' ', $text) ?? '');
+
+        return $text !== '' ? mb_substr($text, 0, 120) : $fallback;
     }
 }
