@@ -259,10 +259,12 @@ class PayzyService
         $signature = $this->sign($this->buildSignatureString($fields, false));
         $payload = array_merge($fields, ['signature' => $signature]);
 
+        $checkoutUrl = $this->checkoutEndpoint();
+
         $response = Http::timeout(45)
             ->acceptJson()
             ->asJson()
-            ->post((string) config('payzy.checkout_url'), $payload);
+            ->post($checkoutUrl, $payload);
 
         $body = $response->json() ?: [];
         if (! $response->successful()) {
@@ -549,5 +551,20 @@ class PayzyService
         $text = trim(preg_replace('/\s+/', ' ', $text) ?? '');
 
         return $text !== '' ? mb_substr($text, 0, 120) : $fallback;
+    }
+
+    /**
+     * Official Payzy checkout host is api.payzypay.xyz (not .lk — that host does not resolve).
+     */
+    private function checkoutEndpoint(): string
+    {
+        $url = trim((string) config('payzy.checkout_url'));
+        if ($url === '') {
+            $url = 'https://api.payzypay.xyz/checkout/custom-checkout';
+        }
+        // Fix common Coolify/env typo: api.payzypay.lk → api.payzypay.xyz
+        $url = str_ireplace('api.payzypay.lk', 'api.payzypay.xyz', $url);
+
+        return $url;
     }
 }
