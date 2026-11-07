@@ -460,23 +460,16 @@ class PayzyService
 
     public function receiptBnplBlock(Transaction $transaction): ?array
     {
-        // Only show Payzy tax / installments when this invoice is set to Payzy.
+        // PDF / invoice preview: Payzy tax + 4 installments ONLY when method = payzy.
         $mode = strtolower(trim((string) ($transaction->invoice_online_payment ?? '')));
-        if ($mode !== '' && $mode !== 'payzy' && $mode !== 'legacy') {
+        if ($mode !== 'payzy') {
             return null;
         }
-        if ($mode === '' || $mode === 'legacy') {
-            // Legacy: only show if a Payzy payment record exists or tax already applied intentionally via payzy checkout
-            $hasPayzyPayment = PayzyPayment::where('transaction_id', $transaction->id)->exists();
-            if (! $hasPayzyPayment) {
-                return null;
-            }
-        }
 
-        $tax = null;
+        $taxOnInvoice = null;
         for ($i = 1; $i <= 4; $i++) {
             if (trim((string) ($transaction->{'additional_expense_key_'.$i} ?? '')) === self::TAX_LABEL) {
-                $tax = (float) $transaction->{'additional_expense_value_'.$i};
+                $taxOnInvoice = (float) $transaction->{'additional_expense_value_'.$i};
                 break;
             }
         }
@@ -485,15 +478,21 @@ class PayzyService
             ->orderByDesc('id')
             ->first();
 
-        if ($tax === null && ! $payzy) {
-            return null;
+        if ($payzy) {
+            $tax = (float) $payzy->tax_amount;
+            $charge = (float) $payzy->charge_amount;
+            $parts = $payzy->installmentAmounts();
+        } elseif ($taxOnInvoice !== null) {
+            $tax = $taxOnInvoice;
+            $charge = round((float) $transaction->final_total, 2);
+            $parts = $this->splitInstallments($charge);
+        } else {
+            // Projected preview (tax not yet posted until customer starts Payzy checkout).
+            $base = round((float) $transaction->final_total, 2);
+            $tax = $this->calcTax($base);
+            $charge = round($base + $tax, 2);
+            $parts = $this->splitInstallments($charge);
         }
-
-        $charge = $payzy
-            ? (float) $payzy->charge_amount
-            : round((float) $transaction->final_total, 2);
-        $tax = $tax ?? ($payzy ? (float) $payzy->tax_amount : $this->calcTax($charge / 1.12));
-        $parts = $payzy ? $payzy->installmentAmounts() : $this->splitInstallments($charge);
 
         return [
             'tax_label' => self::TAX_LABEL,
@@ -502,6 +501,32 @@ class PayzyService
             'installments' => $parts,
             'status' => $payzy->status ?? null,
         ];
+    }
+
+    /**
+     * When switching away from Payzy, remove Payzy tax line from the invoice total.
+     */
+    public function syncTaxWithPaymentMode(Transaction $transaction, string $mode): void
+    {
+        if ($mode === 'payzy') {
+            return;
+        }
+
+        $removed = 0.0;
+        for ($i = 1; $i <= 4; $i++) {
+            $key = 'additional_expense_key_'.$i;
+            $val = 'additional_expense_value_'.$i;
+            if (trim((string) ($transaction->{$key} ?? '')) === self::TAX_LABEL) {
+                $removed += (float) $transaction->{$val};
+                $transaction->{$key} = null;
+                $transaction->{$val} = 0;
+            }
+        }
+
+        if ($removed > 0.009) {
+            $transaction->final_total = round(max(0, (float) $transaction->final_total - $removed), 4);
+            $transaction->save();
+        }
     }
 
     private function linkAccount(int $locationId, ?int $accountId): void

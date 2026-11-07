@@ -228,11 +228,13 @@ class TransactionUtil extends Util
             return in_array($v, ['card', 'payzy', 'bank'], true) ? $v : 'bank';
         }
 
-        return $existing;
+        // Create / missing field → offline payment by default
+        return ! empty($existing) ? $existing : 'bank';
     }
 
     /**
      * Resolved online payment mode for a sell invoice.
+     * Empty / unknown → offline (bank) — no online pay buttons, no Payzy PDF block.
      */
     public function invoiceOnlinePaymentMode($transaction): string
     {
@@ -241,8 +243,7 @@ class TransactionUtil extends Util
             return $v;
         }
 
-        // Legacy invoices (before selector): keep previous dual-button behaviour.
-        return 'legacy';
+        return 'bank';
     }
 
     /**
@@ -418,6 +419,16 @@ class TransactionUtil extends Util
 
         $transaction->fill($update_date);
         $transaction->update();
+
+        // Keep PDF / totals in sync when payment method leaves Payzy
+        if (\Illuminate\Support\Facades\Schema::hasColumn('transactions', 'invoice_online_payment')) {
+            $mode = (string) ($transaction->invoice_online_payment ?? 'bank');
+            try {
+                app(\App\Services\PayzyService::class)->syncTaxWithPaymentMode($transaction, $mode);
+            } catch (\Throwable $e) {
+                // ignore if Payzy service unavailable
+            }
+        }
 
         return $transaction;
     }
@@ -1738,7 +1749,8 @@ class TransactionUtil extends Util
         }
 
         $output['additional_expenses'] = [];
-        $hidePayzyTaxLine = $this->invoiceOnlinePaymentMode($transaction) === 'card';
+        // Payzy tax line on PDF only when invoice payment method is Payzy
+        $hidePayzyTaxLine = $this->invoiceOnlinePaymentMode($transaction) !== 'payzy';
 
         for ($ei = 1; $ei <= 4; $ei++) {
             $ek = $transaction->{'additional_expense_key_'.$ei} ?? null;

@@ -51,7 +51,7 @@ class OnePayController extends Controller
         }
 
         $payMode = $this->transactionUtil->invoiceOnlinePaymentMode($transaction);
-        if (! in_array($payMode, ['card', 'legacy'], true)) {
+        if ($payMode !== 'card') {
             return redirect()->route('show_invoice', ['token' => $token])
                 ->with('status', ['success' => 0, 'msg' => 'Card payment is not enabled for this invoice.']);
         }

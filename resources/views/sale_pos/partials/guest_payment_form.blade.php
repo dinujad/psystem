@@ -78,8 +78,8 @@
 
                     @php
                         $payMode = app(\App\Utils\TransactionUtil::class)->invoiceOnlinePaymentMode($transaction);
-                        $showCard = in_array($payMode, ['card', 'legacy'], true) && config('onepay.enabled') && filled(config('onepay.app_id'));
-                        $showPayzy = in_array($payMode, ['payzy', 'legacy'], true) && config('payzy.enabled') && filled(config('payzy.shop_id'));
+                        $showCard = $payMode === 'card' && config('onepay.enabled') && filled(config('onepay.app_id'));
+                        $showPayzy = $payMode === 'payzy' && config('payzy.enabled') && filled(config('payzy.shop_id'));
                     @endphp
                     <div class="text-center" style="margin-bottom:16px;">
                         @if($showCard)

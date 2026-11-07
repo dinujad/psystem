@@ -42,7 +42,7 @@ class PayzyController extends Controller
         }
 
         $payMode = $this->transactionUtil->invoiceOnlinePaymentMode($transaction);
-        if (! in_array($payMode, ['payzy', 'legacy'], true)) {
+        if ($payMode !== 'payzy') {
             return redirect()->route('show_invoice', ['token' => $token])
                 ->with('status', ['success' => 0, 'msg' => 'Payzy is not enabled for this invoice.']);
         }
